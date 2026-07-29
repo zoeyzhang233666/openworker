@@ -3,24 +3,28 @@
 ## 当前状态
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
-- 当前阶段：阶段 0，项目控制基础。
+- 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
+- 当前阶段：阶段 1，Task 1“可复现执行与回归基线”收尾检查点。
 - 当前分支：`design/chemclaw-foundation`
 - 当前 Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`
-- 业务代码：尚未修改。
+- 业务代码：尚未开始 ChemClaw 功能改造；只修复了 MCP 2.0 与原源码 1.x API 的依赖兼容性。
 - 当前产品数据：OpenWorker 源码为刚克隆状态，没有需要迁移的用户数据。
-- 实施计划：阶段 1 计划已完成自审，正在等待用户批准，尚未获准执行。
+- 浏览器源码预览：后端健康与真实页面加载已验证；当前仍显示原 OpenWorker 英文界面。
+- 回归状态：GUI 单测、构建、154 条 E2E 和 Tauri `cargo check` 通过；后端全量测试仍有已定位的 Windows/上游基线失败，详见测试文档。
 
 ## 下一道门禁
 
-1. 用户审核并批准阶段 1“首条真实纵向链路”实施计划。
-2. 计划获批后，从“测试与运行基线”开始，一次只执行一个可独立验收的小任务。
-3. 每个小任务通过测试并形成小提交后，再决定是否继续下一个任务。
+1. 完成并提交 Task 1 的环境、测试事实和源码启动说明。
+2. 推荐先做一个小型 Windows 基线清理检查点，不把 OpenWorker 原有的 Windows/测试夹具问题带入 Task 2。
+3. 用户确认检查点后，再执行 Task 2：ChemClaw 品牌、默认中文与英文切换外壳。
+4. 每个小任务形成小提交后停止，不提前执行后续任务。
 
 ## 文档索引
 
 - [完整产品设计](../superpowers/specs/2026-07-29-chemclaw-product-design.md)
 - [已批准决策](DECISIONS.md)
 - [领域术语](DOMAIN.md)
+- [测试、开发环境与源码预览](TESTING.md)
 - 仓库级协作入口：`AGENTS.md`
 - [阶段 1 实施计划](../superpowers/plans/2026-07-29-chemclaw-first-vertical-slice.md)
 
@@ -35,13 +39,12 @@
 
 ## 当前环境检查
 
-- 当前主工作区和规划 Worktree 都没有 Python 虚拟环境或前端 `node_modules`。
-- Node.js 与 npm 可用。
-- 当前 `python` 命令由 uv trampoline 提供，但在沙箱内启动子进程被拒绝。
-- 当前终端找不到 Rust `cargo`。
-- 因本次只提交文档，没有为规划 Worktree 重复安装整套依赖，也没有宣称业务测试已通过。
-- 正式实施前必须建立并记录可复现的 Python、Node 和 Rust 测试基线。
+- Worktree 已建立 Python 3.11 `.venv` 和前端 `node_modules`。
+- Python 下载缓存、Python 发行版、开发状态和 pytest 临时目录统一放在 `D:\OpenWorker\.chemclaw-dev`。
+- Rust、Visual Studio Build Tools、LLVM/Clang 和 Playwright Chromium 已安装为机器/用户级共享工具链，不需要为每个 Worktree 重装。
+- 浏览器热更新推荐用于日常高频修改；Tauri 源码模式用于验证原生桌面能力；两者都不需要先构建安装包。
+- 完整版本、命令、测试数字、启动顺序和已知缺陷以 [TESTING.md](TESTING.md) 为准。
 
 ## 新任务推荐开场
 
-> 继续 ChemClaw 项目。请先阅读仓库根目录的 AGENTS.md 和其中指定的项目文档，再用中文汇报当前状态，不要直接修改代码。
+> 继续 ChemClaw 阶段 1。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划，核对最近提交与未完成任务。一次只执行指定 Task；测试并形成小提交后停止，不提前做后续 Task。
