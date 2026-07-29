@@ -9,7 +9,7 @@ test("ChemClaw boots in Chinese and keeps a selected English shell after reload"
   await expect(page.getByPlaceholder("向 ChemClaw 提问…（可拖放或粘贴文件）")).toBeVisible();
   await expect(page.getByRole("button", { name: "添加附件" })).toBeVisible();
   await expect(page.getByRole("button", { name: "模式" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "发送" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "发送", exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("OpenWorker");
 
   await page.getByTestId("account-row").click();
@@ -20,8 +20,8 @@ test("ChemClaw boots in Chinese and keeps a selected English shell after reload"
   await page.getByRole("button", { name: "重新运行设置" }).click();
   await expect(page.getByTestId("onboarding")).toBeVisible();
   await expect(page.getByTestId("onboarding")).not.toContainText("OpenWorker");
-  await page.getByRole("button", { name: "Skip setup" }).click();
-  await page.getByRole("button", { name: "skip anyway" }).click();
+  await page.getByRole("button", { name: "跳过设置" }).click();
+  await page.getByRole("button", { name: "仍然跳过" }).click();
 
   await page.getByTestId("account-row").click();
   await page.getByTestId("account-menu").getByRole("button", { name: "设置" }).click();

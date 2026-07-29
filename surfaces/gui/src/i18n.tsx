@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type React from "react";
+import { interfaceMessagesZh, type InterfaceMessageKey } from "./interfaceMessages";
 
 export type Locale = "zh-CN" | "en-US";
 
@@ -108,18 +109,37 @@ const messages = {
   },
 } as const;
 
-export type MessageKey = keyof (typeof messages)["zh-CN"];
+type ExistingMessageKey = keyof (typeof messages)["zh-CN"];
+export type MessageKey = ExistingMessageKey | InterfaceMessageKey;
+export type MessageValues = Record<string, string | number>;
+
+function interpolate(message: string, values?: MessageValues): string {
+  if (!values) return message;
+  return message.replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match,
+  );
+}
+
+function translate(locale: Locale, key: MessageKey, values?: MessageValues): string {
+  const existing = messages[locale] as Partial<Record<MessageKey, string>>;
+  const message =
+    existing[key] ??
+    (locale === "zh-CN"
+      ? interfaceMessagesZh[key as InterfaceMessageKey] ?? String(key)
+      : String(key));
+  return interpolate(message, values);
+}
 
 export interface I18nValue {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: MessageKey) => string;
+  t: (key: MessageKey, values?: MessageValues) => string;
 }
 
 const fallbackLocale: I18nValue = {
   locale: "en-US",
   setLocale: () => {},
-  t: (key) => messages["en-US"][key],
+  t: (key, values) => translate("en-US", key, values),
 };
 
 const LocaleContext = createContext<I18nValue>(fallbackLocale);
@@ -139,7 +159,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }): JSX
     try { localStorage.setItem("chemclaw.locale", locale); } catch { /* best effort */ }
   }, [locale]);
   const value = useMemo<I18nValue>(
-    () => ({ locale, setLocale, t: (key) => messages[locale][key] }),
+    () => ({ locale, setLocale, t: (key, values) => translate(locale, key, values) }),
     [locale],
   );
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;

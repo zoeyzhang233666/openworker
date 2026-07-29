@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ApprovalDecision, Item } from "../types";
 import { humanizeApprovalTitle, type HumanLine } from "../humanize";
+import { useI18n, type I18nValue, type MessageKey } from "../i18n";
 import { Icon } from "./Icon";
 
 export function shortArgs(args: any): string {
@@ -34,10 +35,13 @@ type ApprovalItem = Extract<Item, { kind: "approval" }>;
 
 // Per-tool button copy (§7): a skill proposal is an "add", not an "allow". Shared with the
 // parked Inbox card so both dialects match.
-export function approvalActionLabels(name?: string): { allow: string; deny: string } {
+export function approvalActionLabels(
+  name: string | undefined,
+  t: I18nValue["t"],
+): { allow: string; deny: string } {
   return name === "save_skill"
-    ? { allow: "Add to my skills", deny: "Not now" }
-    : { allow: "Allow once", deny: "Deny" };
+    ? { allow: t("Add to my skills"), deny: t("Not now") }
+    : { allow: t("Allow once"), deny: t("Deny") };
 }
 
 // save_skill's review surface (SKILLS-SPEC §5.2): description, the full instructions
@@ -45,6 +49,7 @@ export function approvalActionLabels(name?: string): { allow: string; deny: stri
 // answers "added WHERE, available WHEN". Shared verbatim with the parked Inbox card —
 // one decision, one dialect.
 export function SaveSkillPreview({ args }: { args: any }) {
+  const { t } = useI18n();
   return (
     <>
       {args?.description && <div className="approval-with">{String(args.description)}</div>}
@@ -62,8 +67,7 @@ export function SaveSkillPreview({ args }: { args: any }) {
         </div>
       )}
       <div className="approval-with">
-        Approving adds it to your skills on this computer — usable in every conversation from
-        then on.
+        {t("Approving adds it to your skills on this computer — usable in every conversation from then on.")}
       </div>
     </>
   );
@@ -101,18 +105,29 @@ export function scopeNote(
   name: string,
   args: any,
   category?: string,
+  t?: I18nValue["t"],
 ): { text: string; external: boolean } {
+  const tr = (key: MessageKey, values?: Record<string, string>) =>
+    t ? t(key, values) : String(key).replace(/\{(\w+)\}/g, (match, token) => values?.[token] ?? match);
   // save_skill's corner answers WHERE (SKILLS-SPEC §5.2): the exact place to find, edit,
   // or turn off the skill afterwards.
-  if (name === "save_skill") return { text: "saves to Settings ▸ Skills", external: false };
-  if (category === "connector") return { text: "acts on a connected service", external: true };
+  if (name === "save_skill") return { text: tr("saves to Settings ▸ Skills"), external: false };
+  if (category === "connector") return { text: tr("acts on a connected service"), external: true };
   if (EXTERNAL.has(name)) {
     const platform = String(args?.target ?? "").split(":")[0];
     const names: Record<string, string> = { slack: "Slack", telegram: "Telegram" };
-    return { text: `leaves this computer → ${names[platform] || platform || "a connected chat"}`, external: true };
+    return {
+      text: tr("leaves this Mac → {destination}", {
+        destination: names[platform] || platform || tr("a connected chat"),
+      }),
+      external: true,
+    };
   }
   const overwrite = name === "write_file" && args?.overwrite;
-  return { text: "stays on this computer" + (overwrite ? " · overwrites the existing file" : ""), external: false };
+  return {
+    text: tr("stays on this Mac") + (overwrite ? ` · ${tr("overwrites the existing file")}` : ""),
+    external: false,
+  };
 }
 
 // The proposed content/command, straight from the tool call's ARGS — the file/action
@@ -123,6 +138,7 @@ const PREVIEW_LINES = 5;
 const PREVIEW_CHARS = 420;
 
 export function PreviewBlock({ text, mono = true }: { text: string; mono?: boolean }) {
+  const { t } = useI18n();
   const [all, setAll] = useState(false);
   const lines = text.split("\n");
   const clipped = lines.length > PREVIEW_LINES || text.length > PREVIEW_CHARS;
@@ -137,10 +153,10 @@ export function PreviewBlock({ text, mono = true }: { text: string; mono?: boole
       {clipped && (
         <button className="approval-prev-more" onClick={() => setAll((v) => !v)}>
           {all
-            ? "show less"
+            ? t("show less")
             : lines.length > PREVIEW_LINES
-              ? `show all ${lines.length} lines`
-              : "show the full message"}
+              ? t("show all {count} lines", { count: lines.length })
+              : t("show the full message")}
         </button>
       )}
     </div>
@@ -173,6 +189,7 @@ function Buttons({
   primaryLabel: string;
   denyLabel?: string;
 }) {
+  const { t } = useI18n();
   const connector = item.category === "connector";
   const offerStanding = !!(runTask && item.standingTarget);
   return (
@@ -183,10 +200,14 @@ function Buttons({
       {offerStanding && (
         <button
           className="btn"
-          title={`Always allow ${item.name} → ${item.standingTarget} for “${runTask?.title || "this automation"}” — revoke any time on its Automations page`}
+          title={t("Always allow {tool} → {target} for “{title}” — revoke any time on its Automations page", {
+            tool: item.name,
+            target: item.standingTarget || "",
+            title: runTask?.title || t("this automation"),
+          })}
           onClick={() => onApprove("always_task")}
         >
-          Allow every time
+          {t("Allow every time")}
         </button>
       )}
       {/* In a run context the task-persistent grant replaces the session-scoped one —
@@ -199,15 +220,19 @@ function Buttons({
       {!connector && !offerStanding && item.name !== "run_shell" && item.name !== "save_skill" && (
         <button
           className="btn"
-          title={`Always allow ${TOOL_VERBS[item.name]?.toLowerCase() || item.name} for this session`}
+          title={t("Always allow {action} for this session", {
+            action: TOOL_VERBS[item.name]
+              ? t(TOOL_VERBS[item.name] as MessageKey).toLocaleLowerCase()
+              : item.name,
+          })}
           onClick={() => onApprove("always_tool")}
         >
-          Always allow
+          {t("Always allow")}
         </button>
       )}
       {item.name === "run_shell" && (
         <button className="btn" onClick={() => onApprove("always_command")}>
-          Always allow this command
+          {t("Always allow this command")}
         </button>
       )}
       <span className="spacer" />
@@ -231,9 +256,10 @@ export function ApprovalCard({
   runTask?: { id: string; title: string } | null;
   compact?: boolean;
 }) {
+  const { t } = useI18n();
   const [peek, setPeek] = useState(false);
-  const title = humanizeApprovalTitle(item.name, item.args);
-  const scope = scopeNote(item.name, item.args, item.category);
+  const title = humanizeApprovalTitle(item.name, item.args, t);
+  const scope = scopeNote(item.name, item.args, item.category, t);
   const grants = item.name === "create_scheduled_task" ? permissionLines(item.args) : [];
   // "requires approval" is the engine's default boilerplate — only surface a real reason.
   const reason = item.reason && item.reason !== "requires approval" ? item.reason : "";
@@ -250,11 +276,11 @@ export function ApprovalCard({
           <TitleText line={title} />
           {content && (
             <button className="approval-peek" onClick={() => setPeek((v) => !v)}>
-              preview {peek ? "▴" : "▾"}
+              {t("preview")} {peek ? "▴" : "▾"}
             </button>
           )}
           <span className="spacer" />
-          <Buttons item={item} onApprove={onApprove} runTask={runTask} primaryLabel="Allow" />
+          <Buttons item={item} onApprove={onApprove} runTask={runTask} primaryLabel={t("Allow")} />
         </div>
         {peek && content && <PreviewBlock text={content} />}
         {reason && <div className="approval-reason">{reason}</div>}
@@ -266,7 +292,7 @@ export function ApprovalCard({
     <div className={"approval" + (scope.external ? " approval-external" : "") + dock}>
       <div className="approval-top">
         <div className="approval-heading">
-          <span className="approval-ico" title={`Tool: ${item.name}`}>
+          <span className="approval-ico" title={t("Tool: {name}", { name: item.name })}>
             <Icon name="shield" size={15} />
           </span>
           <TitleText line={title} />
@@ -285,11 +311,11 @@ export function ApprovalCard({
             <span className="ico">
               <Icon name="file" size={13} />
             </span>
-            {String(item.args?.path ?? "").split("/").pop() || "file"}
-            {item.args?.as_screenshot ? " · as a PNG screenshot" : ""}
+            {String(item.args?.path ?? "").split("/").pop() || t("file")}
+            {item.args?.as_screenshot ? t(" · as a PNG screenshot") : ""}
           </span>
           {item.args?.comment && (
-            <MessagePreview text={String(item.args.comment)} label="With the message" />
+            <MessagePreview text={String(item.args.comment)} label={t("With the message")} />
           )}
         </>
       )}
@@ -309,7 +335,7 @@ export function ApprovalCard({
               <span className="grant-line">
                 {TOOL_VERBS[g.tool] || g.tool} <code className="approval-tool">{g.target}</code>
                 <span className="grant-note">
-                  {g.access === "write" ? " — always allowed once you approve" : " — read-only"}
+                  {t(g.access === "write" ? " — always allowed once you approve" : " — read-only")}
                 </span>
               </span>
             </div>
@@ -324,14 +350,14 @@ export function ApprovalCard({
       {reason && <div className="approval-reason">{reason}</div>}
 
       {item.resolved ? (
-        <div className="resolved">Approved: {item.resolved.replace("_", " ")}</div>
+        <div className="resolved">{t("Approved: {decision}", { decision: item.resolved.replace("_", " ") })}</div>
       ) : (
         <Buttons
           item={item}
           onApprove={onApprove}
           runTask={runTask}
-          primaryLabel={approvalActionLabels(item.name).allow}
-          denyLabel={approvalActionLabels(item.name).deny}
+          primaryLabel={approvalActionLabels(item.name, t).allow}
+          denyLabel={approvalActionLabels(item.name, t).deny}
         />
       )}
     </div>

@@ -4,6 +4,7 @@
 // model-written intent and is preferred when present. Fallback: "Used <tool> — <short args>".
 
 import { shortArgs } from "./components/ApprovalCard";
+import type { I18nValue, MessageKey, MessageValues } from "./i18n";
 
 // A one-line sentence in three segments so the UI can emphasize the object:
 // "Read " + <b>runbook.md</b> + " from the shared folder".
@@ -15,6 +16,13 @@ export interface HumanLine {
 
 const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const baseName = (p: string) => p.replace(/\/+$/, "").split("/").pop() || p;
+const tr = (t: I18nValue["t"] | undefined, key: MessageKey, values?: MessageValues) => {
+  if (t) return t(key, values);
+  if (!values) return String(key);
+  return String(key).replace(/\{(\w+)\}/g, (match, name: string) =>
+    Object.prototype.hasOwnProperty.call(values, name) ? String(values[name]) : match,
+  );
+};
 
 // send_message targets are "platform:chat" or "platform:chat:thread" — show the platform
 // by name and the last human-ish segment of the chat id.
@@ -26,13 +34,13 @@ function messageTarget(target: string): { platform: string; tail: string } {
   return { platform: names[platform] || platform, tail };
 }
 
-export function humanizeTool(name: string, args: any): HumanLine {
+export function humanizeTool(name: string, args: any, t?: I18nValue["t"]): HumanLine {
   const a = args && typeof args === "object" ? args : {};
   switch (name) {
     case "run_shell": {
       const cmd = trunc(String(a.command ?? ""), 60);
       const desc = typeof a.description === "string" && a.description.trim() ? a.description.trim() : "";
-      const pre = a.run_in_background ? "Started in the background: " : "Ran ";
+      const pre = a.run_in_background ? tr(t, "Started in the background: ") : tr(t, "Ran ");
       return {
         pre,
         obj: cmd,
@@ -40,21 +48,21 @@ export function humanizeTool(name: string, args: any): HumanLine {
       };
     }
     case "shell_task_output":
-      return { pre: "Checked on a background command" };
+      return { pre: tr(t, "Checked on a background command") };
     case "shell_task_kill":
-      return { pre: "Stopped a background command" };
+      return { pre: tr(t, "Stopped a background command") };
     case "read_file":
-      return { pre: "Read ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: tr(t, "Read "), obj: baseName(String(a.path ?? tr(t, "a file"))) };
     case "write_file":
-      return { pre: "Wrote ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: tr(t, "Wrote "), obj: baseName(String(a.path ?? tr(t, "a file"))) };
     case "replace_in_file":
     case "apply_patch":
     case "apply_unified_diff":
-      return { pre: "Edited ", obj: a.path ? baseName(String(a.path)) : "files" };
+      return { pre: tr(t, "Edited "), obj: a.path ? baseName(String(a.path)) : tr(t, "files") };
     case "grep":
-      return { pre: "Searched the code for ", obj: `“${trunc(String(a.pattern ?? ""), 40)}”` };
+      return { pre: tr(t, "Searched the code for "), obj: `“${trunc(String(a.pattern ?? ""), 40)}”` };
     case "git_log":
-      return { pre: "Looked through recent git history" };
+      return { pre: tr(t, "Looked through recent git history") };
     case "todo_write": {
       // `todos` is current; `items` renders histories from before the rename (the old
       // key breaks Together's GLM-5.2 chat template — see coworker/tools/todo.py).
@@ -63,20 +71,20 @@ export function humanizeTool(name: string, args: any): HumanLine {
         const it = items[0] || {};
         const status = String(it.status || "").replace(/_/g, " ");
         return {
-          pre: "Updated the plan — ",
+          pre: tr(t, "Updated the plan — "),
           obj: `“${trunc(String(it.content ?? ""), 70)}”`,
           ...(status ? { post: ` → ${status}` } : {}),
         };
       }
-      return { pre: `Updated the plan — ${items.length} items` };
+      return { pre: tr(t, "Updated the plan — {count} items", { count: items.length }) };
     }
     case "send_message": {
       const { platform, tail } = messageTarget(String(a.target ?? ""));
-      if (!tail) return { pre: "Sent a message" };
-      return { pre: `Sent a ${platform} message to `, obj: tail };
+      if (!tail) return { pre: tr(t, "Sent a message") };
+      return { pre: tr(t, "Sent a {platform} message to ", { platform }), obj: tail };
     }
     case "web_search":
-      return { pre: "Searched the web — ", obj: `“${trunc(String(a.query ?? ""), 60)}”` };
+      return { pre: tr(t, "Searched the web — "), obj: `“${trunc(String(a.query ?? ""), 60)}”` };
     case "web_fetch": {
       let host = String(a.url ?? "");
       try {
@@ -84,85 +92,85 @@ export function humanizeTool(name: string, args: any): HumanLine {
       } catch {
         /* keep raw */
       }
-      return { pre: "Read a web page — ", obj: trunc(host, 50) };
+      return { pre: tr(t, "Read a web page — "), obj: trunc(host, 50) };
     }
     case "explore":
-      return { pre: "Sent a sub-agent to explore — ", obj: `“${trunc(String(a.task ?? a.prompt ?? ""), 60)}”` };
+      return { pre: tr(t, "Sent a sub-agent to explore — "), obj: `“${trunc(String(a.task ?? a.prompt ?? ""), 60)}”` };
     case "load_skill":
       // SKILLS-SPEC §4.1 #4 — the trust line: the transcript always shows the moment a
       // skill's instructions were picked up, model-invoked or forced via /skill.
-      return { pre: "Used skill: ", obj: String(a.name ?? "") };
+      return { pre: tr(t, "Used skill: "), obj: String(a.name ?? "") };
     case "ask_user":
-      return { pre: "Asked you a question" };
+      return { pre: tr(t, "Asked you a question") };
     case "propose_plan":
-      return { pre: "Proposed a plan" };
+      return { pre: tr(t, "Proposed a plan") };
     case "request_directory":
-      return { pre: "Asked for folder access — ", obj: String(a.path ?? "") };
+      return { pre: tr(t, "Asked for folder access — "), obj: String(a.path ?? "") };
     default: {
       const rest = trunc(shortArgs(a), 80);
-      return { pre: `Used ${name}`, ...(rest ? { post: ` — ${rest}` } : {}) };
+      return { pre: tr(t, "Used {tool}", { tool: name }), ...(rest ? { post: ` — ${rest}` } : {}) };
     }
   }
 }
 
 // The approval card's headline (§35): the ask, phrased as the action being decided.
 // run_shell leads with the model's own description ("Run a command — fetch stock data").
-export function humanizeApprovalTitle(name: string, args: any): HumanLine {
+export function humanizeApprovalTitle(name: string, args: any, t?: I18nValue["t"]): HumanLine {
   const a = args && typeof args === "object" ? args : {};
   switch (name) {
     case "write_file":
-      return { pre: "Write ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: tr(t, "Write "), obj: baseName(String(a.path ?? tr(t, "a file"))) };
     case "replace_in_file":
     case "apply_patch":
     case "apply_unified_diff":
-      return { pre: "Edit ", obj: a.path ? baseName(String(a.path)) : "files" };
+      return { pre: tr(t, "Edit "), obj: a.path ? baseName(String(a.path)) : tr(t, "files") };
     case "run_shell": {
       const desc = typeof a.description === "string" && a.description.trim() ? a.description.trim() : "";
       return {
-        pre: "Run a command",
+        pre: tr(t, "Run a command"),
         ...(desc ? { post: ` — ${desc.charAt(0).toLowerCase()}${desc.slice(1)}` } : {}),
       };
     }
     case "send_message": {
       const { tail } = messageTarget(String(a.target ?? ""));
-      return tail ? { pre: "Send a message to ", obj: tail } : { pre: "Send a message" };
+      return tail ? { pre: tr(t, "Send a message to "), obj: tail } : { pre: tr(t, "Send a message") };
     }
     case "send_file": {
       const { tail } = messageTarget(String(a.target ?? ""));
-      return tail ? { pre: "Send a file to ", obj: tail } : { pre: "Send a file" };
+      return tail ? { pre: tr(t, "Send a file to "), obj: tail } : { pre: tr(t, "Send a file") };
     }
     case "create_scheduled_task":
       return a.title
-        ? { pre: "Create the automation ", obj: `“${trunc(String(a.title), 60)}”` }
-        : { pre: "Create an automation" };
+        ? { pre: tr(t, "Create the automation "), obj: `“${trunc(String(a.title), 60)}”` }
+        : { pre: tr(t, "Create an automation") };
     case "save_skill":
       // SKILLS-SPEC §5.2/§7: "Add", never "install"; destination is "your skills".
       return a.name
-        ? { pre: "Add skill ", obj: String(a.name), post: " to your skills" }
-        : { pre: "Add a skill to your skills" };
+        ? { pre: tr(t, "Add skill "), obj: String(a.name), post: tr(t, " to your skills") }
+        : { pre: tr(t, "Add a skill to your skills") };
     default:
-      return { pre: `Use ${name}` };
+      return { pre: tr(t, "Use {tool}", { tool: name }) };
   }
 }
 
 // Approvals with no executed tool call (typically declined): the ask, phrased as intent.
-export function humanizeAsk(name: string, args: any): HumanLine {
+export function humanizeAsk(name: string, args: any, t?: I18nValue["t"]): HumanLine {
   const a = args && typeof args === "object" ? args : {};
   switch (name) {
     case "run_shell":
-      return { pre: "Wanted to run ", obj: trunc(String(a.command ?? ""), 60) };
+      return { pre: tr(t, "Wanted to run "), obj: trunc(String(a.command ?? ""), 60) };
     case "write_file":
-      return { pre: "Wanted to write ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: tr(t, "Wanted to write "), obj: baseName(String(a.path ?? tr(t, "a file"))) };
     case "replace_in_file":
     case "apply_patch":
     case "apply_unified_diff":
-      return { pre: "Wanted to edit ", obj: a.path ? baseName(String(a.path)) : "files" };
+      return { pre: tr(t, "Wanted to edit "), obj: a.path ? baseName(String(a.path)) : tr(t, "files") };
     case "send_message": {
       const { platform, tail } = messageTarget(String(a.target ?? ""));
-      if (!tail) return { pre: "Wanted to send a message" };
-      return { pre: `Wanted to message `, obj: tail, post: ` on ${platform}` };
+      if (!tail) return { pre: tr(t, "Wanted to send a message") };
+      return { pre: tr(t, "Wanted to message "), obj: tail, post: tr(t, " on {platform}", { platform }) };
     }
     default:
-      return { pre: `Wanted to use ${name}` };
+      return { pre: tr(t, "Wanted to use {tool}", { tool: name }) };
   }
 }

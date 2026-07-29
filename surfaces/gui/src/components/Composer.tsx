@@ -268,7 +268,11 @@ export function Composer(props: Props) {
     for (const file of list) {
       if (isPdfFile(file) && file.size > maxMb * 1024 * 1024) {
         showAttachNotice(
-          `${file.name} skipped — ${(file.size / 1024 / 1024).toFixed(1)} MB is over your ${maxMb} MB limit (Settings → Token savings)`,
+          t("{name} skipped — {size} MB is over your {limit} MB limit (Settings → Token savings)", {
+            name: file.name,
+            size: (file.size / 1024 / 1024).toFixed(1),
+            limit: maxMb,
+          }),
         );
         continue;
       }
@@ -281,12 +285,21 @@ export function Composer(props: Props) {
         const info = await inspectPdf(a.data_url).catch(() => null);
         if (info?.ok && (info.pages ?? 0) > maxPages) {
           showAttachNotice(
-            `${a.name} skipped — ${info.pages} pages is over your ${maxPages}-page limit (Settings → Token savings)`,
+            t("{name} skipped — {pages} pages is over your {limit}-page limit (Settings → Token savings)", {
+              name: a.name,
+              pages: info.pages ?? 0,
+              limit: maxPages,
+            }),
           );
           continue;
         }
         if (info && !info.ok) {
-          showAttachNotice(`${a.name} skipped — ${info.error || "could not read PDF"}`);
+          showAttachNotice(
+            t("{name} skipped — {error}", {
+              name: a.name,
+              error: info.error || t("could not read PDF"),
+            }),
+          );
           continue;
         }
       }
@@ -379,7 +392,7 @@ export function Composer(props: Props) {
       if (dictation?.recording) {
         setDictationBusy("Transcribing…");
         const transcript = await stopDictation();
-        if (transcript === null) throw new Error("Could not transcribe your recording.");
+        if (transcript === null) throw new Error(t("Could not transcribe your recording."));
         if (transcript.trim()) {
           setText((draft) => (draft.trim() ? `${draft.trimEnd()} ${transcript.trim()}` : transcript.trim()));
         }
@@ -389,17 +402,17 @@ export function Composer(props: Props) {
       }
 
       const status = dictation || (await getDictationStatus());
-      if (!status) throw new Error("Voice dictation is unavailable.");
+      if (!status) throw new Error(t("Voice dictation is unavailable."));
       if (!status.supported || !status.model_verified || !status.test_passed) {
         props.onConfigureVoiceInput?.();
         return;
       }
-      setDictationBusy("Starting microphone…");
+      setDictationBusy(t("Starting microphone…"));
       const recording = await startDictation();
-      if (!recording?.recording) throw new Error("Could not start the microphone.");
+      if (!recording?.recording) throw new Error(t("Could not start the microphone."));
       setDictation(recording);
     } catch (error) {
-      setDictationError(error instanceof Error ? error.message : "Voice dictation is unavailable.");
+      setDictationError(error instanceof Error ? error.message : t("Voice dictation is unavailable."));
       const status = await getDictationStatus();
       if (status) setDictation(status);
     } finally {
@@ -444,7 +457,7 @@ export function Composer(props: Props) {
           <button
             className="shrink-0 opacity-60 hover:opacity-100"
             onClick={() => setAttachNotice(null)}
-            title="Dismiss"
+            title={t("Dismiss")}
           >
             ✕
           </button>
@@ -578,7 +591,9 @@ export function Composer(props: Props) {
             />
           ) : null}
 
-          {dictationBusy === "Transcribing…" && <span className="text-[11.5px] text-accent">Transcribing…</span>}
+          {dictationBusy === "Transcribing…" && (
+            <span className="text-[11.5px] text-accent">{t("Transcribing…")}</span>
+          )}
 
           <span className="ml-auto" />
 
@@ -602,10 +617,10 @@ export function Composer(props: Props) {
             <button
               className="pill model-warn chip"
               onClick={() => props.onConnectModel?.()}
-              title="Connect a model"
-              aria-label="No model connected — connect a model"
+              title={t("Connect a model")}
+              aria-label={t("No model connected")}
             >
-              <span className="pill-label">No model</span>
+              <span className="pill-label">{t("No model")}</span>
               <span className="model-warn-ico" aria-hidden>⚠</span>
             </button>
           ) : modelsLoaded ? (
@@ -615,9 +630,9 @@ export function Composer(props: Props) {
               className="pill chip text-faint cursor-default"
               disabled
               data-testid="models-loading"
-              title="Fetching the model list from the server"
+              title={t("Fetching the model list from the server")}
             >
-              <span className="pill-label">Loading models…</span>
+              <span className="pill-label">{t("Loading models…")}</span>
             </button>
           ))}
 
@@ -635,12 +650,18 @@ export function Composer(props: Props) {
               title={
                 dictationBusy ||
                 (dictation?.recording
-                  ? "Stop recording and transcribe"
+                  ? t("Stop recording and transcribe")
                   : voiceReady
-                    ? "Start local voice dictation"
-                    : "Configure Voice Input in Settings")
+                    ? t("Start local voice dictation")
+                    : t("Configure Voice Input in Settings"))
               }
-              aria-label={dictation?.recording ? "Stop dictation" : voiceReady ? "Start dictation" : "Configure Voice Input in Settings"}
+              aria-label={
+                dictation?.recording
+                  ? t("Stop dictation")
+                  : voiceReady
+                    ? t("Start dictation")
+                    : t("Configure Voice Input in Settings")
+              }
               aria-disabled={!voiceReady && !dictation?.recording}
             >
               <Icon name={dictation?.recording ? "stop" : "mic"} size={16} />
@@ -662,7 +683,7 @@ export function Composer(props: Props) {
               }
               onClick={submit}
               disabled={!props.connected || !!dictation?.recording || !!dictationBusy}
-              title={needsModel ? "Connect a model to send" : undefined}
+              title={needsModel ? t("Connect a model to send") : undefined}
               aria-label={t("composer.send")}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -673,7 +694,7 @@ export function Composer(props: Props) {
         </div>
       </div>
       <span className="sr-only" role="status" aria-live="polite">
-        {dictation?.recording ? `Listening, ${recordingTime}` : dictationBusy || ""}
+        {dictation?.recording ? t("Listening, {time}", { time: recordingTime }) : dictationBusy || ""}
       </span>
     </div>
   );
@@ -850,8 +871,8 @@ function ModeMenu({
         aria-expanded={open}
         aria-label={t("composer.mode")}
         title={
-          `Mode: ${current?.label || mode}` +
-          (unattended ? " · approvals go to the Inbox" : "")
+          t("Mode: {mode}", { mode: current?.label || mode }) +
+          (unattended ? ` ${t("· approvals go to the Inbox")}` : "")
         }
       >
         {current?.label || mode}
@@ -923,6 +944,7 @@ function attachItem(icon: "image" | "file" | "fileCode", label: string, onClick:
 }
 
 function AttachChip({ a, onRemove }: { a: Attachment; onRemove: () => void }) {
+  const { t } = useI18n();
   return (
     <div className={"attach-chip" + (a.kind === "image" ? " img" : "")}>
       {a.kind === "image" ? (
@@ -933,7 +955,7 @@ function AttachChip({ a, onRemove }: { a: Attachment; onRemove: () => void }) {
           <span className="attach-name">{a.name}</span>
         </>
       )}
-      <button className="attach-x" onClick={onRemove} title="Remove">
+      <button className="attach-x" onClick={onRemove} title={t("Remove")}>
         ✕
       </button>
     </div>
