@@ -43,6 +43,8 @@ import { GalleryModal } from "./GalleryModal";
 import { PersonasTab } from "./PersonasTab";
 import { SkillsTab } from "./SkillsTab";
 import { showPersonas } from "../flags";
+import { useI18n } from "../i18n";
+import { PRODUCT_NAME, UPDATES_ENABLED } from "../product";
 
 // Settings, restructured (Option 2) into a full-page surface that mirrors IntegrationsView's shell:
 // a left sub-nav (Appearance · Files · Models · Personas) + centered panel, replacing the old
@@ -81,6 +83,7 @@ export function SettingsView({
   // prefilled — the worker builds the skill and proposes it via save_skill.
   onCreateSkill?: (description: string) => void;
 }) {
+  const { t } = useI18n();
   // Personas is flag-gated (hidden for launch) — filter the tab AND coerce a stale
   // deep-link to it (openSettings("personas") callers) so the page never opens on a
   // section with no nav entry.
@@ -93,20 +96,20 @@ export function SettingsView({
     <main className="flex-1 min-w-0 flex bg-paper">
       <nav className="page-subnav w-[208px] shrink-0 border-r border-line bg-panel/40 px-3 py-4">
         <div className="px-2 text-[13.5px] font-semibold mb-3 flex items-center gap-2">
-          <Icon name="gear" size={16} /> Settings
+          <Icon name="gear" size={16} /> {t("settings.title")}
         </div>
-        {tabs.map((t) => {
-          const active = tab === t.key;
+        {tabs.map((item) => {
+          const active = tab === item.key;
           return (
             <button
-              key={t.key}
+              key={item.key}
               className={
                 "w-full text-left px-2.5 py-2 rounded-lg text-[13px] flex items-center gap-2 " +
                 (active ? "bg-paper text-accent font-medium" : "text-muted hover:bg-paper hover:text-ink")
               }
-              onClick={() => setTab(t.key)}
+              onClick={() => setTab(item.key)}
             >
-              <Icon name={t.icon} size={15} /> {t.label}
+              <Icon name={item.icon} size={15} /> {item.key === "appearance" ? t("settings.general") : item.label}
             </button>
           );
         })}
@@ -153,6 +156,7 @@ const formatBytes = (bytes: number) => {
 };
 
 function VoiceInputSection() {
+  const { t } = useI18n();
   const [status, setStatus] = useState<DictationStatus | null>(null);
   const [progress, setProgress] = useState<DictationDownloadProgress | null>(null);
   const [phase, setPhase] = useState<"idle" | "downloading" | "verifying" | "testing" | "transcribing">("idle");
@@ -275,7 +279,7 @@ function VoiceInputSection() {
       />
 
       {!desktop ? (
-        <div className={CARD + " p-4 text-[13px] text-muted"}>Voice Input setup is available in the OpenWorker desktop app.</div>
+        <div className={CARD + " p-4 text-[13px] text-muted"}>{t("settings.voiceDesktop")}</div>
       ) : (
         <div className="space-y-4">
           <div className="rounded-xl border border-green-200 bg-green-50/70 px-4 py-3 text-[12.5px] text-green-800">
@@ -364,6 +368,7 @@ function VoiceInputSection() {
 // entry point to the Persona Gallery (a screen-sized modal — installs finish back
 // here, disabled pending consent; a gallery install re-mounts the list in place).
 function PersonasSection({ onOpenPersona }: { onOpenPersona?: (id: string) => void }) {
+  const { t } = useI18n();
   const [galleryBump, setGalleryBump] = useState(0);
   const [galleryOpen, setGalleryOpen] = useState(false);
 
@@ -383,7 +388,7 @@ function PersonasSection({ onOpenPersona }: { onOpenPersona?: (id: string) => vo
         <span className="min-w-0 flex-1">
           <span className="block text-[13.5px] font-medium">Browse the Persona Gallery</span>
           <span className="block text-[12px] text-muted">
-            Curated coworkers from the OpenWorker team — see what each can do before installing.
+            {t("settings.gallery")}
           </span>
         </span>
         <span className="text-[12.5px] text-accent shrink-0">Open →</span>
@@ -400,6 +405,7 @@ function PersonasSection({ onOpenPersona }: { onOpenPersona?: (id: string) => vo
 
 // -- Appearance + app behaviour ------------------------------------------------
 function AppearanceSection() {
+  const { locale, setLocale, t } = useI18n();
   const [theme, setTheme] = useThemePref();
   const [autostart, setAuto] = useState(false);
   const [keepAwake, setKeep] = useState(false);
@@ -421,7 +427,20 @@ function AppearanceSection() {
 
   return (
     <section>
-      <PanelHead title="General" sub="How OpenWorker looks and behaves on this machine." />
+      <PanelHead title={t("settings.general")} sub={`How ${PRODUCT_NAME} looks and behaves on this machine.`} />
+
+      <div className={CARD + " p-4 mb-4"}>
+        <label className={FIELD_LABEL} htmlFor="chemclaw-language">{t("settings.language")}</label>
+        <select
+          id="chemclaw-language"
+          className={INPUT + " mt-2"}
+          value={locale}
+          onChange={(event) => setLocale(event.target.value as typeof locale)}
+        >
+          <option value="zh-CN">{t("settings.language.zh")}</option>
+          <option value="en-US">{t("settings.language.en")}</option>
+        </select>
+      </div>
 
       <div className={CARD + " p-4 mb-4"}>
         <div className={FIELD_LABEL}>Theme</div>
@@ -450,7 +469,7 @@ function AppearanceSection() {
             <input type="checkbox" className="mt-0.5" checked={autostart} onChange={(e) => toggleAuto(e.target.checked)} />
             <span>
               <span className="block text-[13px] text-ink">Open at login</span>
-              <span className="block text-[12px] text-muted">Launch OpenWorker automatically when you sign in.</span>
+              <span className="block text-[12px] text-muted">{t("settings.autoStart")}</span>
             </span>
           </label>
           <label className="flex items-start gap-3 py-2">
@@ -470,7 +489,7 @@ function AppearanceSection() {
         <div className={FIELD_LABEL + " mb-2"}>Setup &amp; updates</div>
         <div className="flex items-center gap-2">
           <button className={BTN_BORDERED} onClick={runSetupAgain}>
-            Run setup again
+            {t("settings.runSetup")}
           </button>
           {desktop && <UpdateInline />}
         </div>
@@ -536,6 +555,8 @@ function TrustedWorkspacesCard() {
 }
 
 function UpdateInline() {
+  const { t } = useI18n();
+  if (!UPDATES_ENABLED) return null;
   const [state, setState] = useState<"idle" | "checking" | "none" | "found" | "installing" | "error">("idle");
   const [version, setVersion] = useState("");
 
@@ -567,7 +588,7 @@ function UpdateInline() {
     <span className="inline-flex items-center gap-2.5">
       {state === "found" ? (
         <button className={BTN_BORDERED} onClick={install} data-testid="settings-update-install">
-          Update to v{version} and restart
+          {t("update.ready").replace("{version}", version)}
         </button>
       ) : (
         <button
@@ -585,7 +606,7 @@ function UpdateInline() {
             ? "You're on the latest version."
             : state === "error"
               ? "Couldn't check right now — try again later."
-              : "Downloading — OpenWorker restarts by itself when it's ready."}
+              : t("update.ready").replace("{version}", version)}
         </span>
       )}
     </span>

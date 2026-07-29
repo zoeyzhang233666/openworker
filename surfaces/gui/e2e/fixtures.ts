@@ -516,7 +516,7 @@ export async function mockApi(page: import("@playwright/test").Page) {
     };
   };
   // Installed personas — mutable so enable/surface/delete round-trip through the UI.
-  const personas: any[] = PERSONAS.personas.map((p) => ({ ...p }));
+  const personas: any[] = PERSONAS.personas.map((p) => ({ ...p, name: p.id === "cowork" ? "ChemClaw" : p.name }));
   // Sessions — mutable so archive (PATCH), rename (PATCH), and delete round-trip.
   const sessions: any[] = [
     { ...PINNED_SESSION },
@@ -1597,7 +1597,10 @@ export async function mockApi(page: import("@playwright/test").Page) {
 
 // A `test` whose page has the API mocked before navigation.
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, use, testInfo) => {
+    if (testInfo.file.endsWith("chat.spec.ts")) {
+      await page.addInitScript("localStorage.setItem('chemclaw.locale', 'en-US');");
+    }
     await mockApi(page);
     await use(page);
   },

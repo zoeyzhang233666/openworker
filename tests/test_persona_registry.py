@@ -28,12 +28,29 @@ def test_sidebar_defaults_to_cowork_only(tmp_path):
     # everything else is opt-in from Settings ▸ Personas.
     assert ids == ["cowork"]
     assert sidebar[0]["default"] is True
+    assert sidebar[0]["title"] == "ChemClaw"
     # Enabling adds to the picker (enable implies surface).
     reg.set_enabled("code", True)
     reg.set_enabled("ops", True)
     ids = [e["name"] for e in reg.sidebar()]
     assert ids[0] == "cowork"
     assert set(ids) == {"cowork", "code", "ops"}
+
+
+def test_personas_endpoint_exposes_chemclaw_name_without_changing_cowork_routing(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from coworker.server.app import create_app
+    from coworker.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "data")
+    response = TestClient(create_app(manager)).get("/v1/personas")
+
+    assert response.status_code == 200
+    cowork = next(persona for persona in response.json()["personas"] if persona["id"] == "cowork")
+    assert cowork["id"] == "cowork"
+    assert cowork["name"] == "ChemClaw"
+    assert manager.personas.agent(cowork["id"]).name == "cowork"
 
 
 def test_chat_disabled_by_default_but_resolvable(tmp_path):

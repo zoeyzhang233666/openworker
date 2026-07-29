@@ -7,6 +7,8 @@ import {
   isTauri,
   type UpdateInfo,
 } from "../tauri";
+import { UPDATES_ENABLED } from "../product";
+import { useI18n } from "../i18n";
 
 // Auto-update prompt (desktop shell only — the browser build never renders this).
 // Deliberately a PROMPT, not a silent background install: swapping the app under a
@@ -31,6 +33,8 @@ const RECHECK_MS = 30 * 60_000;
 type Phase = "downloading" | "ready" | "fallback" | "installing" | "error";
 
 export function UpdateBanner() {
+  const { t } = useI18n();
+  if (!UPDATES_ENABLED) return null;
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [phase, setPhase] = useState<Phase>("downloading");
   // Per-run, per-version dismissal — no localStorage, so a restart re-offers, and a
@@ -88,9 +92,9 @@ export function UpdateBanner() {
       role="status"
       data-testid="update-banner"
     >
-      <div className="text-[13px] font-semibold">Update available</div>
+      <div className="text-[13px] font-semibold">{t("update.available")}</div>
       <div className="text-[12px] text-muted mt-0.5">
-        OpenWorker v{update.version} is ready to install.
+        {t("update.ready").replace("{version}", update.version)}
       </div>
       {phase === "error" && (
         <div className="text-[11.5px] text-warnInk mt-1.5">
