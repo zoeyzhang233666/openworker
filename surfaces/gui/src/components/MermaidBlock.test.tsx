@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MermaidBlock } from "./MermaidBlock";
 
@@ -47,5 +47,39 @@ describe("MermaidBlock", () => {
     render(<MermaidBlock source={huge} />);
     await waitFor(() => expect(screen.getByTestId("mermaid-error")).toBeTruthy());
     expect(renderMock).not.toHaveBeenCalled();
+  });
+
+  it("locks height on the diagram container, not the outer block", async () => {
+    const offsetSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("data-testid") === "mermaid-diagram" ? 240 : 0;
+      });
+
+    render(<MermaidBlock source={"graph TD; A-->B"} />);
+    const diagram = await screen.findByTestId("mermaid-diagram");
+    await waitFor(() => expect(diagram.style.height).toBe("240px"));
+    expect(screen.getByTestId("mermaid-block").style.height).toBe("");
+
+    offsetSpy.mockRestore();
+  });
+
+  it("clears diagram height lock when source becomes oversized", async () => {
+    const offsetSpy = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute("data-testid") === "mermaid-diagram" ? 240 : 0;
+      });
+
+    const { rerender } = render(<MermaidBlock source={"graph TD; A-->B"} />);
+    const diagram = await screen.findByTestId("mermaid-diagram");
+    await waitFor(() => expect(diagram.style.height).toBe("240px"));
+
+    rerender(<MermaidBlock source={"x".repeat(50_001)} />);
+    await waitFor(() => expect(screen.getByTestId("mermaid-error")).toBeTruthy());
+    expect(screen.queryByTestId("mermaid-diagram")).toBeNull();
+    expect(screen.getByTestId("mermaid-block").style.height).toBe("");
+
+    offsetSpy.mockRestore();
   });
 });

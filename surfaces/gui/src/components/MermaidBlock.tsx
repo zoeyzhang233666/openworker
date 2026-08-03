@@ -34,7 +34,7 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
   const [exportError, setExportError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("diagram");
   const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
-  // Reserved for Task 3 MermaidLightbox wiring (fullscreen omitted this task).
+  // lightboxOpen reserved for Task 3 MermaidLightbox (fullscreen omitted here).
   const [lightboxOpen, setLightboxOpen] = useState(false);
   void lightboxOpen;
   void setLightboxOpen;
@@ -49,6 +49,7 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
       setSvg(null);
       setError(t("mermaid.tooLong"));
       setView("source");
+      setLockedHeight(undefined);
       return;
     }
 
@@ -113,15 +114,13 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
   const showDiagram = view === "diagram" && !!svg && !error;
   const showSource = view === "source" || !!error;
 
+  const diagramBoxStyle = {
+    minHeight: lockedHeight ? undefined : 180,
+    height: lockedHeight,
+  } as const;
+
   return (
-    <div
-      className="mermaid-block"
-      data-testid="mermaid-block"
-      style={{
-        minHeight: svg ? undefined : 180,
-        height: lockedHeight,
-      }}
-    >
+    <div className="mermaid-block" data-testid="mermaid-block">
       <div className="mermaid-block-toolbar">
         <button
           type="button"
@@ -155,11 +154,12 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
           ref={diagramRef}
           className="mermaid-block-diagram"
           data-testid="mermaid-diagram"
+          style={diagramBoxStyle}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       )}
       {!svg && !error && (
-        <div className="mermaid-block-diagram" aria-busy="true">
+        <div className="mermaid-block-diagram" style={diagramBoxStyle} aria-busy="true">
           {t("mermaid.loading")}
         </div>
       )}
