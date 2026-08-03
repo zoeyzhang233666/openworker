@@ -91,4 +91,15 @@ describe("MermaidBlock", () => {
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("mermaid-lightbox")).toBeNull());
   });
+
+  it("closes lightbox when clicking backdrop mask", async () => {
+    render(<MermaidBlock source={"graph TD; A-->B"} />);
+    await waitFor(() => screen.getByTestId("mermaid-diagram"));
+    fireEvent.click(screen.getByRole("button", { name: /全屏|Fullscreen/i }));
+    const lightbox = screen.getByTestId("mermaid-lightbox");
+    const viewport = lightbox.querySelector(".mermaid-lightbox-viewport");
+    expect(viewport).toBeTruthy();
+    fireEvent.click(viewport!);
+    await waitFor(() => expect(screen.queryByTestId("mermaid-lightbox")).toBeNull());
+  });
 });

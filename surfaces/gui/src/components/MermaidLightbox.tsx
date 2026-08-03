@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 4;
+const DRAG_THRESHOLD_PX = 4;
 
 type MermaidLightboxProps = {
   svg: string;
@@ -28,7 +29,9 @@ export function MermaidLightbox({
     startY: number;
     originTx: number;
     originTy: number;
+    moved: boolean;
   } | null>(null);
+  const suppressClickRef = useRef(false);
   const viewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -61,12 +64,14 @@ export function MermaidLightbox({
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
+    suppressClickRef.current = false;
     dragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       originTx: tx,
       originTy: ty,
+      moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -74,8 +79,15 @@ export function MermaidLightbox({
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    setTx(drag.originTx + (event.clientX - drag.startX));
-    setTy(drag.originTy + (event.clientY - drag.startY));
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && (Math.abs(dx) > DRAG_THRESHOLD_PX || Math.abs(dy) > DRAG_THRESHOLD_PX)) {
+      drag.moved = true;
+      suppressClickRef.current = true;
+    }
+    if (!drag.moved) return;
+    setTx(drag.originTx + dx);
+    setTy(drag.originTy + dy);
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
@@ -87,15 +99,23 @@ export function MermaidLightbox({
     }
   }
 
+  function onViewportClick(event: ReactMouseEvent<HTMLDivElement>) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    // Empty dimmed mask only — not the SVG stage or its descendants.
+    if (event.target === event.currentTarget) onClose();
+  }
+
   return createPortal(
     <div
       className="mermaid-lightbox"
       data-testid="mermaid-lightbox"
       role="dialog"
       aria-modal="true"
-      onClick={onClose}
     >
-      <div className="mermaid-lightbox-toolbar" onClick={(e) => e.stopPropagation()}>
+      <div className="mermaid-lightbox-toolbar">
         {onExportSvg && (
           <button type="button" onClick={() => onExportSvg()}>
             {t("mermaid.exportSvg")}
@@ -113,7 +133,7 @@ export function MermaidLightbox({
       <div
         ref={viewportRef}
         className="mermaid-lightbox-viewport"
-        onClick={(e) => e.stopPropagation()}
+        onClick={onViewportClick}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
