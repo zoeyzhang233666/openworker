@@ -1,7 +1,9 @@
+import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
+import { MermaidBlock } from "./MermaidBlock";
 
 // §34 (UX-016): the agent ends a deliverable turn with plain markdown —
 // [Title](artifact:relative/path) — and the renderer turns it into a chip that opens the
@@ -9,6 +11,17 @@ import { useI18n } from "../i18n";
 // this component renders deep inside the transcript): RightRail resolves the path against
 // the session's artifact list, App un-hides the rail.
 export const OPEN_ARTIFACT_EVENT = "ocw-open-artifact";
+
+// react-markdown percent-encodes non-ASCII characters in hrefs. Decode so the
+// path matches the real workspace-relative filename used by readArtifact.
+export function artifactPathFromHref(href: string): string {
+  const raw = href.startsWith("artifact:") ? href.slice("artifact:".length) : href;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
 
 function ArtifactChip({ path, title }: { path: string; title: string }) {
   const { t } = useI18n();
@@ -34,10 +47,20 @@ function ArtifactChip({ path, title }: { path: string; title: string }) {
   );
 }
 
+function mermaidSourceFromPreChildren(children: ReactNode): string | null {
+  const arr = Children.toArray(children);
+  if (arr.length !== 1 || !isValidElement(arr[0])) return null;
+  const el = arr[0] as ReactElement<{ className?: string; children?: ReactNode }>;
+  const cls = el.props.className || "";
+  if (!cls.includes("language-mermaid")) return null;
+  return String(el.props.children ?? "");
+}
+
 // Assistant messages rendered as GitHub-flavored markdown (headings, lists, tables, code,
 // links). Links open externally — never navigate the app shell — except artifact: links,
-// which open the session's artifact viewer.
-export function Markdown({ text }: { text: string }) {
+// which open the session's artifact viewer. Fenced ```mermaid blocks become MermaidBlock
+// unless renderMermaid is false (live streaming).
+export function Markdown({ text, renderMermaid = true }: { text: string; renderMermaid?: boolean }) {
   return (
     <div className="md">
       <ReactMarkdown
@@ -49,13 +72,20 @@ export function Markdown({ text }: { text: string }) {
           a: ({ node: _n, href, children, ...props }) => {
             if (href?.startsWith("artifact:")) {
               const title = Array.isArray(children) ? children.join("") : String(children ?? "");
-              return <ArtifactChip path={href.slice("artifact:".length)} title={title} />;
+              return <ArtifactChip path={artifactPathFromHref(href)} title={title} />;
             }
             return (
               <a href={href} {...props} target="_blank" rel="noreferrer">
                 {children}
               </a>
             );
+          },
+          pre: ({ children }) => {
+            if (renderMermaid) {
+              const src = mermaidSourceFromPreChildren(children);
+              if (src !== null) return <MermaidBlock source={src} />;
+            }
+            return <pre>{children}</pre>;
           },
         }}
       >

@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
+
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async () => ({
+      svg: '<svg data-testid="fake-svg"></svg>',
+    })),
+  },
+}));
 
 afterEach(cleanup);
 
@@ -34,5 +43,40 @@ describe("Markdown artifact links", () => {
     vi.spyOn(window, "dispatchEvent");
     render(<Markdown text="[](artifact:out/report.pdf)" />);
     expect(screen.getByTestId("artifact-chip").textContent).toContain("report.pdf");
+  });
+
+  // react-markdown percent-encodes non-ASCII in hrefs; the chip must decode so
+  // readArtifact looks up the real workspace-relative filename.
+  it("decodes percent-encoded non-ASCII artifact paths before opening", () => {
+    const seen: string[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail.path);
+    window.addEventListener(OPEN_ARTIFACT_EVENT, listener);
+
+    render(<Markdown text="[丙烯产业链研究报告](artifact:丙烯产业链研究报告.md)" />);
+    fireEvent.click(screen.getByTestId("artifact-chip"));
+    expect(seen).toEqual(["丙烯产业链研究报告.md"]);
+
+    window.removeEventListener(OPEN_ARTIFACT_EVENT, listener);
+  });
+});
+
+describe("Markdown mermaid fence", () => {
+  it("renders MermaidBlock for ```mermaid when enabled", async () => {
+    const text = "见下图\n\n```mermaid\ngraph TD; A-->B\n```\n";
+    render(<Markdown text={text} />);
+    await waitFor(() => expect(screen.getByTestId("mermaid-block")).toBeTruthy());
+  });
+
+  it("keeps ordinary code as pre/code", () => {
+    render(<Markdown text={"```js\nconsole.log(1)\n```"} />);
+    expect(screen.queryByTestId("mermaid-block")).toBeNull();
+    expect(document.querySelector("pre code")?.textContent).toContain("console.log");
+  });
+
+  it("skips MermaidBlock when renderMermaid is false", () => {
+    const text = "```mermaid\ngraph TD; A-->B\n```";
+    render(<Markdown text={text} renderMermaid={false} />);
+    expect(screen.queryByTestId("mermaid-block")).toBeNull();
+    expect(document.querySelector("pre code")?.className || "").toMatch(/language-mermaid/);
   });
 });
