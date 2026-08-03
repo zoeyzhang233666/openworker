@@ -1578,7 +1578,7 @@ export function App() {
                     <div className="transcript">
                       <div className="bubble-assistant">
                         <div className="who">{t("assistant")}</div>
-                        <Markdown text={streaming} />
+                        <Markdown text={streaming} renderMermaid={false} />
                         <span className="stream-cursor">▍</span>
                       </div>
                     </div>
