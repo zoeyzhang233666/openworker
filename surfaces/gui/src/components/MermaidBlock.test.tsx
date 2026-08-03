@@ -82,4 +82,13 @@ describe("MermaidBlock", () => {
 
     offsetSpy.mockRestore();
   });
+
+  it("opens lightbox from fullscreen button", async () => {
+    render(<MermaidBlock source={"graph TD; A-->B"} />);
+    await waitFor(() => screen.getByTestId("mermaid-diagram"));
+    fireEvent.click(screen.getByRole("button", { name: /全屏|Fullscreen/i }));
+    expect(screen.getByTestId("mermaid-lightbox")).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("mermaid-lightbox")).toBeNull());
+  });
 });

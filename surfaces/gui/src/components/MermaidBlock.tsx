@@ -6,6 +6,7 @@ import {
   mermaidExportFilename,
 } from "../mermaidExports";
 import { useI18n } from "../i18n";
+import { MermaidLightbox } from "./MermaidLightbox";
 
 let mermaidReady: Promise<typeof import("mermaid")> | null = null;
 
@@ -34,10 +35,7 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
   const [exportError, setExportError] = useState<string | null>(null);
   const [view, setView] = useState<ViewMode>("diagram");
   const [lockedHeight, setLockedHeight] = useState<number | undefined>(undefined);
-  // lightboxOpen reserved for Task 3 MermaidLightbox (fullscreen omitted here).
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  void lightboxOpen;
-  void setLightboxOpen;
   const renderIdRef = useRef(0);
   const diagramRef = useRef<HTMLDivElement | null>(null);
 
@@ -143,6 +141,13 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
         <button type="button" disabled={!svg} onClick={() => void onExportPng()}>
           {t("mermaid.exportPng")}
         </button>
+        <button
+          type="button"
+          disabled={!svg || !!error}
+          onClick={() => setLightboxOpen(true)}
+        >
+          {t("mermaid.fullscreen")}
+        </button>
       </div>
       {(error || exportError) && (
         <div className="mermaid-block-error" data-testid="mermaid-error">
@@ -155,6 +160,15 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
           className="mermaid-block-diagram"
           data-testid="mermaid-diagram"
           style={diagramBoxStyle}
+          role="button"
+          tabIndex={0}
+          onClick={() => setLightboxOpen(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setLightboxOpen(true);
+            }
+          }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       )}
@@ -167,6 +181,14 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
         <pre className="mermaid-block-source" data-testid="mermaid-source">
           {source}
         </pre>
+      )}
+      {lightboxOpen && svg && (
+        <MermaidLightbox
+          svg={svg}
+          onClose={() => setLightboxOpen(false)}
+          onExportSvg={() => void onExportSvg()}
+          onExportPng={() => void onExportPng()}
+        />
       )}
     </div>
   );
