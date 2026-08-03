@@ -6,7 +6,7 @@
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
-- 当前分支：`design/chemclaw-upstream`
+- 当前分支：`chemclaw-clean`（与本机 worktree 目录同名；GitHub 上选此分支即可，无需并入 `main`）
 - **唯一开发基线 Worktree**：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`（后续只在此继续开发）
 - 旧 Worktree（只读备份，待确认后删除，本次不删）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（分支 `design/chemclaw-foundation` / 标签式备份 `backup/broken-2026-08-03` 已在 `backup` 远程）
 - 业务代码（本 Worktree）：
@@ -72,4 +72,4 @@
 
 ## 新任务推荐开场
 
-> 继续 ChemClaw 阶段 1（`design/chemclaw-upstream` / `chemclaw-clean` worktree）。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划。Skill 功能以 OpenWorker 上游实现为准；ChemClaw 只做品牌、汉化、导航与 bundled Skill 薄层。一次只执行指定 Task。
+> 继续 ChemClaw 阶段 1（分支与 worktree 均为 `chemclaw-clean`）。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划。Skill 功能以 OpenWorker 上游实现为准；ChemClaw 只做品牌、汉化、导航与 bundled Skill 薄层。一次只执行指定 Task。

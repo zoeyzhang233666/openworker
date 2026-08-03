@@ -2,7 +2,7 @@
 
 ## 1. 当前 Worktree 结论（2026-08-03）
 
-- 分支：`design/chemclaw-upstream`
+- 分支：`chemclaw-clean`（与 worktree 目录同名）
 - Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`
 - 地基：OpenWorker `upstream/main`（含 2026-08-01 Skills PR #391）+ ChemClaw 品牌/汉化薄层
 - 旧 Worktree（备份，待验收后删除）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（`backup/broken-2026-08-03`）
