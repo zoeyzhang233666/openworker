@@ -1617,3 +1617,27 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
 .artifact-folder-row:hover { background: var(--paper); }
 .artifact-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact-folder-size { font-size: 11px; color: var(--faint); }
+
+/* Mermaid diagram blocks (chat + Markdown preview) */
+.mermaid-block {
+  margin: 4px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.mermaid-block-toolbar {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px 10px; border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.mermaid-block-diagram {
+  overflow-x: auto; padding: 12px; min-height: 180px;
+}
+.mermaid-block-diagram svg { max-width: 100%; height: auto; display: block; }
+.mermaid-block-source {
+  margin: 0; padding: 12px 14px; overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.55; white-space: pre;
+}
+.mermaid-block-error { color: var(--danger); font-size: 12.5px; padding: 8px 12px; }
