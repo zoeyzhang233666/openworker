@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import mermaid from "mermaid";
 import { MermaidBlock } from "./MermaidBlock";
 
 const renderMock = vi.fn(async (_id: string, _src: string) => ({
-  svg: '<svg data-testid="fake-svg"></svg>',
+  svg: '<svg data-testid="fake-svg" xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200"><rect width="400" height="200" fill="#ddd"/></svg>',
 }));
 
 vi.mock("mermaid", () => ({
@@ -19,6 +20,14 @@ afterEach(() => {
 });
 
 describe("MermaidBlock", () => {
+  it("initializes mermaid with the neo theme", async () => {
+    render(<MermaidBlock source={"graph TD; A-->B"} />);
+    await waitFor(() => expect(screen.getByTestId("mermaid-diagram")).toBeTruthy());
+    expect(mermaid.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: "neo" }),
+    );
+  });
+
   it("renders svg for valid source once", async () => {
     render(<MermaidBlock source={"graph TD; A-->B"} />);
     await waitFor(() => expect(screen.getByTestId("mermaid-diagram")).toBeTruthy());
@@ -49,7 +58,7 @@ describe("MermaidBlock", () => {
     expect(renderMock).not.toHaveBeenCalled();
   });
 
-  it("locks height on the diagram container, not the outer block", async () => {
+  it("locks min-height on the diagram container, not a fixed height", async () => {
     const offsetSpy = vi
       .spyOn(HTMLElement.prototype, "offsetHeight", "get")
       .mockImplementation(function (this: HTMLElement) {
@@ -58,7 +67,9 @@ describe("MermaidBlock", () => {
 
     render(<MermaidBlock source={"graph TD; A-->B"} />);
     const diagram = await screen.findByTestId("mermaid-diagram");
-    await waitFor(() => expect(diagram.style.height).toBe("240px"));
+    // minHeight lock avoids nested overflow-y scroll traps from fixed height.
+    await waitFor(() => expect(diagram.style.minHeight).toBe("240px"));
+    expect(diagram.style.height).toBe("");
     expect(screen.getByTestId("mermaid-block").style.height).toBe("");
 
     offsetSpy.mockRestore();
@@ -73,7 +84,7 @@ describe("MermaidBlock", () => {
 
     const { rerender } = render(<MermaidBlock source={"graph TD; A-->B"} />);
     const diagram = await screen.findByTestId("mermaid-diagram");
-    await waitFor(() => expect(diagram.style.height).toBe("240px"));
+    await waitFor(() => expect(diagram.style.minHeight).toBe("240px"));
 
     rerender(<MermaidBlock source={"x".repeat(50_001)} />);
     await waitFor(() => expect(screen.getByTestId("mermaid-error")).toBeTruthy());
@@ -101,5 +112,20 @@ describe("MermaidBlock", () => {
     expect(viewport).toBeTruthy();
     fireEvent.click(viewport!);
     await waitFor(() => expect(screen.queryByTestId("mermaid-lightbox")).toBeNull());
+  });
+
+  it("fullscreen stage sizes SVG by CSS width/height (vector), not a tiny capped bitmap", async () => {
+    render(<MermaidBlock source={"graph TD; A-->B"} />);
+    await waitFor(() => screen.getByTestId("mermaid-diagram"));
+    fireEvent.click(screen.getByRole("button", { name: /全屏|Fullscreen/i }));
+    const stage = await screen.findByTestId("mermaid-lightbox-stage");
+    await waitFor(() => {
+      const w = parseFloat(stage.style.width || "0");
+      expect(w).toBeGreaterThan(100);
+    });
+    expect(stage.style.height).toMatch(/^\d+px$/);
+    const svg = stage.querySelector("svg");
+    expect(svg).toBeTruthy();
+    expect(svg!.hasAttribute("viewBox") || svg!.getAttribute("viewBox")).toBeTruthy();
   });
 });

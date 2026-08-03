@@ -14,9 +14,12 @@
   - `npm test`（i18n + localization-audit）：21 passed
   - `npm test -- --run src/components/Markdown.test.tsx`：4 passed（含中文 `artifact:` 路径 decode）
   - `npm test -- --run src/navArtifactPreview.test.ts`：4 passed（产物预览期间左侧栏不 snap-back）
-  - Mermaid 定向（2026-08-03 Task 5）：
-    - `npm test -- --run src/mermaidExports.test.ts src/components/MermaidBlock.test.tsx src/components/Markdown.test.tsx`：18 passed（3 files）
+  - Mermaid 定向（2026-08-03；含抖动修复 + 主题 `neo`）：
+    - `npm test -- --run src/components/MermaidBlock.test.tsx`：10 passed（含 `initialize({ theme: "neo" })`）
+    - `npm test -- --run src/mermaidExports.test.ts src/components/MermaidBlock.test.tsx src/components/Markdown.test.tsx`：定向套件通过（含同文案重渲染不重复 `mermaid.render`）
+    - 真实链路 Playwright 探针：5s 内无图卸载、`scrollHeight` 稳定、滚轮可到页底
     - `npm run build`：通过；产物含独立 `mermaid.core-*.js` chunk（约 635 kB）
+    - 主题：全局 `neo`；图内主题/样式仍可覆盖
   - 真实对话 WS：`kimi-k2.5` 经 `…/v1` 网关返回 `OK`
   - `npm run build`：通过（此前已测；Task 5 再次确认）
 - 后端全量测试在 Windows 上仍有已定位的上游基线失败，详见“已知后端基线缺陷”。在处理或明确接受这些失败前，不得声称后端全量基线为绿色。

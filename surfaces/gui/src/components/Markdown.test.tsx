@@ -79,4 +79,25 @@ describe("Markdown mermaid fence", () => {
     expect(screen.queryByTestId("mermaid-block")).toBeNull();
     expect(document.querySelector("pre code")?.className || "").toMatch(/language-mermaid/);
   });
+
+  // Parent re-renders (scroll follow, inbox poll, etc.) must not tear down MermaidBlock
+  // or mermaid.render runs again → svg cleared → scrollHeight collapses → page jitter.
+  it("does not re-render mermaid when Markdown rerenders with the same text", async () => {
+    const mermaid = await import("mermaid");
+    const renderFn = mermaid.default.render as ReturnType<typeof vi.fn>;
+    const text = "```mermaid\ngraph TD; A-->B\n```";
+    const { rerender } = render(<Markdown text={text} />);
+    await waitFor(() => expect(screen.getByTestId("mermaid-diagram")).toBeTruthy());
+    const callsAfterFirst = renderFn.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
+
+    rerender(<Markdown text={text} />);
+    rerender(<Markdown text={text} />);
+    rerender(<Markdown text={text} />);
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(renderFn.mock.calls.length).toBe(callsAfterFirst);
+    expect(screen.getByTestId("mermaid-diagram")).toBeTruthy();
+    expect(screen.queryByText(/正在渲染|Rendering/i)).toBeNull();
+  });
 });

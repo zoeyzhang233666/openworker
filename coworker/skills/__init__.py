@@ -1,4 +1,5 @@
 from .base import Skill, SkillLoader, skill_catalog_text, skill_tools
+from .bootstrap import seed_bundled_skills
 from .store import (
     SessionSkillStore,
     SkillStore,
@@ -17,4 +18,5 @@ __all__ = [
     "effective_skills",
     "save_skill_tool",
     "validate_name",
+    "seed_bundled_skills",
 ]

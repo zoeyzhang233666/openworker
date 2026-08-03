@@ -278,6 +278,71 @@ def test_stream_accumulates_tool_calls():
     )
 
 
+def test_stream_retries_incomplete_chunked_read_without_duplicating_deltas():
+    """Compat gateways (chem-cloud etc.) sometimes drop the chunked body mid-turn.
+    Retry the whole stream attempt; never flush the partial that died."""
+
+    class _FlakyThenOk:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            stream_n = sum(1 for c in self.calls if c.get("stream"))
+            if kwargs.get("stream"):
+                if stream_n == 1:
+
+                    def _boom():
+                        yield _chunk(content="partial-")
+                        raise RuntimeError(
+                            "peer closed connection without sending complete "
+                            "message body (incomplete chunked read)"
+                        )
+
+                    return _boom()
+                return iter(
+                    [_chunk(content="OK"), _chunk(finish="stop")]
+                )
+            return _response(content="should-not-use-fallback")
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _FlakyThenOk()
+    provider = OpenAIProvider(client=client)
+    out = list(provider.stream(model="gpt-5.5", messages=[]))
+    assert [c.text_delta for c in out if c.text_delta] == ["OK"]
+    assert out[-1].turn.text == "OK"
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 2
+
+
+def test_stream_falls_back_to_nonstream_after_transport_failures():
+    class _StreamAlwaysDies:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs.get("stream"):
+
+                def _boom():
+                    yield _chunk(content="x")
+                    raise RuntimeError(
+                        "peer closed connection without sending complete "
+                        "message body (incomplete chunked read)"
+                    )
+
+                return _boom()
+            return _response(content="from-nonstream")
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _StreamAlwaysDies()
+    provider = OpenAIProvider(client=client)
+    out = list(provider.stream(model="gpt-5.5", messages=[]))
+    assert out[-1].turn is not None
+    assert out[-1].turn.text == "from-nonstream"
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) >= 2
+    assert any(not c.get("stream") for c in client.chat.completions.calls)
+
+
 # -- OpenAI-compatible vendor providers (Z AI, DeepSeek, Kimi, MiniMax, Qwen, xAI, Mistral) ------
 
 COMPAT_VENDORS = {

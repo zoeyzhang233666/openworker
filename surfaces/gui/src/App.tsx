@@ -42,6 +42,7 @@ import { baseName } from "./paths";
 import { itemsFromMessages } from "./itemsFromMessages";
 import { addTurnUsage, emptyUsage, usageFromMessages } from "./usage";
 import { streamMode } from "./streamGate";
+import { applyArtifactPreviewNav } from "./navArtifactPreview";
 import { InboxItemCard } from "./components/InboxItemCard";
 import { isTauri, platformOS, startWindowDrag } from "./tauri";
 import { Icon } from "./components/Icon";
@@ -58,6 +59,8 @@ import { ScheduledView } from "./components/ScheduledView";
 import { RightRail } from "./components/RightRail";
 import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
+import { ChemClawSkillsView } from "./components/ChemClawSkillsView";
+import { ChemClawExpertsView } from "./components/ChemClawExpertsView";
 import { PersonaView } from "./components/PersonaView";
 import { AuditView } from "./components/AuditView";
 import { InboxView } from "./components/InboxView";
@@ -228,7 +231,7 @@ export function App() {
   // load; corrected by loadSettings.
   const [modelReady, setModelReady] = useState(true);
   const [surface, setSurface] = useState<
-    "session" | "scheduled" | "integrations" | "audit" | "inbox" | "persona" | "settings"
+    "session" | "scheduled" | "integrations" | "audit" | "inbox" | "persona" | "settings" | "skills" | "experts"
   >("session");
   // A remembered Scheduled-detail target must not outlive the surface (see the
   // scheduledOpenId comment above): nav re-entry lands on the list, never a
@@ -258,6 +261,9 @@ export function App() {
   // While an artifact preview is open we auto-collapse the nav (#3). Remember the pre-preview
   // collapse state so we can restore it on close — unless the user re-opened the nav meanwhile.
   const navBeforePreview = useRef<boolean | null>(null);
+  const previewOpenRef = useRef(false);
+  const navCollapsedRef = useRef(navCollapsed);
+  navCollapsedRef.current = navCollapsed;
   const setNavCollapsedPersist = useCallback((v: boolean) => {
     setNavCollapsed(v);
     try { localStorage.setItem(NAV_COLLAPSED_KEY, v ? "1" : "0"); } catch { /* best effort */ }
@@ -267,18 +273,22 @@ export function App() {
     navBeforePreview.current = null; // a manual toggle takes control from the artifact auto-collapse
     setNavCollapsedPersist(!navCollapsed);
   }, [navCollapsed, setNavCollapsedPersist]);
-  // #3: collapse the nav while a full artifact preview is open, restore it on close (unless the
-  // user manually toggled meanwhile). The collapse is transient — it never overwrites the pref.
+  // #3: collapse the nav only on the closed→open edge; ignore re-entrant open=true so a manual
+  // expand during preview is not snapped shut. Transient — never overwrites the persisted pref.
   const onArtifactPreview = useCallback((open: boolean) => {
-    if (open) {
-      if (navBeforePreview.current === null) navBeforePreview.current = navCollapsed;
-      setNavPeek(false);
-      setNavCollapsed(true);
-    } else if (navBeforePreview.current !== null) {
-      setNavCollapsed(navBeforePreview.current);
-      navBeforePreview.current = null;
-    }
-  }, [navCollapsed]);
+    const next = applyArtifactPreviewNav(
+      {
+        previewOpen: previewOpenRef.current,
+        navCollapsed: navCollapsedRef.current,
+        navBeforePreview: navBeforePreview.current,
+      },
+      open,
+    );
+    previewOpenRef.current = next.previewOpen;
+    navBeforePreview.current = next.navBeforePreview;
+    if (next.clearPeek) setNavPeek(false);
+    if (next.navCollapsed !== navCollapsedRef.current) setNavCollapsed(next.navCollapsed);
+  }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
@@ -960,6 +970,14 @@ export function App() {
     if (!gatesWorkspace(target)) setWorkspace(null);
     setSessionId(newId());
   };
+  const startSkillConversation = (description: string) => {
+    startNewSession();
+    prefillComposer(
+      description
+        ? `Build a new skill for me: ${description}`
+        : "Build a new skill for me: (describe what the skill should do)",
+    );
+  };
   // Inbox → session: the item carries its session's workspace/agent, so open it directly.
   // UX-026: 5s top-right toast when a SCHEDULED automation run starts (never for
   // manual Run-now — the user is already watching). Rides the app-wide /ws/events
@@ -1350,10 +1368,18 @@ export function App() {
         onOpenIntegrations={() => setSurface("integrations")}
         onOpenAudit={() => setSurface("audit")}
         onOpenInbox={() => setSurface("inbox")}
+        onOpenSkills={() => setSurface("skills")}
+        onOpenExperts={() => setSurface("experts")}
+        onOpenSession={() => setSurface("session")}
+        onOpenSettings={() => openSettings("appearance")}
         scheduledActive={surface === "scheduled"}
         integrationsActive={surface === "integrations"}
         auditActive={surface === "audit"}
         inboxActive={surface === "inbox"}
+        sessionActive={surface === "session"}
+        skillsActive={surface === "skills"}
+        expertsActive={surface === "experts"}
+        settingsActive={surface === "settings"}
         collapsed={navCollapsed}
         onCollapse={toggleNav}
         onPeekLeave={() => setNavPeek(false)}
@@ -1366,22 +1392,16 @@ export function App() {
         />
       ) : surface === "integrations" ? (
         <IntegrationsView />
+      ) : surface === "skills" ? (
+        <ChemClawSkillsView onCreateSkill={startSkillConversation} />
+      ) : surface === "experts" ? (
+        <ChemClawExpertsView onOpenPersona={(id) => openPersona(id, "session")} />
       ) : surface === "settings" ? (
         <SettingsView
           key={settingsTab}
           initialTab={settingsTab}
           onOpenPersona={(id) => openPersona(id, "settings")}
-          onCreateSkill={(description) => {
-            // The Skills doorway (SKILLS-SPEC §5.2): creation is a conversation. Fresh
-            // session, description in the composer — the user reads and hits send. With
-            // no description, the prefill invites them to finish the sentence there.
-            startNewSession();
-            prefillComposer(
-              description
-                ? `Build a new skill for me: ${description}`
-                : "Build a new skill for me: (describe what the skill should do)",
-            );
-          }}
+          onCreateSkill={startSkillConversation}
         />
       ) : surface === "audit" ? (
         <AuditView />

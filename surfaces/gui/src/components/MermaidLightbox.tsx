@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import { fitLightboxSize, prepareLightboxSvg } from "../mermaidSvg";
 
-const MIN_SCALE = 0.4;
-const MAX_SCALE = 4;
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 8;
 const DRAG_THRESHOLD_PX = 4;
+const VIEWPORT_PAD = 48;
 
 type MermaidLightboxProps = {
   svg: string;
@@ -20,7 +22,9 @@ export function MermaidLightbox({
   onExportPng,
 }: MermaidLightboxProps): JSX.Element {
   const { t } = useI18n();
+  const prepared = useMemo(() => prepareLightboxSvg(svg), [svg]);
   const [scale, setScale] = useState(1);
+  const [fit, setFit] = useState({ w: 800, h: 600 });
   const [tx, setTx] = useState(0);
   const [ty, setTy] = useState(0);
   const dragRef = useRef<{
@@ -50,13 +54,40 @@ export function MermaidLightbox({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  // Fit the SVG to the viewport; zoom changes CSS width/height (vector), not bitmap scale().
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const update = () => {
+      // jsdom reports 0×0; fall back so tests and first paint still get a usable fit.
+      const vw = el.clientWidth > 32 ? el.clientWidth - VIEWPORT_PAD : Math.min(window.innerWidth || 960, 960) - VIEWPORT_PAD;
+      const vh = el.clientHeight > 32 ? el.clientHeight - VIEWPORT_PAD : Math.min(window.innerHeight || 720, 720) - VIEWPORT_PAD;
+      setFit(
+        fitLightboxSize(
+          prepared.naturalW,
+          prepared.naturalH,
+          Math.max(1, vw),
+          Math.max(1, vh),
+        ),
+      );
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [prepared.naturalW, prepared.naturalH]);
+
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
     function onWheel(event: WheelEvent) {
       event.preventDefault();
-      const delta = event.deltaY > 0 ? -0.1 : 0.1;
-      setScale((prev) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev + delta)));
+      const delta = event.deltaY > 0 ? -0.12 : 0.12;
+      setScale((prev) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, +(prev + delta).toFixed(2))));
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
@@ -104,9 +135,11 @@ export function MermaidLightbox({
       suppressClickRef.current = false;
       return;
     }
-    // Empty dimmed mask only — not the SVG stage or its descendants.
     if (event.target === event.currentTarget) onClose();
   }
+
+  const displayW = Math.max(1, Math.round(fit.w * scale));
+  const displayH = Math.max(1, Math.round(fit.h * scale));
 
   return createPortal(
     <div
@@ -114,6 +147,7 @@ export function MermaidLightbox({
       data-testid="mermaid-lightbox"
       role="dialog"
       aria-modal="true"
+      aria-label={t("mermaid.fullscreen")}
     >
       <div className="mermaid-lightbox-toolbar">
         {onExportSvg && (
@@ -141,8 +175,13 @@ export function MermaidLightbox({
       >
         <div
           className="mermaid-lightbox-stage"
-          style={{ transform: `translate(${tx}px, ${ty}px) scale(${scale})` }}
-          dangerouslySetInnerHTML={{ __html: svg }}
+          data-testid="mermaid-lightbox-stage"
+          style={{
+            width: displayW,
+            height: displayH,
+            transform: `translate(${tx}px, ${ty}px)`,
+          }}
+          dangerouslySetInnerHTML={{ __html: prepared.html }}
         />
       </div>
     </div>,

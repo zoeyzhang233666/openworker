@@ -1,4 +1,10 @@
-import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
+import {
+  Children,
+  isValidElement,
+  useMemo,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
@@ -11,6 +17,12 @@ import { MermaidBlock } from "./MermaidBlock";
 // this component renders deep inside the transcript): RightRail resolves the path against
 // the session's artifact list, App un-hides the rail.
 export const OPEN_ARTIFACT_EVENT = "ocw-open-artifact";
+
+const REMARK_PLUGINS = [remarkGfm];
+
+function urlTransform(url: string): string {
+  return url.startsWith("artifact:") ? url : defaultUrlTransform(url);
+}
 
 // react-markdown percent-encodes non-ASCII characters in hrefs. Decode so the
 // path matches the real workspace-relative filename used by readArtifact.
@@ -56,38 +68,57 @@ function mermaidSourceFromPreChildren(children: ReactNode): string | null {
   return String(el.props.children ?? "");
 }
 
+function MarkdownLink({
+  node: _node,
+  href,
+  children,
+  ...props
+}: {
+  node?: unknown;
+  href?: string;
+  children?: ReactNode;
+  [key: string]: unknown;
+}) {
+  if (href?.startsWith("artifact:")) {
+    const title = Array.isArray(children) ? children.join("") : String(children ?? "");
+    return <ArtifactChip path={artifactPathFromHref(href)} title={title} />;
+  }
+  return (
+    <a href={href} {...props} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  );
+}
+
 // Assistant messages rendered as GitHub-flavored markdown (headings, lists, tables, code,
 // links). Links open externally — never navigate the app shell — except artifact: links,
 // which open the session's artifact viewer. Fenced ```mermaid blocks become MermaidBlock
 // unless renderMermaid is false (live streaming).
+//
+// remarkPlugins / urlTransform / components MUST stay referentially stable across parent
+// re-renders. Inline object/array identities made react-markdown remount custom nodes,
+// which cleared MermaidBlock state, collapsed scrollHeight, and jittered the transcript.
 export function Markdown({ text, renderMermaid = true }: { text: string; renderMermaid?: boolean }) {
+  const components = useMemo(
+    () => ({
+      a: MarkdownLink,
+      pre: ({ children }: { children?: ReactNode }) => {
+        if (renderMermaid) {
+          const src = mermaidSourceFromPreChildren(children);
+          if (src !== null) return <MermaidBlock source={src} />;
+        }
+        return <pre>{children}</pre>;
+      },
+    }),
+    [renderMermaid],
+  );
+
   return (
     <div className="md">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        // artifact: is ours — keep it through the sanitizer (everything else gets the default
-        // http/https/mailto policy).
-        urlTransform={(url) => (url.startsWith("artifact:") ? url : defaultUrlTransform(url))}
-        components={{
-          a: ({ node: _n, href, children, ...props }) => {
-            if (href?.startsWith("artifact:")) {
-              const title = Array.isArray(children) ? children.join("") : String(children ?? "");
-              return <ArtifactChip path={artifactPathFromHref(href)} title={title} />;
-            }
-            return (
-              <a href={href} {...props} target="_blank" rel="noreferrer">
-                {children}
-              </a>
-            );
-          },
-          pre: ({ children }) => {
-            if (renderMermaid) {
-              const src = mermaidSourceFromPreChildren(children);
-              if (src !== null) return <MermaidBlock source={src} />;
-            }
-            return <pre>{children}</pre>;
-          },
-        }}
+        remarkPlugins={REMARK_PLUGINS}
+        urlTransform={urlTransform}
+        components={components}
       >
         {text}
       </ReactMarkdown>

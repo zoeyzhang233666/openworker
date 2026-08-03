@@ -220,7 +220,7 @@ class OpenAIProvider(ProviderClient):
             "model": model,
             "messages": _strip_foreign_sidecars(messages),
             "stream": True,
-            # Usage on the final chunk (empty `choices`). Compat servers that reject
+            # Usage on the final chunk (empty choices). Compat servers that reject
             # the option get a one-shot retry without it (_param_fix_retry).
             "stream_options": {"include_usage": True},
             **settings,
@@ -230,69 +230,132 @@ class OpenAIProvider(ProviderClient):
         _pin_reasoning_effort(kwargs)
         client = self._ensure_client()
 
-        text_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        tool_accum: dict[int, dict[str, str]] = {}
-        finish_reason = None
-        usage: Optional[TokenUsage] = None
-
-        # Up to two param-fix retries: effort and max_tokens can BOTH need fixing.
-        for _ in range(2):
+        # Compat gateways sometimes close the chunked body mid-turn ("incomplete
+        # chunked read"). Buffer each attempt fully so a dead partial never reaches
+        # the UI, retry a couple of times, then fall back to non-streaming complete().
+        last_transport: Optional[BaseException] = None
+        for _attempt in range(3):
             try:
-                chunks = client.chat.completions.create(**kwargs)
-                break
+                buffered = _collect_stream_chunks(client, kwargs, tools=tools)
             except Exception as exc:
-                kwargs = _param_fix_retry(kwargs, exc)
-        else:
-            chunks = client.chat.completions.create(**kwargs)
-        for chunk in chunks:
-            chunk_usage = _usage_from(getattr(chunk, "usage", None))
-            if chunk_usage is not None:
-                usage = chunk_usage
-            choices = getattr(chunk, "choices", None)
-            if not choices:
-                continue
-            choice = choices[0]
-            delta = getattr(choice, "delta", None)
-            if delta is not None:
-                reasoning = _delta_reasoning(delta)
-                if reasoning:
-                    reasoning_parts.append(reasoning)
-                    yield StreamChunk(reasoning_delta=reasoning)
-                content = getattr(delta, "content", None)
-                if content:
-                    text_parts.append(content)
-                    yield StreamChunk(text_delta=content)
-                for tc in getattr(delta, "tool_calls", None) or []:
-                    acc = tool_accum.setdefault(
-                        getattr(tc, "index", 0), {"id": "", "name": "", "args": ""}
-                    )
-                    if getattr(tc, "id", None):
-                        acc["id"] = tc.id
-                    fn = getattr(tc, "function", None)
-                    if fn is not None:
-                        if getattr(fn, "name", None):
-                            acc["name"] = fn.name
-                        if getattr(fn, "arguments", None):
-                            acc["args"] += fn.arguments
-            if getattr(choice, "finish_reason", None):
-                finish_reason = choice.finish_reason
+                if _is_stream_transport_error(exc):
+                    last_transport = exc
+                    continue
+                raise
+            for chunk in buffered:
+                yield chunk
+            return
 
-        tool_calls = []
-        for index in sorted(tool_accum):
-            acc = tool_accum[index]
-            try:
-                arguments = json.loads(acc["args"]) if acc["args"] else {}
-            except (TypeError, json.JSONDecodeError):
-                arguments = {"_raw": acc["args"]}
-            tool_calls.append(
-                ToolCall(id=acc["id"], name=acc["name"], arguments=arguments)
-            )
-
-        text, tool_calls = _maybe_salvage_tool_calls(
-            "".join(text_parts) or None, tool_calls, tools=tools
+        turn = self.complete(
+            model=model, messages=messages, tools=tools, **settings
         )
-        yield StreamChunk(
+        if last_transport is not None and not (
+            turn.text or turn.tool_calls or turn.reasoning
+        ):
+            raise last_transport
+        yield StreamChunk(turn=turn)
+
+
+def _is_stream_transport_error(exc: BaseException) -> bool:
+    """True when a compat gateway dropped the chunked HTTP body mid-stream."""
+    text = str(exc).lower()
+    name = type(exc).__name__.lower()
+    markers = (
+        "incomplete chunked read",
+        "peer closed connection",
+        "remoteprotocolerror",
+        "server disconnected",
+        "connection reset",
+        "incompleteread",
+    )
+    if any(m in text for m in markers) or any(m in name for m in markers):
+        return True
+    cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    if cause is not None and cause is not exc:
+        return _is_stream_transport_error(cause)
+    return False
+
+
+def _collect_stream_chunks(
+    client: Any,
+    kwargs: dict[str, Any],
+    *,
+    tools: Optional[list[dict[str, Any]]],
+) -> list[StreamChunk]:
+    """Run one streaming attempt to completion and return buffered chunks.
+
+    Param-form retries (effort / max_tokens / stream_options) still apply on create().
+    Transport errors during iteration propagate to the caller for retry/fallback.
+    """
+    req = dict(kwargs)
+    # Up to two param-form retries: effort and max_tokens can BOTH need fixing.
+    for _ in range(2):
+        try:
+            chunks = client.chat.completions.create(**req)
+            break
+        except Exception as exc:
+            if _is_stream_transport_error(exc):
+                raise
+            req = _param_fix_retry(req, exc)
+    else:
+        chunks = client.chat.completions.create(**req)
+
+    text_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    tool_accum: dict[int, dict[str, str]] = {}
+    finish_reason = None
+    usage: Optional[TokenUsage] = None
+    out: list[StreamChunk] = []
+
+    for chunk in chunks:
+        chunk_usage = _usage_from(getattr(chunk, "usage", None))
+        if chunk_usage is not None:
+            usage = chunk_usage
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        choice = choices[0]
+        delta = getattr(choice, "delta", None)
+        if delta is not None:
+            reasoning = _delta_reasoning(delta)
+            if reasoning:
+                reasoning_parts.append(reasoning)
+                out.append(StreamChunk(reasoning_delta=reasoning))
+            content = getattr(delta, "content", None)
+            if content:
+                text_parts.append(content)
+                out.append(StreamChunk(text_delta=content))
+            for tc in getattr(delta, "tool_calls", None) or []:
+                acc = tool_accum.setdefault(
+                    getattr(tc, "index", 0), {"id": "", "name": "", "args": ""}
+                )
+                if getattr(tc, "id", None):
+                    acc["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    if getattr(fn, "name", None):
+                        acc["name"] = fn.name
+                    if getattr(fn, "arguments", None):
+                        acc["args"] += fn.arguments
+        if getattr(choice, "finish_reason", None):
+            finish_reason = choice.finish_reason
+
+    tool_calls = []
+    for index in sorted(tool_accum):
+        acc = tool_accum[index]
+        try:
+            arguments = json.loads(acc["args"]) if acc["args"] else {}
+        except (TypeError, json.JSONDecodeError):
+            arguments = {"_raw": acc["args"]}
+        tool_calls.append(
+            ToolCall(id=acc["id"], name=acc["name"], arguments=arguments)
+        )
+
+    text, tool_calls = _maybe_salvage_tool_calls(
+        "".join(text_parts) or None, tool_calls, tools=tools
+    )
+    out.append(
+        StreamChunk(
             turn=AssistantTurn(
                 text=text,
                 tool_calls=tool_calls,
@@ -301,6 +364,9 @@ class OpenAIProvider(ProviderClient):
                 usage=usage,
             )
         )
+    )
+    return out
+
 
 
 def _parse_tool_calls(raw_tool_calls: Any) -> list[ToolCall]:

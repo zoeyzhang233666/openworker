@@ -33,6 +33,13 @@ _NO_QUOTA = (
     "credit balance is too low",
     "billing hard limit",
 )
+# httpx/openai when a compat gateway closes the chunked body early (common on long
+# tool-using turns). ChemClaw surfaces this in Chinese — first-party errors are zh-CN.
+_STREAM_TRANSPORT = (
+    "incomplete chunked read",
+    "peer closed connection",
+    "remoteprotocolerror",
+)
 
 
 def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
@@ -43,6 +50,11 @@ def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
         "gradually or require a plan upgrade. Pick a different model, or check "
         "the provider's console for availability."
     )
+    if any(marker in text for marker in _STREAM_TRANSPORT):
+        return (
+            f"模型 {model} 的流式连接被中断（服务端提前关闭了响应）。"
+            "请点击重试；若反复出现，可更换模型或稍后再试。"
+        )
     if any(marker in text for marker in _NO_QUOTA):
         return (
             f"Your account is out of quota for {model} — add credits or raise the limit "

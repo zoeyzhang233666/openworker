@@ -7,8 +7,8 @@
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
 - 当前分支：`design/chemclaw-upstream`
-- 当前 Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`
-- 旧 Worktree（备份保留，待验收后删除）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（分支 `backup/broken-2026-08-03` 已推送到 `backup` 远程）
+- **唯一开发基线 Worktree**：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`（后续只在此继续开发）
+- 旧 Worktree（只读备份，待确认后删除，本次不删）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（分支 `design/chemclaw-foundation` / 标签式备份 `backup/broken-2026-08-03` 已在 `backup` 远程）
 - 业务代码（本 Worktree）：
   - ✅ 基于 upstream/main（OpenWorker Skills 官方实现）
   - ✅ ChemClaw 品牌 + 全界面汉化（cherry-pick 自旧分支）
@@ -22,6 +22,8 @@
   - ✅ 对话内中文 `artifact:` 链接打开产物：解码 react-markdown 的 percent-encode，避免误报「文件已移动/删除」
   - ✅ 产物预览期间手动展开左侧栏不再被自动打回（预览开闭边沿折叠 + 稳定 `onPreviewChange`）
   - ✅ 对话与 MD 报告 fenced mermaid 真实渲染（图/源码、遮罩全屏、SVG/PNG；流式不出图；防抖占位）
+  - ✅ Mermaid 全屏：以矢量 SVG（viewBox）铺满视口，缩放改 CSS 宽高而非 bitmap transform，避免又小又糊
+  - ✅ Mermaid 全局主题改为 `neo`（彩色现代主题；图内 `%%{init}%%` / `classDef` 仍可覆盖）
   - 🔄 对话挂载条等待在上游 Skill 稳定后单独处理
 - 浏览器源码预览：默认显示简体中文，可切换英文并在刷新后保留选择。
 - 运行态修复（2026-08-03，开发 state）：
@@ -33,13 +35,14 @@
   - `pytest` stream 重试/回退 + model errors：12 passed
   - `npm test`（i18n + localization-audit）：21 passed
   - `npm test -- --run src/navArtifactPreview.test.ts`：4 passed
-  - Mermaid：`mermaidExports` + `MermaidBlock` + `Markdown` 定向单测 18 passed；`npm run build` 通过（含 mermaid.core chunk）
+  - Mermaid：`mermaidExports` + `MermaidBlock` + `Markdown` 定向单测（含 theme `neo` 断言与「同文案重渲染不重复 mermaid.render」）；真实链路探针：scrollHeight 稳定、滚轮可到页底、5s 内无图卸载
+  - `npm run build` 通过（含 mermaid.core chunk）
   - UpdateBanner 单测因 ChemClaw 关闭自动更新而预期失败（非回归）
 
 ## 下一道门禁
 
-1. 用户在新 Worktree 打开界面验收：品牌 ChemClaw、默认中文、主导航、技能页、内置产业链 Skill 可见。
-2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）。
+1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航、技能页、内置产业链 Skill、Mermaid neo 可见。
+2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 规划对话挂载条与 Serenity 完整包后续小步任务；Mermaid 手工 UI 验收清单见实施计划 Task 5。
 
 ## 文档索引
@@ -62,7 +65,7 @@
 
 ## 当前环境检查
 
-- 日常开发请使用 **`chemclaw-clean` Worktree**（不是旧的 `chemclaw-design`）。
+- 日常开发请使用 **`chemclaw-clean` Worktree**（唯一开发基线；不要再在旧的 `chemclaw-design` 上改代码）。
 - Python 下载缓存、开发状态和 pytest 临时目录统一放在 `D:\OpenWorker\.chemclaw-dev`。
 - 拉 upstream：`git fetch upstream main`（remote：`https://github.com/andrewyng/openworker`）。
 - 完整版本、命令、测试数字、启动顺序和已知缺陷以 [TESTING.md](TESTING.md) 为准。

@@ -492,11 +492,11 @@ export function Composer(props: Props) {
         {/* "/" force-run popup — in-flow above the textarea; rows are the session's
             effective menu only (muted/disabled skills never appear). */}
         {slashQuery !== null && (
-          <div className="px-2 pt-2" data-testid="skill-popup" role="listbox" aria-label="Skills">
+          <div className="px-2 pt-2" data-testid="skill-popup" role="listbox" aria-label={t("skills.slashTitle")}>
             {slashSkills === null ? (
-              <div className="px-2 py-1.5 text-[12px] text-faint">Loading skills…</div>
+              <div className="px-2 py-1.5 text-[12px] text-faint">{t("skills.loading")}</div>
             ) : slashMatches.length === 0 ? (
-              <div className="px-2 py-1.5 text-[12px] text-faint">No matching skills.</div>
+              <div className="px-2 py-1.5 text-[12px] text-faint">{t("skills.noMatch")}</div>
             ) : (
               slashMatches.map((s, i) => (
                 <button

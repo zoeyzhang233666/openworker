@@ -319,6 +319,39 @@ def test_streaming_emits_deltas(tmp_path):
     assert events[-1].type == EventType.TURN_END
 
 
+class EmptyStreamProvider(ProviderClient):
+    """Compat gateways with a wrong base_url often yield zero chunks and no turn."""
+
+    def complete(self, **kwargs):  # pragma: no cover - streamed instead
+        raise NotImplementedError
+
+    def capabilities(self, model):
+        return ModelCapabilities()
+
+    def stream(self, *, model, messages, tools=None, **settings):
+        return
+        yield  # pragma: no cover — make this a generator
+
+
+def test_empty_stream_surfaces_error_instead_of_blank_assistant(tmp_path):
+    registry = ToolRegistry()
+    permissions = PermissionEngine(workspace_root=tmp_path)
+    engine = TurnEngine(
+        provider=EmptyStreamProvider(),
+        registry=registry,
+        permissions=permissions,
+        model="gpt-5.5",
+    )
+    events = _collect(engine, "hi")
+    assert EventType.ERROR in _types(events)
+    assert EventType.ASSISTANT_MESSAGE not in _types(events)
+    assert events[-1].type == EventType.ERROR
+    assert "empty" in events[-1].data["error"].lower()
+    assert any(
+        m.get("role") == "notice" and m.get("kind") == "error" for m in engine.messages
+    )
+
+
 def _pdf_file_part():
     import base64
     import io

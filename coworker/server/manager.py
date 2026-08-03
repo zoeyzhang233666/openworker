@@ -87,6 +87,7 @@ from ..skills import (
     SkillLoader,
     SkillStore,
     effective_skills,
+    seed_bundled_skills,
 )
 
 _SCOPES = {s.value for s in Scope}
@@ -234,6 +235,7 @@ class SessionManager:
         # gates the engine's skill catalog the same way effective_connectors gates connector
         # tools — one resolver feeds the catalog injection, the rail, and the composer popup.
         self.skill_store = SkillStore()
+        seed_bundled_skills(self.skill_store)
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).

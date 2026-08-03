@@ -394,7 +394,22 @@ class TurnEngine:
                 yield Event(EventType.INTERRUPTED, {"iterations": iterations})
                 return
             if turn is None:
-                turn = AssistantTurn()
+                # Compat gateways with a wrong base_url (missing /v1) often close the
+                # stream with zero chunks. Persisting a blank assistant looks like
+                # "chat returned nothing"; surface it as a retriable provider error.
+                if not streamed and not streamed_reasoning:
+                    msg = (
+                        f"Model {self.model} returned an empty response. "
+                        "For OpenAI-compatible gateways, confirm the base URL ends "
+                        "with /v1 and that the selected model supports streaming."
+                    )
+                    self._append_notice("error", msg)
+                    yield Event(
+                        EventType.ERROR,
+                        {"error": msg, "error_type": "EmptyModelResponse"},
+                    )
+                    return
+                turn = _partial_turn()
             if turn.usage is not None:
                 # The trigger signal: the prompt-side total that actually occupied the
                 # window on this round-trip (estimate fallback when never reported).

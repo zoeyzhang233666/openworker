@@ -1615,6 +1615,25 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
   color: var(--ink); font-size: 12.5px;
 }
 .artifact-folder-row:hover { background: var(--paper); }
+
+/* ChemClaw primary navigation (D-006) */
+.chemclaw-primary-nav {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.chemclaw-nav-active {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.chemclaw-page {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--paper);
+}
 .artifact-folder-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact-folder-size { font-size: 11px; color: var(--faint); }
 
@@ -1632,7 +1651,13 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
   font-size: 12px;
 }
 .mermaid-block-diagram {
-  overflow-x: auto; padding: 12px; min-height: 180px; cursor: zoom-in;
+  /* overflow-x only: do NOT set overflow-x:auto alone (it forces overflow-y:auto and
+     traps the wheel in a nested scroller when height is locked short). */
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: 12px;
+  min-height: 180px;
+  cursor: zoom-in;
 }
 .mermaid-block-diagram svg { max-width: 100%; height: auto; display: block; pointer-events: none; }
 .mermaid-block-source {
@@ -1687,14 +1712,20 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
 }
 .mermaid-lightbox-viewport:active { cursor: grabbing; }
 .mermaid-lightbox-stage {
+  /* Pan with translate only; zoom changes width/height so SVG stays vector-sharp. */
   transform-origin: center center;
-  will-change: transform;
   user-select: none;
+  flex: 0 0 auto;
 }
 .mermaid-lightbox-stage svg {
-  max-width: min(92vw, 1200px);
-  height: auto;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
   display: block;
   background: var(--paper, #fff);
   border-radius: 8px;
+  /* Avoid compositor bitmap upscaling blur */
+  shape-rendering: geometricPrecision;
+  text-rendering: geometricPrecision;
 }

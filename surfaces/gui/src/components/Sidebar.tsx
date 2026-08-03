@@ -118,6 +118,29 @@ function ConnectorDot({ subs }: { subs?: string[] }) {
   );
 }
 
+function primaryNavItem(
+  icon: IconName,
+  label: string,
+  onClick: () => void,
+  active: boolean,
+  testId: string,
+) {
+  return (
+    <button
+      type="button"
+      className={
+        "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-left hover:bg-paper hover:text-ink " +
+        (active ? "text-ink bg-paper font-medium chemclaw-nav-active" : "text-muted")
+      }
+      data-testid={testId}
+      onClick={onClick}
+    >
+      <Icon name={icon} size={15} className="shrink-0" />
+      <span className="flex-1">{label}</span>
+    </button>
+  );
+}
+
 interface Props {
   agent: string;
   workspace: string;
@@ -143,10 +166,18 @@ interface Props {
   onOpenIntegrations: () => void;
   onOpenAudit: () => void;
   onOpenInbox: () => void;
+  onOpenSkills?: () => void;
+  onOpenExperts?: () => void;
+  onOpenSession?: () => void;
+  onOpenSettings?: () => void;
   scheduledActive: boolean;
   integrationsActive: boolean;
   auditActive: boolean;
   inboxActive: boolean;
+  sessionActive?: boolean;
+  skillsActive?: boolean;
+  expertsActive?: boolean;
+  settingsActive?: boolean;
   // Collapse controls (⌘B / hover-peek). `onCollapse` docks/undocks; `onPeekLeave` hides the
   // floating peek when the pointer leaves the panel.
   collapsed?: boolean;
@@ -1025,6 +1056,52 @@ export function Sidebar(props: Props) {
         onManage={props.onManagePersonas}
       />
 
+      {/* ChemClaw primary navigation (D-006) */}
+      <div className="chemclaw-primary-nav px-2.5 mt-2 space-y-0.5">
+        {primaryNavItem(
+          "chat",
+          t("nav.conversations"),
+          () => props.onOpenSession?.(),
+          !!props.sessionActive,
+          "nav-conversations",
+        )}
+        {primaryNavItem(
+          "sparkle",
+          t("nav.skills"),
+          () => props.onOpenSkills?.(),
+          !!props.skillsActive,
+          "nav-skills",
+        )}
+        {primaryNavItem(
+          "diamond",
+          t("nav.experts"),
+          () => props.onOpenExperts?.(),
+          !!props.expertsActive,
+          "nav-experts",
+        )}
+        {primaryNavItem(
+          "clock",
+          t("nav.scheduled"),
+          props.onOpenScheduled,
+          props.scheduledActive,
+          "nav-scheduled",
+        )}
+        {primaryNavItem(
+          "plug",
+          t("nav.connections"),
+          props.onOpenIntegrations,
+          props.integrationsActive,
+          "nav-connections",
+        )}
+        {primaryNavItem(
+          "gear",
+          t("nav.settings"),
+          () => (props.onOpenSettings ? props.onOpenSettings() : props.onManage()),
+          !!props.settingsActive,
+          "nav-settings",
+        )}
+      </div>
+
       {/* Search: a borderless nav-style entry (not a boxed input) that opens the command-palette
           SearchModal over the whole app. Matches the bottom-nav rows to reduce the boxy look. */}
       <div className="px-2.5 mt-1">
@@ -1033,22 +1110,6 @@ export function Sidebar(props: Props) {
           onClick={() => setSearchModalOpen(true)}
         >
           <Icon name="search" size={15} className="shrink-0" /> {t("Search")}
-        </button>
-      </div>
-
-      {/* Automations: a first-class nav row (UX-023) — the account menu keeps its entry.
-          The badge is the cross-automation unseen-run total. */}
-      <div className="px-2.5 mt-1">
-        <button
-          className={
-            "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-left hover:bg-paper hover:text-ink " +
-            (props.scheduledActive ? "text-ink bg-paper" : "text-muted")
-          }
-          data-testid="nav-automations"
-          onClick={props.onOpenScheduled}
-        >
-          <Icon name="clock" size={15} className="shrink-0" />
-          <span className="flex-1">{t("Automations")}</span>
         </button>
       </div>
 

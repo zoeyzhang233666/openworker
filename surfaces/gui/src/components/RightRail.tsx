@@ -107,9 +107,13 @@ export function RightRail({
   }, [selected?.path, sessionId]);
 
   // Notify the app when a preview opens/closes (drives the left-nav auto-collapse).
+  // Keep the callback in a ref so identity churn cannot re-fire "open" and snap the nav shut.
+  const onPreviewChangeRef = useRef(onPreviewChange);
+  onPreviewChangeRef.current = onPreviewChange;
+  const previewOpen = !!selected;
   useEffect(() => {
-    onPreviewChange?.(!!selected);
-  }, [!!selected, onPreviewChange]);
+    onPreviewChangeRef.current?.(previewOpen);
+  }, [previewOpen]);
 
   const reloadSelected = () => {
     if (!selected) return Promise.resolve();

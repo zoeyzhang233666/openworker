@@ -64,6 +64,17 @@ def test_quota_errors_are_translated():
     assert msg and "out of quota" in msg
 
 
+def test_incomplete_chunked_read_is_translated():
+    msg = friendly_model_error(
+        "kimi-k2.5",
+        RuntimeError(
+            "peer closed connection without sending complete message body "
+            "(incomplete chunked read)"
+        ),
+    )
+    assert msg and "重试" in msg and "流式" in msg
+
+
 def test_unrelated_errors_pass_through_raw():
     # a plain rate-limit (429 without a quota code) must NOT be dressed up
     assert (

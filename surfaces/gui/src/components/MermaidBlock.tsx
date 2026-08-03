@@ -18,7 +18,7 @@ function ensureMermaid(): Promise<typeof import("mermaid")> {
         securityLevel: "strict",
         maxTextSize: MERMAID_MAX_TEXT_SIZE,
         suppressErrorRendering: true,
-        theme: "neutral",
+        theme: "neo",
       });
       return mod;
     });
@@ -30,6 +30,8 @@ type ViewMode = "diagram" | "source";
 
 export function MermaidBlock({ source }: { source: string }): JSX.Element {
   const { t } = useI18n();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -38,22 +40,28 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const renderIdRef = useRef(0);
   const diagramRef = useRef<HTMLDivElement | null>(null);
+  const renderedSourceRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const renderId = ++renderIdRef.current;
     setExportError(null);
 
     if (source.length > MERMAID_MAX_TEXT_SIZE) {
+      renderIdRef.current += 1;
       setSvg(null);
-      setError(t("mermaid.tooLong"));
+      renderedSourceRef.current = null;
+      setError(tRef.current("mermaid.tooLong"));
       setView("source");
       setLockedHeight(undefined);
       return;
     }
 
+    // Same source already committed — skip (avoids scrollHeight collapse on re-entry).
+    if (renderedSourceRef.current === source) {
+      return;
+    }
+
+    const renderId = ++renderIdRef.current;
     setError(null);
-    setSvg(null);
-    setView("diagram");
     setLockedHeight(undefined);
 
     let cancelled = false;
@@ -64,12 +72,15 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
         const id = `mermaid-${renderId}-${Math.random().toString(36).slice(2, 9)}`;
         const result = await mod.default.render(id, source);
         if (cancelled || renderId !== renderIdRef.current) return;
+        renderedSourceRef.current = source;
         setSvg(result.svg);
         setError(null);
+        setView("diagram");
       } catch {
         if (cancelled || renderId !== renderIdRef.current) return;
+        renderedSourceRef.current = null;
         setSvg(null);
-        setError(t("mermaid.renderError"));
+        setError(tRef.current("mermaid.renderError"));
         setView("source");
       }
     })();
@@ -77,7 +88,7 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [source, t]);
+  }, [source]);
 
   useEffect(() => {
     if (!svg || view !== "diagram" || !diagramRef.current) return;
@@ -113,8 +124,8 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
   const showSource = view === "source" || !!error;
 
   const diagramBoxStyle = {
-    minHeight: lockedHeight ? undefined : 180,
-    height: lockedHeight,
+    // Lock as minHeight only — never fixed height (fixed height + overflow traps the wheel).
+    minHeight: lockedHeight ?? 180,
   } as const;
 
   return (
