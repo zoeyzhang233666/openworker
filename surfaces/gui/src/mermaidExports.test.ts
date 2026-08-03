@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   mermaidExportFilename,
   downloadSvg,
-  downloadPng,
   MERMAID_PNG_MAX_EDGE,
 } from "./mermaidExports";
 
