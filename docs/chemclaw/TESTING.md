@@ -1,16 +1,32 @@
 # ChemClaw 测试、开发环境与源码预览
 
-## 1. 本次基线结论
+## 1. 当前 Worktree 结论（2026-08-03）
 
-- 基线日期：2026-07-29
-- 被测提交：`ba58832c98cabab3f357edf50631782a5f773288`
-- 分支：`design/chemclaw-foundation`
-- Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`
-- 本次没有修改产品界面或 ChemClaw 业务功能。
-- 已修复刚克隆源码无法启动的依赖断裂：项目仍使用 MCP 1.x API，因此依赖约束由无上限的 `mcp>=1.1` 改为 `mcp>=1.27,<2`。实际解析版本为 `mcp 1.29.0`。
-- 浏览器源码预览已做真实页面验证：后端 `/v1/health` 返回 `{"status":"ok"}`，页面不再停留在 `Starting OpenWorker…`。
-- GUI 单元测试、生产构建、Playwright E2E 和 Tauri `cargo check` 已通过。
+- 分支：`design/chemclaw-upstream`
+- Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`
+- 地基：OpenWorker `upstream/main`（含 2026-08-01 Skills PR #391）+ ChemClaw 品牌/汉化薄层
+- 旧 Worktree（备份，待验收后删除）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（`backup/broken-2026-08-03`）
+- 日常命令请一律使用 **`chemclaw-clean`**，不要再 `cd` 到 `chemclaw-design`。
+- 新 Worktree 首次使用前需要为本目录建立 `.venv`（见下文）；可复用 `D:\OpenWorker\.chemclaw-dev` 下的包缓存。
+- 方案 A 定向验证（2026-08-03）：
+  - `pytest tests/test_skill_bootstrap.py`：1 passed
+  - `pytest tests/test_engine.py`（空流/流式/无工具）：3 passed
+  - `npm test`（i18n + localization-audit）：21 passed
+  - `npm test -- --run src/components/Markdown.test.tsx`：4 passed（含中文 `artifact:` 路径 decode）
+  - `npm test -- --run src/navArtifactPreview.test.ts`：4 passed（产物预览期间左侧栏不 snap-back）
+  - Mermaid 定向（2026-08-03 Task 5）：
+    - `npm test -- --run src/mermaidExports.test.ts src/components/MermaidBlock.test.tsx src/components/Markdown.test.tsx`：18 passed（3 files）
+    - `npm run build`：通过；产物含独立 `mermaid.core-*.js` chunk（约 635 kB）
+  - 真实对话 WS：`kimi-k2.5` 经 `…/v1` 网关返回 `OK`
+  - `npm run build`：通过（此前已测；Task 5 再次确认）
 - 后端全量测试在 Windows 上仍有已定位的上游基线失败，详见“已知后端基线缺陷”。在处理或明确接受这些失败前，不得声称后端全量基线为绿色。
+
+### 历史基线（2026-07-29，仅供对照）
+
+- 被测提交：`ba58832c98cabab3f357edf50631782a5f773288`
+- 当时分支：`design/chemclaw-foundation`
+- 当时 Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`
+- 当时修复：MCP 依赖约束改为 `mcp>=1.27,<2`（当前 upstream 已含同类约束）。
 
 ## 2. 固定开发环境
 
@@ -48,12 +64,15 @@ Visual Studio Build Tools、LLVM、Rust 和 Playwright 浏览器是一次性机�
 
 ### Python 与前端依赖
 
-后端全量测试会使用 Slack/Telegram 测试，因此安装方式必须与仓库 CI 一致，包含 `messaging`：
+后端全量测试会使用 Slack/Telegram 测试，因此安装方式必须与仓库 CI 一致，包含 `messaging`。
+
+**首次在 `chemclaw-clean` 建环境：**
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
 $env:UV_CACHE_DIR='D:\OpenWorker\.chemclaw-dev\uv-cache'
 $env:UV_PYTHON_INSTALL_DIR='D:\OpenWorker\.chemclaw-dev\uv-python'
+uv venv --python 3.11 .venv
 uv pip install --python '.venv\Scripts\python.exe' -e '.[dev,messaging]'
 
 cd surfaces\gui
@@ -61,7 +80,9 @@ npm.cmd install
 npx.cmd playwright install chromium
 ```
 
-`npm install` 本次报告 7 个依赖漏洞（3 moderate、3 high、1 critical）。Task 1 没有运行 `npm audit fix --force`，因为它可能引入破坏性升级；后续应单独审计，而不是混入品牌或中文化任务。
+若本机已有 `uv` 与缓存，上述步骤主要是为新 Worktree 创建入口，不会重新下载全部工具链。
+
+`npm install` 可能报告若干依赖漏洞。不要运行 `npm audit fix --force` 混入功能任务；应单独审计。
 
 ## 3. 每天查看源码界面
 
@@ -72,7 +93,7 @@ npx.cmd playwright install chromium
 终端 1：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 .\.venv\Scripts\openworker-server.exe --host 127.0.0.1 --port 8765
 ```
@@ -86,7 +107,7 @@ Invoke-RestMethod http://127.0.0.1:8765/v1/health
 终端 2：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design\surfaces\gui
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 npm.cmd run dev
 ```
@@ -103,8 +124,10 @@ http://localhost:1420
 - React/样式修改会自动热更新。
 - Python 后端修改后通常要在终端 1 按 `Ctrl+C`，再重新启动后端。
 - 正常停止两个服务的方法是分别在对应终端按 `Ctrl+C`。
-- 如果一直显示 `Starting OpenWorker…`，先确认 8765 健康，再重启 Vite。后端启动失败或 Vite 在 token 生成前启动都会造成这个现象。
-- Task 1 没有改界面，所以现在看到的仍是原 OpenWorker 英文界面。ChemClaw 品牌和默认中文属于 Task 2。
+- 如果一直显示 `Starting ChemClaw…` / `正在启动 ChemClaw…`，先确认 8765 健康，再重启 Vite。后端启动失败或 Vite 在 token 生成前启动都会造成这个现象。
+- **每次重启后端都会重写 `sidecar-<port>.token`**，必须随后重启 Vite，否则 GUI 会带着旧 token 请求并表现为连不上/对话无响应。
+- OpenAI 兼容自定义网关的 `base_url` 必须包含 `/v1`（例如 `https://apihub.chem-cloud.cn/v1`）。写成根域名时，SDK 会打到 `/chat/completions` 而非 `/v1/chat/completions`，表现为 0 chunk、空白回答。
+- 验收时确认：品牌为 ChemClaw、默认中文、主导航含「技能」与「专家龙虾」、内置 `serenity.industry-chain-mapping` 可在技能页看到；专家页控件为中文。
 
 ### 桌面程序源码模式
 
@@ -117,7 +140,7 @@ http://localhost:1420
 ```powershell
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 $env:LIBCLANG_PATH='C:\Program Files\LLVM\bin'
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
 New-Item -ItemType Directory -Force -Path 'surfaces\gui\src-tauri\binaries\sidecar' | Out-Null
 cd surfaces\gui
 npm.cmd run tauri -- dev
@@ -134,10 +157,10 @@ npm.cmd run tauri -- dev
 
 ### 后端
 
-Windows 上不要使用 pytest 默认的 `%TEMP%\pytest-of-EDY`。这个目录曾由不同执行身份创建并产生 ACL 冲突，导致 889 个用例同时报 `PermissionError`。每次使用一个新的专用子目录：
+Windows 上不要使用 pytest 默认的 `%TEMP%\pytest-of-EDY`。这个目录曾由不同执行身份创建并产生 ACL 冲突，导致大批用例同时报 `PermissionError`。每次使用一个新的专用子目录：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 $env:NO_PROXY='127.0.0.1,localhost'
 $env:no_proxy='127.0.0.1,localhost'
@@ -146,70 +169,69 @@ $baseTemp='D:\OpenWorker\.chemclaw-dev\pytest-tmp\manual-YYYYMMDD-HHMM'
 .\.venv\Scripts\python.exe -m pytest -q --basetemp=$baseTemp -p no:cacheprovider
 ```
 
+方案 A 定向 Skill bootstrap：
+
+```powershell
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+$env:TMP='D:\OpenWorker\.chemclaw-dev\tmp'
+$env:TEMP='D:\OpenWorker\.chemclaw-dev\tmp'
+.\.venv\Scripts\python.exe -m pytest tests/test_skill_bootstrap.py -q
+```
+
 环境处理的原因：
 
 - `NO_PROXY` 防止 Windows 系统代理把 FakeSlack 的 `127.0.0.1` 请求转成空的 502 响应。
-- Codex 桌面进程会把一个普通用户无权执行的内置 `rg.exe` 放入子进程 PATH。测试时移除这一项后，OpenWorker 会正确使用 Python 搜索后备实现；单测实测 `1 passed`。
-- `--basetemp` 绕开系统 pytest 临时目录的 ACL 污染。
+- Codex 桌面进程会把一个普通用户无权执行的内置 `rg.exe` 放入子进程 PATH。测试时移除这一项后，OpenWorker 会正确使用 Python 搜索后备实现。
+- `--basetemp` / 自定义 `TMP` 绕开系统 pytest 临时目录的 ACL 污染。
 
-最终原始全量运行（已安装 `dev,messaging`，使用专用 basetemp，但尚未加 NO_PROXY/PATH 清理）结果：
-
-```text
-879 passed, 10 failed, 1 skipped in 165.75s
-```
-
-补充根因验证：
-
-```text
-MCP 1.29.0 + coworker.server.manager 导入：PASS
-FakeSlack 两条 502 失败加 NO_PROXY 后：2 passed
-grep 移除 Codex 私有 rg 路径后：1 passed
-```
-
-使用上面的 `NO_PROXY`、干净 PATH 和专用 basetemp 后，受控全量结果为：
+历史全量结果（旧 `chemclaw-design` Worktree，2026-07-29，供对照）：
 
 ```text
 880 passed, 9 failed, 1 skipped in 173.75s
 ```
 
-这 9 条是当前 Windows/Codex 受控基线的已知失败；当前仍不得写成“后端全部通过”。
+这 9 条是当时 Windows/Codex 受控基线的已知失败；当前仍不得写成“后端全部通过”。
 
 ### GUI 单元测试
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design\surfaces\gui
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
 npm.cmd test
 ```
 
-结果：
+方案 A 定向结果（2026-08-03）：
 
 ```text
-12 test files passed
-68 tests passed
-Duration 21.71s
+i18n + localization-audit + SkillsTab：34 passed
+npm run build：通过
 ```
+
+Mermaid 定向结果（2026-08-03 Task 5）：
+
+```text
+src/mermaidExports.test.ts + MermaidBlock.test.tsx + Markdown.test.tsx：18 passed
+npm run build：通过（含 mermaid.core 独立 chunk）
+```
+
+UpdateBanner 相关单测会因 ChemClaw 关闭自动更新（`UPDATES_ENABLED = false`）而失败，属预期，不是 Skill 回归。
 
 ### TypeScript/Vite 构建
 
 ```powershell
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
 npm.cmd run build
 ```
 
-结果：退出码 0，约 40.22 秒。存在两类非阻断警告：`api.ts` 同时被静态和动态导入，以及部分 chunk 超过 500 kB。
+存在非阻断警告：部分 chunk 超过 500 kB。
 
 ### Playwright E2E
 
 ```powershell
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
 npm.cmd run e2e
 ```
 
-结果：
-
-```text
-154 passed in 2.6m
-```
-
-这些用例使用网络层 mock，不需要真实模型、MCP 凭据或外网服务。
+这些用例使用网络层 mock，不需要真实模型、MCP 凭据或外网服务。历史基线（旧 Worktree）曾为 `154 passed`；方案 A 后需在新 Worktree 重新跑一遍再更新数字。
 
 ### Tauri/Rust
 
@@ -217,12 +239,10 @@ npm.cmd run e2e
 
 ```powershell
 $env:LIBCLANG_PATH='C:\Program Files\LLVM\bin'
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-design
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
 New-Item -ItemType Directory -Force -Path 'surfaces\gui\src-tauri\binaries\sidecar' | Out-Null
 cargo check --manifest-path 'surfaces\gui\src-tauri\Cargo.toml'
 ```
-
-结果：退出码 0，最终缓存后完整检查约 1 分 45 秒。剩余一条原仓库警告：`src-tauri\src\lib.rs:691` 的变量不需要 `mut`。
 
 ## 5. 已知后端基线缺陷
 
@@ -248,7 +268,6 @@ cargo check --manifest-path 'surfaces\gui\src-tauri\Cargo.toml'
 
 - 新任务必须确保没有新增失败。
 - 不得静默删除或放宽产品断言来制造“全绿”。
-- 建议在 Task 2 前增加一个小型 Windows 基线清理检查点：让 Unix 权限测试使用平台条件、让 Relay 测试真正无网络化，并决定活跃 workspace 目录锁的产品行为。
 
 ## 6. 凭据与开发数据规则
 
@@ -256,4 +275,3 @@ cargo check --manifest-path 'surfaces\gui\src-tauri\Cargo.toml'
 - 自动化测试不得写入真实 MCP、公司接口、OpenAI、Slack、GitHub、企查查或其他生产凭据。
 - 测试 MCP 必须使用假凭据、mock 或本地测试服务。
 - 真实 MCP 配置将来只在人工集成测试中使用，并应从测试数据库和日志中隔离。
-- 当前浏览器预览显示 `No model` 属正常状态；Task 1 没有配置或复制任何真实模型密钥。

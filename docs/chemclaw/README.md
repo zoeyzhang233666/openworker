@@ -4,19 +4,43 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
-- 当前阶段：阶段 1，Task 2B“现有用户可见界面中文化”完成，等待用户验收。
-- 当前分支：`design/chemclaw-foundation`
-- 当前 Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`
-- 业务代码：Task 2 产品壳层和 Task 2B 轻量双语界面已完成；内部协议、包名、CLI、数据库兼容字段和上游许可证保持不变。
-- 当前产品数据：OpenWorker 源码为刚克隆状态，没有需要迁移的用户数据。
+- **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
+- 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
+- 当前分支：`design/chemclaw-upstream`
+- 当前 Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`
+- 旧 Worktree（备份保留，待验收后删除）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（分支 `backup/broken-2026-08-03` 已推送到 `backup` 远程）
+- 业务代码（本 Worktree）：
+  - ✅ 基于 upstream/main（OpenWorker Skills 官方实现）
+  - ✅ ChemClaw 品牌 + 全界面汉化（cherry-pick 自旧分支）
+  - ✅ D-006 主导航：对话 / 技能 / 专家龙虾 / 定时任务 / 连接 / 设置
+  - ✅ 技能页使用上游 `SkillsTab`，已汉化；不再使用自研 `SkillsView` / `capabilities`
+  - ✅ 专家龙虾页（`PersonasTab`）控件与内置专家文案已接入 i18n（此前只汉化了页标题）
+  - ✅ 首次启动 seed 内置 `serenity.industry-chain-mapping` Skill（上游 SKILL.md 格式）
+  - ✅ 自动更新入口已关闭（`UPDATES_ENABLED = false`）
+  - ✅ 空模型流不再静默落成空白助手消息（`TurnEngine` 改为可重试 ERROR）
+  - ✅ OpenAI 兼容流遇 `incomplete chunked read` 时自动重试并回退非流式；错误文案中文化
+  - ✅ 对话内中文 `artifact:` 链接打开产物：解码 react-markdown 的 percent-encode，避免误报「文件已移动/删除」
+  - ✅ 产物预览期间手动展开左侧栏不再被自动打回（预览开闭边沿折叠 + 稳定 `onPreviewChange`）
+  - ✅ 对话与 MD 报告 fenced mermaid 真实渲染（图/源码、遮罩全屏、SVG/PNG；流式不出图；防抖占位）
+  - 🔄 对话挂载条等待在上游 Skill 稳定后单独处理
 - 浏览器源码预览：默认显示简体中文，可切换英文并在刷新后保留选择。
-- 回归状态：Task 2B 本地化定向单测、ChemClaw 壳层 E2E 和 GUI 生产构建通过；后端全量测试仍保留已知 Windows/上游基线失败，详见测试文档。
+- 运行态修复（2026-08-03，开发 state）：
+  - OpenAI 兼容网关 `base_url` 补全为 `…/v1`（缺 `/v1` 会导致 0 chunk 空回答）
+  - 默认模型改为流式稳定的 `kimi-k2.5`（原 `deepseek-v4-flash` 在该网关上工具流易断）
+  - 真实 WS 链路验证：`agent=chat` → 助手返回 `OK`
+- 回归状态（2026-08-03）：
+  - `pytest tests/test_engine.py`（空流 + 流式 + 无工具）：3 passed
+  - `pytest` stream 重试/回退 + model errors：12 passed
+  - `npm test`（i18n + localization-audit）：21 passed
+  - `npm test -- --run src/navArtifactPreview.test.ts`：4 passed
+  - Mermaid：`mermaidExports` + `MermaidBlock` + `Markdown` 定向单测 18 passed；`npm run build` 通过（含 mermaid.core chunk）
+  - UpdateBanner 单测因 ChemClaw 关闭自动更新而预期失败（非回归）
 
 ## 下一道门禁
 
-1. 用户验收 Task 2B 的中文覆盖、英文切换与刷新保留。
-2. 验收通过后再执行阶段 1 Task 3。
-3. 不在 Task 2B 中提前实现真实 Skill 页面或其他 Task 3 功能。
+1. 用户在新 Worktree 打开界面验收：品牌 ChemClaw、默认中文、主导航、技能页、内置产业链 Skill 可见。
+2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）。
+3. 规划对话挂载条与 Serenity 完整包后续小步任务；Mermaid 手工 UI 验收清单见实施计划 Task 5。
 
 ## 文档索引
 
@@ -38,12 +62,11 @@
 
 ## 当前环境检查
 
-- Worktree 已建立 Python 3.11 `.venv` 和前端 `node_modules`。
-- Python 下载缓存、Python 发行版、开发状态和 pytest 临时目录统一放在 `D:\OpenWorker\.chemclaw-dev`。
-- Rust、Visual Studio Build Tools、LLVM/Clang 和 Playwright Chromium 已安装为机器/用户级共享工具链，不需要为每个 Worktree 重装。
-- 浏览器热更新推荐用于日常高频修改；Tauri 源码模式用于验证原生桌面能力；两者都不需要先构建安装包。
+- 日常开发请使用 **`chemclaw-clean` Worktree**（不是旧的 `chemclaw-design`）。
+- Python 下载缓存、开发状态和 pytest 临时目录统一放在 `D:\OpenWorker\.chemclaw-dev`。
+- 拉 upstream：`git fetch upstream main`（remote：`https://github.com/andrewyng/openworker`）。
 - 完整版本、命令、测试数字、启动顺序和已知缺陷以 [TESTING.md](TESTING.md) 为准。
 
 ## 新任务推荐开场
 
-> 继续 ChemClaw 阶段 1。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划，核对最近提交与未完成任务。一次只执行指定 Task；测试并形成小提交后停止，不提前做后续 Task。
+> 继续 ChemClaw 阶段 1（`design/chemclaw-upstream` / `chemclaw-clean` worktree）。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划。Skill 功能以 OpenWorker 上游实现为准；ChemClaw 只做品牌、汉化、导航与 bundled Skill 薄层。一次只执行指定 Task。
