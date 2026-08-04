@@ -710,8 +710,8 @@ export interface ModelSettings {
   // Auto-compaction of long histories (OPE-27): trigger = min(threshold% × context
   // window, cap tokens); model pins the summarizer ("" → the session's own model).
   // Optional so the GUI is robust to an older backend.
-  compaction_threshold_pct?: number; // default 0.8, 0.10–0.95
-  compaction_cap_tokens?: number; // default 250000
+  compaction_threshold_pct?: number; // default 0.95, 0.10–0.95
+  compaction_cap_tokens?: number; // default 2000000
   compaction_model?: string;
 }
 

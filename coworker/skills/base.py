@@ -61,6 +61,14 @@ class SkillLoader:
         ]
 
 
+def _strip_yaml_scalar(value: str) -> str:
+    """Strip optional surrounding single/double quotes from a simple YAML scalar."""
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def _parse_skill(md: Path) -> Skill:
     text = md.read_text(encoding="utf-8")
     name, description, allowed, body = md.parent.name, "", [], text
@@ -75,9 +83,9 @@ def _parse_skill(md: Path) -> Skill:
                 key, value = line.split(":", 1)
                 key, value = key.strip().lower(), value.strip()
                 if key == "name" and value:
-                    name = value
+                    name = _strip_yaml_scalar(value)
                 elif key == "description":
-                    description = value
+                    description = _strip_yaml_scalar(value)
                 elif key in ("allowed-tools", "allowed_tools"):
                     allowed = [t.strip() for t in value.split(",") if t.strip()]
     return Skill(

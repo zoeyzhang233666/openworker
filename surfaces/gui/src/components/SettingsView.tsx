@@ -714,6 +714,7 @@ function TokenSavingsCard() {
 // limit, so work continues instead of hitting a raw provider error. Two spec'd
 // overrides (trigger % + token cap) and the summarizer-model pin — nothing more.
 function CompactionCard() {
+  const { t } = useI18n();
   const [cfg, setCfg] = useState<CompactionSettings | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -722,8 +723,8 @@ function CompactionCard() {
     getSettings()
       .then((s) => {
         setCfg({
-          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.8,
-          compaction_cap_tokens: s.compaction_cap_tokens ?? 250_000,
+          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.95,
+          compaction_cap_tokens: s.compaction_cap_tokens ?? 2_000_000,
           compaction_model: s.compaction_model ?? "",
         });
         setModels(s.models || []);
@@ -731,8 +732,8 @@ function CompactionCard() {
       })
       .catch(() =>
         setCfg({
-          compaction_threshold_pct: 0.8,
-          compaction_cap_tokens: 250_000,
+          compaction_threshold_pct: 0.95,
+          compaction_cap_tokens: 2_000_000,
           compaction_model: "",
         }),
       );
@@ -747,16 +748,16 @@ function CompactionCard() {
   const modelLabel = (id: string) => labels[id]?.split(" · ")[0] || id;
   return (
     <div className={CARD + " p-4 mb-4"} data-testid="compaction-card">
-      <div className={FIELD_LABEL}>Context compaction</div>
+      <div className={FIELD_LABEL}>{t("Context compaction")}</div>
       <div className={FIELD_HELP}>
-        Long sessions are compacted automatically: older turns are summarized so the
-        coworker keeps working instead of running out of context. Your visible transcript
-        is never changed — a small marker shows where compaction happened.
+        {t(
+          "Long sessions are compacted automatically: older turns are summarized so the coworker keeps working instead of running out of context. Your visible transcript is never changed — a small marker shows where compaction happened.",
+        )}
       </div>
 
       <div className="mt-3 flex items-center gap-5 flex-wrap">
         <label className="flex items-center gap-2.5">
-          <span className="text-[13px] text-ink">Compact at</span>
+          <span className="text-[13px] text-ink">{t("Compact at")}</span>
           <input
             type="number"
             min={10}
@@ -767,14 +768,14 @@ function CompactionCard() {
             onChange={(e) =>
               save({
                 compaction_threshold_pct:
-                  Math.max(10, Math.min(Number(e.target.value) || 80, 95)) / 100,
+                  Math.max(10, Math.min(Number(e.target.value) || 95, 95)) / 100,
               })
             }
           />
-          <span className="text-[12.5px] text-muted">% of the context window</span>
+          <span className="text-[12.5px] text-muted">{t("% of the context window")}</span>
         </label>
         <label className="flex items-center gap-2.5">
-          <span className="text-[13px] text-ink">or at</span>
+          <span className="text-[13px] text-ink">{t("or at")}</span>
           <input
             type="number"
             min={10_000}
@@ -787,28 +788,29 @@ function CompactionCard() {
               save({
                 compaction_cap_tokens: Math.max(
                   10_000,
-                  Math.min(Number(e.target.value) || 250_000, 2_000_000),
+                  Math.min(Number(e.target.value) || 2_000_000, 2_000_000),
                 ),
               })
             }
           />
-          <span className="text-[12.5px] text-muted">tokens, whichever is smaller</span>
+          <span className="text-[12.5px] text-muted">{t("tokens, whichever is smaller")}</span>
         </label>
       </div>
       <div className={FIELD_HELP}>
-        The cap makes very-large-context models compact early — quality and speed degrade
-        well before their nominal limit.
+        {t(
+          "The cap makes very-large-context models compact early — quality and speed degrade well before their nominal limit.",
+        )}
       </div>
 
       <div className="mt-3 flex items-center gap-2.5">
-        <span className="text-[13px] text-ink">Summarizer model</span>
+        <span className="text-[13px] text-ink">{t("Summarizer model")}</span>
         <select
           value={cfg.compaction_model}
           data-testid="compaction-model"
           className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
           onChange={(e) => save({ compaction_model: e.target.value })}
         >
-          <option value="">Session&rsquo;s own model (default)</option>
+          <option value="">{t("Session's own model (default)")}</option>
           {models.map((m) => (
             <option key={m} value={m}>
               {modelLabel(m)}
@@ -817,8 +819,9 @@ function CompactionCard() {
         </select>
       </div>
       <div className={FIELD_HELP}>
-        The summary is written by this model. The default follows whatever model the
-        session is using.
+        {t(
+          "The summary is written by this model. The default follows whatever model the session is using.",
+        )}
       </div>
     </div>
   );

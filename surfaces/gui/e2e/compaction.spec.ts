@@ -14,11 +14,11 @@ test("Settings: Context compaction card edits threshold, cap, and summarizer mod
 
   const card = page.getByTestId("compaction-card");
   await expect(card).toBeVisible();
-  await expect(card.getByText("Context compaction")).toBeVisible();
+  await expect(card.getByText(/Context compaction|上下文压缩/)).toBeVisible();
 
   // Defaults render when the backend doesn't send the fields (older-backend robustness).
-  await expect(card.getByTestId("compaction-threshold")).toHaveValue("80");
-  await expect(card.getByTestId("compaction-cap")).toHaveValue("250000");
+  await expect(card.getByTestId("compaction-threshold")).toHaveValue("95");
+  await expect(card.getByTestId("compaction-cap")).toHaveValue("2000000");
   await expect(card.getByTestId("compaction-model")).toHaveValue("");
 
   // Threshold edits POST as a fraction, clamped to 10–95%.

@@ -366,6 +366,19 @@ export const interfaceMessagesZh = {
   "Max size": "最大大小",
   "PDFs over these limits are not attached — you’ll see a notice in the composer instead.":
     "超出限制的 PDF 不会被附加，输入框中会显示提示。",
+  "Context compaction": "上下文压缩",
+  "Long sessions are compacted automatically: older turns are summarized so the coworker keeps working instead of running out of context. Your visible transcript is never changed — a small marker shows where compaction happened.":
+    "长会话会自动压缩：较早的轮次会被摘要，以便助手继续工作而不耗尽上下文。你看到的对话记录不会被改动——压缩发生处会显示一个小标记。",
+  "Compact at": "压缩触发于",
+  "% of the context window": "% 的上下文窗口",
+  "or at": "或达到",
+  "tokens, whichever is smaller": "tokens（取较小者）",
+  "The cap makes very-large-context models compact early — quality and speed degrade well before their nominal limit.":
+    "设置上限可让超大上下文模型更早压缩——质量和速度往往在名义上限之前就会明显下降。",
+  "Summarizer model": "摘要模型",
+  "Session's own model (default)": "使用当前会话模型（默认）",
+  "The summary is written by this model. The default follows whatever model the session is using.":
+    "摘要由该模型生成。默认跟随当前会话所用模型。",
   "Sidebar": "侧栏",
   "Conversations shown per coworker": "每位助手显示的对话数",
   "Longer lists collapse behind “Show more”. Applies per coworker and per project.":

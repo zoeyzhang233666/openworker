@@ -101,17 +101,17 @@ class FakeSummarizer:
 
 
 def test_trigger_is_min_of_pct_and_cap():
-    assert trigger_tokens(100_000) == 80_000
-    assert trigger_tokens(1_000_000) == DEFAULT_CAP_TOKENS  # the 250k cap wins
-    assert trigger_tokens(None) == int(0.8 * DEFAULT_CONTEXT_WINDOW)
+    assert trigger_tokens(100_000) == 95_000
+    assert trigger_tokens(10_000_000) == DEFAULT_CAP_TOKENS  # the 2M cap wins
+    assert trigger_tokens(None) == int(0.95 * DEFAULT_CONTEXT_WINDOW)
     # both knobs are user-overridable
     assert trigger_tokens(100_000, threshold_pct=0.5, cap_tokens=40_000) == 40_000
     assert trigger_tokens(100_000, threshold_pct=0.5, cap_tokens=999_999) == 50_000
 
 
 def test_should_compact_crosses_threshold():
-    assert not should_compact(79_999, 100_000)
-    assert should_compact(80_000, 100_000)
+    assert not should_compact(94_999, 100_000)
+    assert should_compact(95_000, 100_000)
 
 
 def test_estimate_tokens_is_chars_over_four():

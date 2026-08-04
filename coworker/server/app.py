@@ -1774,6 +1774,9 @@ def create_app(manager: SessionManager) -> FastAPI:
                     "command_trust": manager.workspace_command_trust(
                         str(getattr(engine, "audit_context", {}).get("workspace", ""))
                     ),
+                    # Reconnect after nav-away must restore Stop/spinner without waiting
+                    # for a late turn_start (mid-turn clients never re-see that event).
+                    "running": manager.is_running(session_id),
                 },
             }
         )

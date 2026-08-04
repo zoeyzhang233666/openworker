@@ -21,7 +21,10 @@ from coworker.skills import SkillLoader, SkillStore, validate_name
 
 @pytest.fixture()
 def store(tmp_path):
-    return SkillStore(global_dir=tmp_path / "global-skills")
+    return SkillStore(
+        global_dir=tmp_path / "global-skills",
+        settings_path=tmp_path / "skills-settings.json",
+    )
 
 
 @pytest.fixture()
@@ -78,11 +81,86 @@ def test_create_duplicate_rejected(store):
 
 @pytest.mark.parametrize(
     "bad",
-    ["", "   ", "a" * 65, "../evil", "a/b", "a\\b", ".hidden", "café"],
+    ["", "   ", "a" * 65, "../evil", "a/b", "a\\b", ".hidden", "Excel / XLSX", "has space", "-leading"],
 )
 def test_invalid_names_rejected(bad):
     with pytest.raises(ValueError):
         validate_name(bad)
+
+
+@pytest.mark.parametrize(
+    "good",
+    ["weekly-report", "chem-360-dd", "café", "产业链层级测绘", "serenity.industry-chain"],
+)
+def test_unicode_and_ascii_names_accepted(good):
+    assert validate_name(good) == good
+
+
+def test_chinese_skill_create_delete_roundtrip(store):
+    store.create(
+        name="产业链层级测绘",
+        description="拆层级",
+        instructions="按需求到基础设施拆解。",
+    )
+    assert (store.global_dir / "产业链层级测绘" / "SKILL.md").is_file()
+    store.delete("产业链层级测绘")
+    assert not (store.global_dir / "产业链层级测绘").exists()
+
+
+def test_upload_chinese_name_zip_roundtrip(store):
+    md = '---\nname: "候选优先级排序"\ndescription: "排序"\n---\n\n排序说明。\n'
+    preview = store.stage_upload(
+        _zip_bytes(
+            {
+                "候选优先级排序/SKILL.md": md,
+                "候选优先级排序/references/notes.md": "# notes\n",
+            }
+        )
+    )
+    assert preview["name"] == "候选优先级排序"
+    assert "references/notes.md" in preview["files"]
+    saved = store.confirm_upload(preview["token"])
+    assert saved["name"] == "候选优先级排序"
+    folder = store.global_dir / "候选优先级排序"
+    assert (folder / "references" / "notes.md").is_file()
+    store.delete("候选优先级排序")
+    assert not folder.exists()
+
+
+def test_confirm_upload_preserves_extended_frontmatter_and_resources(store):
+    md = (
+        "---\n"
+        "name: rich-pack\n"
+        "description: full skill\n"
+        "version: 1.2.3\n"
+        "metadata: {\"vendor\": \"chem-cloud\"}\n"
+        "---\n\n"
+        "Body keeps version.\n"
+    )
+    preview = store.stage_upload(
+        _zip_bytes(
+            {
+                "rich-pack/SKILL.md": md,
+                "rich-pack/references/tools.md": "# tools\n",
+                "rich-pack/scripts/run.py": "print('ok')\n",
+                "rich-pack/meta.json": '{"k": 1}\n',
+            }
+        )
+    )
+    assert set(preview["files"]) == {
+        "references/tools.md",
+        "scripts/run.py",
+        "meta.json",
+    }
+    saved = store.confirm_upload(preview["token"])
+    folder = Path(saved["path"])
+    text = (folder / "SKILL.md").read_text(encoding="utf-8")
+    assert "version: 1.2.3" in text
+    assert "metadata:" in text
+    assert "source: uploaded" in text
+    assert (folder / "references" / "tools.md").is_file()
+    assert (folder / "scripts" / "run.py").is_file()
+    assert (folder / "meta.json").is_file()
 
 
 def test_blank_instructions_rejected(store):
@@ -297,7 +375,10 @@ def test_upload_confirm_saves_previewed_content(store):
 def test_disable_persists_across_reload(store, monkeypatch, tmp_path):
     store.create(name="sleepy", description="", instructions="x")
     store.set_enabled("sleepy", False)
-    reloaded = SkillStore(global_dir=store.global_dir)
+    reloaded = SkillStore(
+        global_dir=store.global_dir,
+        settings_path=store._settings_path,
+    )
     assert "sleepy" in reloaded.disabled_names()
     assert reloaded.rows()[0]["enabled"] is False
     reloaded.set_enabled("sleepy", True)

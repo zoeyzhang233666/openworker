@@ -1640,15 +1640,29 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
 /* Mermaid diagram blocks (chat + Markdown preview) */
 .mermaid-block {
   margin: 4px 0 14px;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 12px;
-  background: var(--paper);
+  background: transparent;
   overflow: hidden;
 }
 .mermaid-block-toolbar {
   display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-  padding: 6px 10px; border-bottom: 1px solid var(--line);
+  padding: 6px 10px; border-bottom: 1px solid transparent;
   font-size: 12px;
+  /* Keep layout height; hide until hover/focus so diagrams blend with prose. */
+  visibility: hidden;
+}
+.mermaid-block:hover,
+.mermaid-block:focus-within,
+.mermaid-block.is-error {
+  border-color: var(--line);
+  background: var(--paper);
+}
+.mermaid-block:hover .mermaid-block-toolbar,
+.mermaid-block:focus-within .mermaid-block-toolbar,
+.mermaid-block.is-error .mermaid-block-toolbar {
+  visibility: visible;
+  border-bottom-color: var(--line);
 }
 .mermaid-block-diagram {
   /* overflow-x only: do NOT set overflow-x:auto alone (it forces overflow-y:auto and

@@ -20,8 +20,8 @@ from typing import Any, Optional
 
 # Trigger: min(threshold_pct × context_window, cap_tokens). The cap exists so 1M-context
 # models compact early — quality and latency degrade well before the nominal limit.
-DEFAULT_THRESHOLD_PCT = 0.8
-DEFAULT_CAP_TOKENS = 250_000
+DEFAULT_THRESHOLD_PCT = 0.95
+DEFAULT_CAP_TOKENS = 2_000_000
 # Models without a verified context_window entry in the matrix.
 DEFAULT_CONTEXT_WINDOW = 128_000
 # The newest slice kept verbatim, as a fraction of the trigger (a token budget, not a

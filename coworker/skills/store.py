@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import io
 import json
-import re
 import shutil
 import threading
 import uuid
@@ -30,22 +29,35 @@ import aisuite as ai
 from ..secrets import state_dir
 from .base import Skill, _parse_skill
 
-_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _MAX_NAME = 64
 GLOBAL_SCOPE = "global"
 PROJECT_SCOPE = "project"
 
 
 def validate_name(name: str) -> str:
-    """Skill names become folder names — reject anything that could escape the scope dir."""
+    """Skill names become folder names — reject anything that could escape the scope dir.
+
+    Allows Unicode letters/digits (including Chinese) plus ``.`` ``-`` ``_``.
+    Rejects path separators, spaces, ``..``, and names that start/end with ``.``.
+    """
     name = (name or "").strip()
     if not name:
         raise ValueError("Skill name is required.")
     if len(name) > _MAX_NAME:
         raise ValueError(f"Skill name too long (limit {_MAX_NAME} characters).")
-    if ".." in name or "/" in name or "\\" in name or not _NAME_RE.match(name):
+    if (
+        ".." in name
+        or "/" in name
+        or "\\" in name
+        or " " in name
+        or name.startswith(".")
+        or name.endswith(".")
+        or not name[0].isalnum()
+        or not all(ch.isalnum() or ch in "._-" for ch in name)
+    ):
         raise ValueError(
-            "Skill name may only contain letters, digits, dots, dashes, and underscores."
+            "Skill name may only contain letters (including Chinese), digits, "
+            "dots, dashes, and underscores."
         )
     return name
 
@@ -69,6 +81,24 @@ def _frontmatter_source(md: Path) -> str:
     return ""
 
 
+def _ensure_frontmatter_source(md: Path, source: str = "uploaded") -> None:
+    """Insert ``source:`` into existing frontmatter without dropping other keys."""
+    if _frontmatter_source(md):
+        return
+    try:
+        text = md.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if not text.startswith("---"):
+        return
+    end = text.find("\n---", 3)
+    if end == -1:
+        return
+    front = text[3:end].rstrip("\n")
+    rest = text[end + 4 :]  # may start with newline
+    md.write_text(f"---\n{front}\nsource: {source}\n---{rest}", encoding="utf-8")
+
+
 def _write_skill_md(
     folder: Path, *, name: str, description: str, instructions: str, source: str = ""
 ) -> None:
@@ -83,11 +113,31 @@ def _write_skill_md(
 class SkillStore:
     """Folder-backed skill CRUD across the global + project scopes."""
 
-    def __init__(self, global_dir: Optional[str | Path] = None) -> None:
+    def __init__(
+        self,
+        global_dir: Optional[str | Path] = None,
+        settings_path: Optional[str | Path] = None,
+    ) -> None:
         self.global_dir = Path(global_dir) if global_dir else state_dir() / "skills"
-        self._settings_path = state_dir() / "skills-settings.json"
+        self._settings_path = (
+            Path(settings_path) if settings_path else state_dir() / "skills-settings.json"
+        )
         self._staging_dir = state_dir() / "skills-staged"
         self._lock = threading.Lock()
+
+    def _read_settings(self) -> dict[str, Any]:
+        try:
+            data = json.loads(self._settings_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _write_settings(self, data: dict[str, Any]) -> None:
+        self._settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self._settings_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
     # -- scope dirs ---------------------------------------------------------------
     def project_dir(self, workspace: str | Path) -> Path:
@@ -229,10 +279,16 @@ class SkillStore:
 
     def delete(self, name: str, workspace: Optional[str | Path] = None) -> None:
         folder, _scope = self.find(name, workspace)
+        name = validate_name(name)
         if folder.is_symlink():  # never follow a link out of the scope dir
             folder.unlink()
-            return
-        shutil.rmtree(folder)
+        else:
+            shutil.rmtree(folder)
+        # Late import: bootstrap imports SkillStore at module load.
+        from .bootstrap import list_bundled_skill_names
+
+        if name in list_bundled_skill_names():
+            self.mark_bundled_uninstalled(name)
 
     def move(
         self,
@@ -256,25 +312,31 @@ class SkillStore:
 
     # -- enable / disable (personal, survives restarts) -----------------------------
     def disabled_names(self) -> set[str]:
-        try:
-            data = json.loads(self._settings_path.read_text(encoding="utf-8"))
-            return {str(n) for n in data.get("disabled", [])}
-        except (OSError, ValueError):
-            return set()
+        return {str(n) for n in self._read_settings().get("disabled", [])}
+
+    def uninstalled_bundled_names(self) -> set[str]:
+        return {str(n) for n in self._read_settings().get("uninstalled_bundled", [])}
+
+    def mark_bundled_uninstalled(self, name: str) -> None:
+        name = validate_name(name)
+        with self._lock:
+            data = self._read_settings()
+            rows = {str(n) for n in data.get("uninstalled_bundled", [])}
+            rows.add(name)
+            data["uninstalled_bundled"] = sorted(rows)
+            self._write_settings(data)
 
     def set_enabled(self, name: str, enabled: bool) -> None:
         name = validate_name(name)
         with self._lock:
-            disabled = self.disabled_names()
+            data = self._read_settings()
+            disabled = {str(n) for n in data.get("disabled", [])}
             if enabled:
                 disabled.discard(name)
             else:
                 disabled.add(name)
-            self._settings_path.parent.mkdir(parents=True, exist_ok=True)
-            self._settings_path.write_text(
-                json.dumps({"disabled": sorted(disabled)}, indent=2),
-                encoding="utf-8",
-            )
+            data["disabled"] = sorted(disabled)
+            self._write_settings(data)
 
     # -- uploads: stage → preview → confirm -----------------------------------------
     def stage_upload(self, data: bytes, filename: str = "") -> dict[str, Any]:
@@ -325,7 +387,7 @@ class SkillStore:
             shutil.rmtree(staged, ignore_errors=True)
             raise
         extras = sorted(
-            str(p.relative_to(staged))
+            p.relative_to(staged).as_posix()
             for p in staged.rglob("*")
             if p.is_file() and p.name != "SKILL.md"
         )
@@ -387,15 +449,8 @@ class SkillStore:
             raise ValueError(f"A skill named '{name}' already exists in that scope.")
         base.mkdir(parents=True, exist_ok=True)
         shutil.move(str(staged), str(folder))
-        # Stamp provenance so the Settings screen can distinguish uploaded from local.
-        if not _frontmatter_source(folder / "SKILL.md"):
-            _write_skill_md(
-                folder,
-                name=name,
-                description=skill.description,
-                instructions=skill.instructions,
-                source="uploaded",
-            )
+        # Stamp provenance without rewriting the rest of SKILL.md (keeps version/metadata).
+        _ensure_frontmatter_source(folder / "SKILL.md", "uploaded")
         return {"name": name, "scope": scope, "path": str(folder)}
 
     def discard_upload(self, token: str) -> None:

@@ -93,10 +93,42 @@ npx.cmd playwright install chromium
 
 浏览器方式最适合高频修改 React 界面，不需要构建 EXE。必须先启动后端，再启动前端；Vite 启动时会从同一个状态目录读取本地认证 token。
 
+### 重启后端 / 前端（Windows 必读）
+
+终端里对 `openworker-server` 或 `npm run dev` 按 `Ctrl+C` **经常杀不干净**：子进程仍占用端口，再次启动会报：
+
+- 后端：`[Errno 10048] ... 通常每个套接字地址只允许使用一次`（8765）
+- 前端：`Error: Port 1420 is already in use`
+
+还会出现 `终止批处理操作吗(Y/N)?`——那是 `cmd`/`npm` 批处理在问是否结束，先回 `Y` 再确认进程已死。
+
+**每次重新启动之前，先释放端口：**
+
+```powershell
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+# 只杀后端
+powershell -File .\scripts\kill-port-8765.ps1
+# 只杀 Vite
+powershell -File .\scripts\kill-port-1420.ps1
+# 或一次清掉两边
+powershell -File .\scripts\kill-chemclaw-dev-ports.ps1
+```
+
+**一键：杀端口 + 新开两个窗口起后端和 Vite（推荐）：**
+
+```powershell
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+powershell -File .\scripts\restart-chemclaw-dev.ps1
+```
+
+脚本会：释放 8765/1420 → 新窗口起后端 → 等 `/v1/health` → 新窗口起 Vite。浏览器打开 `http://localhost:1420`。只要后端可用 `-SkipGui`。
+
+看到对应端口 `OK: port … is free.` 后再启动。后端启动后必须再重启 Vite（每次后端都会重写 `sidecar-<port>.token`）。手工分终端启动见下。
 终端 1：
 
 ```powershell
 cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+powershell -File .\scripts\kill-port-8765.ps1
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 .\.venv\Scripts\openworker-server.exe --host 127.0.0.1 --port 8765
 ```
@@ -111,6 +143,7 @@ Invoke-RestMethod http://127.0.0.1:8765/v1/health
 
 ```powershell
 cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
+powershell -File ..\..\scripts\kill-port-1420.ps1
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 npm.cmd run dev
 ```
@@ -125,13 +158,13 @@ http://localhost:1420
 
 - 必须使用 `localhost`；当前 Vite 在 Windows 上监听 `::1`，`http://127.0.0.1:1420` 可能打不开。
 - React/样式修改会自动热更新。
-- Python 后端修改后通常要在终端 1 按 `Ctrl+C`，再重新启动后端。
-- 正常停止两个服务的方法是分别在对应终端按 `Ctrl+C`。
+- Python 后端修改后：先跑 `scripts/kill-port-8765.ps1`，再重新启动后端；不要只依赖 `Ctrl+C`。
+- 前端 `Port 1420 is already in use`：先跑 `scripts/kill-port-1420.ps1`（或 `kill-chemclaw-dev-ports.ps1`），再 `npm.cmd run dev`。
+- 正常停止：终端 `Ctrl+C`；若出现 `终止批处理操作吗(Y/N)?` 输入 `Y`；若仍占端口，再跑 kill 脚本。
 - 如果一直显示 `Starting ChemClaw…` / `正在启动 ChemClaw…`，先确认 8765 健康，再重启 Vite。后端启动失败或 Vite 在 token 生成前启动都会造成这个现象。
 - **每次重启后端都会重写 `sidecar-<port>.token`**，必须随后重启 Vite，否则 GUI 会带着旧 token 请求并表现为连不上/对话无响应。
 - OpenAI 兼容自定义网关的 `base_url` 必须包含 `/v1`（例如 `https://apihub.chem-cloud.cn/v1`）。写成根域名时，SDK 会打到 `/chat/completions` 而非 `/v1/chat/completions`，表现为 0 chunk、空白回答。
-- 验收时确认：品牌为 ChemClaw、默认中文、主导航含「技能」与「专家龙虾」、内置 `serenity.industry-chain-mapping` 可在技能页看到；专家页控件为中文。
-
+- 验收时确认：品牌为 ChemClaw、默认中文、主导航含「技能」与「专家龙虾」、技能页可见完整内置 Skills（中文投研 + chem-* 等）；专家页控件为中文。
 ### 桌面程序源码模式
 
 这个模式直接打开 Tauri 桌面窗口，也不构建安装包。它适合验证托盘、原生文件夹选择器、语音输入等原生能力；普通界面修改优先使用浏览器。

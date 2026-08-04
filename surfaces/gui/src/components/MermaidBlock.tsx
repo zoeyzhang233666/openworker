@@ -128,8 +128,13 @@ export function MermaidBlock({ source }: { source: string }): JSX.Element {
     minHeight: lockedHeight ?? 180,
   } as const;
 
+  const hasError = !!(error || exportError);
+
   return (
-    <div className="mermaid-block" data-testid="mermaid-block">
+    <div
+      className={`mermaid-block${hasError ? " is-error" : ""}`}
+      data-testid="mermaid-block"
+    >
       <div className="mermaid-block-toolbar">
         <button
           type="button"

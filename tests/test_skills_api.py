@@ -34,8 +34,18 @@ class ScriptedProvider(ProviderClient):
 
 
 def _client(tmp_path, turns=None):
-    provider = ScriptedProvider(turns)
-    manager = SessionManager(workspace=tmp_path, provider=provider)
+    """Build an API client with an empty bundled-skills dir so CRUD tests stay deterministic."""
+    import coworker.skills.bootstrap as boot
+
+    empty = tmp_path / "empty-bundled"
+    empty.mkdir(exist_ok=True)
+    old_bundled = boot.BUNDLED_DIR
+    boot.BUNDLED_DIR = empty
+    try:
+        provider = ScriptedProvider(turns)
+        manager = SessionManager(workspace=tmp_path, provider=provider)
+    finally:
+        boot.BUNDLED_DIR = old_bundled
     return TestClient(create_app(manager)), manager, provider
 
 
@@ -277,6 +287,7 @@ def test_engine_catalog_respects_settings_disable(tmp_path):
     engine = build_engine(
         agent=get_agent("chat"),
         provider=ScriptedProvider(),
+        workspace=tmp_path,
         skill_filter=lambda: manager.effective_skill_names("s1"),
     )
     # The menu rides the live per-turn context block (§4.1), not the system prompt.

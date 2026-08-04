@@ -85,6 +85,17 @@
 - **D-055**：Tencent/WeKnora 的互链 Markdown Wiki、Wiki 浏览和可视图谱作为阶段五产品参考；是否复用代码需在阶段五单独评估，不在当前技术选型中决定。
 - **D-056**：交互价格图原则上可行，数据必须来自有时间戳和来源的 MCP/价格接口；具体图表形式、刷新频率和授权规则在阶段五设计时决定。
 
+## Skill 内置与命名（2026-08-04）
+
+- **D-057**：Skill `name` 允许 Unicode 字母/数字（含中文）以及 `.` `-` `_`；仍禁止空格、`/` `\` `..` 与首尾点。文件夹名必须等于 frontmatter `name`。
+- **D-058**：ChemClaw 内置 Skill 以完整目录入库（`SKILL.md` + `references`/`scripts`/附属文件），不是单文件提示词。当前内置含 Serenity 七个中文投研 Skills、Serenity `builtin-skills`（跳过 Linux 专用 `computer-use`，对齐 D-023）、以及 chem-cloud 系列 Skills。
+- **D-059**：用户删除内置 Skill 后写入 `skills-settings.json` 的 `uninstalled_bundled`；后续启动 seed 不得回种。禁用（enabled）与卸载（删除）是不同操作。
+- **D-060**：zip 上传安装须保留附属文件与扩展 frontmatter；仅在无 `source` 时注入 `source: uploaded`，不得用精简模板覆盖整份 `SKILL.md`。运行时依赖（Node/`fd`/`rg` 等）留给正式安装器任务，不在本阶段捆绑。
+
+## 对话运行态（2026-08-04）
+
+- **D-061**：离开设置页或其他对话不取消正在进行的 turn（后端本就不因 WS 断开而 interrupt）。前端同会话重选不得清空 `running`/`streaming`；异会话回切通过 `ready.running` 与中途事件恢复 Stop/进行中状态，并在 `turn_done` 后用落盘消息追齐最终回答。不采用多会话常驻多路 WebSocket。
+
 ## 协作治理
 
 - **D-057**：项目事实沉淀在 Git 跟踪的本地文档，而不是依赖聊天历史。

@@ -245,7 +245,7 @@ def test_compaction_state_survives_save_and_rebuild(tmp_path):
     sid = "compact-persist"
     engine = mgr.get_engine(sid, agent="cowork", workspace=str(tmp_path))
     assert callable(engine.compaction_settings)  # live Settings getter is wired
-    assert engine.compaction_settings()["threshold_pct"] == 0.8
+    assert engine.compaction_settings()["threshold_pct"] == 0.95
 
     engine.messages += long_history(turns=3)[1:]
     engine.compaction_state = CompactionState(

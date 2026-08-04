@@ -234,7 +234,12 @@ class SessionManager:
         # Skills (SKILLS-SPEC §4): folder-backed CRUD + per-session mutes. The effective menu
         # gates the engine's skill catalog the same way effective_connectors gates connector
         # tools — one resolver feeds the catalog injection, the rail, and the composer popup.
-        self.skill_store = SkillStore()
+        # Keep skills under the manager data base (state_dir in production; test workspaces
+        # isolate under ``<workspace>/.coworker``).
+        self.skill_store = SkillStore(
+            global_dir=base / "skills",
+            settings_path=base / "skills-settings.json",
+        )
         seed_bundled_skills(self.skill_store)
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither

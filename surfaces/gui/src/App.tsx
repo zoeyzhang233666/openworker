@@ -40,6 +40,12 @@ import type {
 import { isProjectScoped } from "./personaScope";
 import { baseName } from "./paths";
 import { itemsFromMessages } from "./itemsFromMessages";
+import {
+  eventImpliesRunning,
+  runningFromReady,
+  shouldApplySessionMessages,
+  shouldSkipSessionReselect,
+} from "./sessionResume";
 import { addTurnUsage, emptyUsage, usageFromMessages } from "./usage";
 import { streamMode } from "./streamGate";
 import { applyArtifactPreviewNav } from "./navArtifactPreview";
@@ -206,6 +212,10 @@ export function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [projects, setProjects] = useState<RecentWorkspace[]>([]);
   const [sessionId, setSessionId] = useState<string>(newId());
+  // Bumps on every real session switch so a slow getSessionMessages can't overwrite a newer select.
+  const selectGenerationRef = useRef(0);
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   // Automation-run context (§ owner ask 2026-07-04): which task an open __run__ session belongs
   // to, driving the banner + "Back to runs". Best-effort — a run session without context still
   // shows a generic banner (detected by its __run__ id).
@@ -602,6 +612,8 @@ export function App() {
       // Any engine event after `compacting` means the summarizer finished (compacted /
       // silent no-op / failure prompt) — the transient must never outlive it.
       if (ev.type !== "compacting") setCompacting(false);
+      // Missed turn_start after reconnect: mid-turn events still imply a live turn.
+      if (eventImpliesRunning(ev.type)) setRunning(true);
       switch (ev.type) {
         case "ready":
           setConnected(true);
@@ -610,6 +622,8 @@ export function App() {
           if (d.command_trust?.required) setWorkspaceTrustRequest(d.command_trust);
           // Cowork: adopt the server-provisioned scratch dir (only when we don't already have one).
           if (d.workspace) setWorkspace((cur) => cur || d.workspace);
+          // Mid-turn reconnect: restore Stop/spinner (we never re-see turn_start).
+          if (runningFromReady(d)) setRunning(true);
           break;
         case "turn_start":
           setRunning(true);
@@ -787,6 +801,20 @@ export function App() {
               activeRunRef.current = null;
               finalizeAutomationRun(ar.taskId, ar.runId).catch(() => {});
             }
+          }
+          // After reconnect mid-turn the live buffer may be incomplete; trust the persisted transcript
+          // (turn_done is emitted after save in run_turn's finally).
+          {
+            const sid = sessionId;
+            void getSessionMessages(sid)
+              .then((messages) => {
+                if (sessionIdRef.current !== sid) return;
+                setItems(itemsFromMessages(messages));
+                setUsage(usageFromMessages(messages));
+                setStreaming("");
+                setReasoningStream("");
+              })
+              .catch(() => {});
           }
           break;
       }
@@ -1008,9 +1036,24 @@ export function App() {
 
   const openSessionFromInbox = (sid: string, ws: string, ag: string) => selectSession(sid, ws, ag);
   const selectSession = async (id: string, ws: string, ag: string) => {
+    // Re-clicking the active conversation (e.g. returning from Settings via the sidebar)
+    // must not wipe streaming/running — the WS is still open and the turn is still live.
+    if (
+      shouldSkipSessionReselect(id, sessionId, {
+        agent: ag || undefined,
+        currentAgent: agent,
+        workspace: ws || undefined,
+        currentWorkspace: workspace,
+      })
+    ) {
+      setSurface("session");
+      return;
+    }
+    const gen = ++selectGenerationRef.current;
     setSurface("session"); // selecting a conversation always returns to the conversation view
     setTodo([]);
     setStreaming("");
+    setReasoningStream("");
     setRunning(false);
     if (ag) setAgent(ag);
     if (!gatesWorkspace(ag)) setShowGate(false);
@@ -1018,12 +1061,19 @@ export function App() {
       setWorkspace(ws); // switch project to the session's folder
       setBranch(null);
     }
+    sessionIdRef.current = id; // sync before await — render hasn't run yet
     setSessionId(id);
     try {
       const messages = await getSessionMessages(id);
+      if (!shouldApplySessionMessages(gen, selectGenerationRef.current, id, sessionIdRef.current)) {
+        return;
+      }
       setItems(itemsFromMessages(messages));
       setUsage(usageFromMessages(messages));
     } catch {
+      if (!shouldApplySessionMessages(gen, selectGenerationRef.current, id, sessionIdRef.current)) {
+        return;
+      }
       setItems([]);
       setUsage(emptyUsage());
     }

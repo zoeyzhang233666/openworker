@@ -103,6 +103,33 @@ describe("MermaidBlock", () => {
     await waitFor(() => expect(screen.queryByTestId("mermaid-lightbox")).toBeNull());
   });
 
+  it("keeps toolbar mounted without is-error so CSS can hide chrome until hover/focus", async () => {
+    render(<MermaidBlock source={"graph TD; A-->B"} />);
+    const block = await screen.findByTestId("mermaid-block");
+    await waitFor(() => expect(screen.getByTestId("mermaid-diagram")).toBeTruthy());
+    expect(block.className).toBe("mermaid-block");
+    expect(block.classList.contains("is-error")).toBe(false);
+    // Toolbar stays in the tree (visibility:hidden via CSS) to reserve height.
+    expect(block.querySelector(".mermaid-block-toolbar")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /全屏|Fullscreen/i })).toBeTruthy();
+  });
+
+  it("adds is-error when render fails so chrome stays visible without hover", async () => {
+    renderMock.mockRejectedValueOnce(new Error("parse"));
+    render(<MermaidBlock source={"not mermaid"} />);
+    const block = await screen.findByTestId("mermaid-block");
+    await waitFor(() => expect(screen.getByTestId("mermaid-error")).toBeTruthy());
+    expect(block.classList.contains("is-error")).toBe(true);
+    expect(screen.getByTestId("mermaid-source")).toBeTruthy();
+  });
+
+  it("adds is-error when source is oversized", async () => {
+    render(<MermaidBlock source={"x".repeat(50_001)} />);
+    const block = await screen.findByTestId("mermaid-block");
+    await waitFor(() => expect(screen.getByTestId("mermaid-error")).toBeTruthy());
+    expect(block.classList.contains("is-error")).toBe(true);
+  });
+
   it("closes lightbox when clicking backdrop mask", async () => {
     render(<MermaidBlock source={"graph TD; A-->B"} />);
     await waitFor(() => screen.getByTestId("mermaid-diagram"));

@@ -350,6 +350,26 @@ def test_ws_simple_turn(tmp_path):
         assert "turn_end" in types
 
 
+def test_ws_ready_reports_running(tmp_path):
+    """Reconnect must learn whether a turn is still in flight (UI resume after nav away)."""
+    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider([_text("x")]))
+    client = TestClient(create_app(manager))
+
+    with client.websocket_connect("/ws/session/idle-ready") as ws:
+        ready = ws.receive_json()
+        assert ready["type"] == "ready"
+        assert ready["data"]["running"] is False
+
+    # Materialize the session engine, then mark a turn in flight without a live socket.
+    manager.get_engine("mid-turn", agent="chat")
+    assert manager.try_mark_running("mid-turn") is True
+    with client.websocket_connect("/ws/session/mid-turn") as ws:
+        ready = ws.receive_json()
+        assert ready["type"] == "ready"
+        assert ready["data"]["running"] is True
+    manager.mark_idle("mid-turn")
+
+
 def test_ws_rejects_oversized_message(tmp_path):
     from coworker.server import app as app_mod
     from coworker.attachments import MAX_ATTACHMENTS
