@@ -343,6 +343,78 @@ def test_stream_falls_back_to_nonstream_after_transport_failures():
     assert any(not c.get("stream") for c in client.chat.completions.calls)
 
 
+def test_concurrent_streams_use_distinct_sdk_clients():
+    """Two sessions stream on one OpenAIProvider via thread-pool workers. Each stream must
+    own a fresh SDK client so overlapping chunked bodies cannot tear each other down
+    (ChemClaw: switch chat mid-answer → Connection error on the background turn)."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    built: list[object] = []
+    lock = threading.Lock()
+
+    class _FakeSDK:
+        def __init__(self):
+            self.closed = False
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=lambda **kw: iter(
+                        [_chunk(content=f"ok-{id(self)}"), _chunk(finish="stop")]
+                    )
+                )
+            )
+            with lock:
+                built.append(self)
+
+        def close(self) -> None:
+            self.closed = True
+
+    provider = OpenAIProvider(api_key="sk-test", base_url="https://example.test/v1")
+    provider._make_sdk_client = lambda: _FakeSDK()  # type: ignore[method-assign]
+
+    def _run():
+        return list(provider.stream(model="kimi-k2.5", messages=[]))
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f1 = pool.submit(_run)
+        f2 = pool.submit(_run)
+        out1, out2 = f1.result(), f2.result()
+
+    assert out1[-1].turn and out2[-1].turn
+    assert len(built) == 2
+    assert built[0] is not built[1]
+    assert all(c.closed for c in built)
+
+
+def test_stream_retries_generic_connection_error(monkeypatch):
+    """OpenAI SDK's APIConnectionError default message is 'Connection error.' — treat like
+    other stream transport failures so a parallel-session flake can retry/fallback."""
+
+    class _ConnThenOk:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            stream_n = sum(1 for c in self.calls if c.get("stream"))
+            if kwargs.get("stream"):
+                if stream_n == 1:
+
+                    def _boom():
+                        yield _chunk(content="x")
+                        raise RuntimeError("Connection error.")
+
+                    return _boom()
+                return iter([_chunk(content="recovered"), _chunk(finish="stop")])
+            return _response(content="unused")
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _ConnThenOk()
+    provider = OpenAIProvider(client=client)
+    out = list(provider.stream(model="gpt-5.5", messages=[]))
+    assert [c.text_delta for c in out if c.text_delta] == ["recovered"]
+
+
 # -- OpenAI-compatible vendor providers (Z AI, DeepSeek, Kimi, MiniMax, Qwen, xAI, Mistral) ------
 
 COMPAT_VENDORS = {

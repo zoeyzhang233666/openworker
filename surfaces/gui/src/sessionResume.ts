@@ -57,3 +57,15 @@ export function shouldApplySessionMessages(
 ): boolean {
   return generation === currentGeneration && expectedSessionId === currentSessionId;
 }
+
+/**
+ * Guard live WS events: after switching chats the old socket is closed, but an
+ * in-flight `onmessage` can still run and must not paint error/interrupted onto
+ * the newly selected session.
+ */
+export function shouldHandleSessionEvent(
+  boundSessionId: string,
+  currentSessionId: string,
+): boolean {
+  return boundSessionId === currentSessionId;
+}

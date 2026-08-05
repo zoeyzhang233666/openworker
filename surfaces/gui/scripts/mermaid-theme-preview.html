@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ChemClaw Mermaid 配色预览（不改产品源码）</title>
+  <style>
+    :root {
+      --bg: #f6f4f1;
+      --panel: #ffffff;
+      --ink: #1f1a17;
+      --muted: #5c534c;
+      --line: #e4ddd4;
+      --accent: #2f5d50;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #efe8ff 0%, transparent 55%),
+        radial-gradient(900px 400px at 90% 0%, #ffe8d6 0%, transparent 50%),
+        var(--bg);
+      line-height: 1.55;
+    }
+    header {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 28px 20px 8px;
+    }
+    h1 { margin: 0 0 8px; font-size: 1.55rem; font-weight: 700; }
+    .lede { color: var(--muted); max-width: 70ch; margin: 0 0 12px; }
+    .notes {
+      background: #fffaf3;
+      border: 1px solid #edd9b8;
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: #4a3010;
+      font-size: 0.92rem;
+    }
+    .notes ul { margin: 8px 0 0; padding-left: 1.2em; }
+    .notes code { background: #f3ebe0; padding: 0 4px; border-radius: 4px; }
+    section {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px 20px 8px;
+    }
+    h2 { font-size: 1.15rem; margin: 0 0 12px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    @media (max-width: 1100px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 280px;
+    }
+    .card header.card-h {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #faf8f5;
+    }
+    .card h3 { margin: 0 0 4px; font-size: 0.98rem; }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #e8f0ed;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .tag.warn { background: #fde8d8; color: #8a3b12; }
+    .tag.goal { background: #efe6f8; color: #5a3d7a; }
+    .card p { margin: 0; font-size: 0.82rem; color: var(--muted); }
+    .diagram {
+      padding: 12px;
+      overflow: auto;
+      flex: 1;
+      background: #fff;
+    }
+    .diagram .mermaid,
+    .diagram svg {
+      max-width: 100%;
+    }
+    .err {
+      color: #9b1c1c;
+      background: #fde8e8;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+    details {
+      margin: 8px 14px 14px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    details pre {
+      background: #f4f1ec;
+      padding: 8px;
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 180px;
+    }
+    footer {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 8px 20px 36px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    /* 方便你本地改色：与脚本里 THEME_VARS 同步看效果 */
+    .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .swatch {
+      width: 28px; height: 28px; border-radius: 6px;
+      border: 1px solid rgba(0,0,0,.15);
+      title: "";
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Mermaid 配色预览（独立 HTML · 不改 ChemClaw 源码）</h1>
+    <p class="lede">
+      三栏对比同一套样例：① 当前 ChemClaw 近似（<code>default</code>）·
+      ② 你期望的语义配色（源码里带 <code>classDef</code> / subgraph <code>style</code>）·
+      ③ 仅渲染侧 <code>base</code> + <code>themeVariables</code>（无 classDef）能达到的上限。
+    </p>
+    <div class="notes">
+      <strong>怎么读这页</strong>
+      <ul>
+        <li><strong>栏 2</strong> 才是「原料紫 / 工艺橙 / 产品粉…」完整效果；需要模型在 Mermaid 源码里写出 <code>classDef</code> 与 <code>:::类型</code>（或你改 Skill 给出配色参考）。</li>
+        <li><strong>栏 3</strong> 是只改 GUI 全局主题时的观感：饼图会按色板彩色化，流程图节点/默认 subgraph 会柔和一些，但<strong>不会</strong>按语义自动分色。</li>
+        <li>看完再决定：只上栏 3 / 再改 Skill / 两者都做 / 都不做。本文件可随意改下面脚本里的 <code>THEME_VARS</code> 后刷新。</li>
+      </ul>
+      <div class="swatches" id="swatches" aria-label="色板预览"></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>样例 A · 产业链 flowchart</h2>
+    <div class="grid" id="flow-grid"></div>
+  </section>
+
+  <section>
+    <h2>样例 B · 饼图</h2>
+    <div class="grid" id="pie-grid"></div>
+  </section>
+
+  <footer>
+    文件位置：<code>surfaces/gui/scripts/mermaid-theme-preview.html</code> ·
+    双击打开或在资源管理器中打开即可（需联网加载 Mermaid CDN）。
+  </footer>
+
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/+esm";
+
+    // —— 本地改色请只改这里，保存后刷新浏览器 ——
+    const THEME_VARS = {
+      darkMode: false,
+      background: "#FFFFFF",
+      fontFamily: "trebuchet ms, verdana, arial, sans-serif",
+      fontSize: "16px",
+      primaryColor: "#DDD2EB",
+      primaryTextColor: "#2E1C4A",
+      primaryBorderColor: "#7B5EA7",
+      secondaryColor: "#FAD4BF",
+      secondaryTextColor: "#4E2010",
+      secondaryBorderColor: "#D4764A",
+      tertiaryColor: "#BFE0D0",
+      tertiaryTextColor: "#143826",
+      tertiaryBorderColor: "#3D8B62",
+      lineColor: "#5A4A6A",
+      textColor: "#2E1C4A",
+      mainBkg: "#DDD2EB",
+      clusterBkg: "#F3EEF8",
+      clusterBorder: "#7B5EA7",
+      edgeLabelBackground: "#FCF8F1",
+      // 饼图扇区：按你推荐配色体系 fill 依次填入
+      pie1: "#DDD2EB",
+      pie2: "#FAD4BF",
+      pie3: "#F5D0DE",
+      pie4: "#BFE0D0",
+      pie5: "#F2E1C0",
+      pie6: "#D6E4F0",
+      pie7: "#F9E4B7",
+      pie8: "#E0D7F0",
+      pie9: "#A8D5BE",
+      pie10: "#F3EEF8",
+      pie11: "#FEF3EB",
+      pie12: "#EBF5F0",
+      pieStrokeColor: "#5A4A6A",
+      pieOuterStrokeColor: "#5A4A6A",
+      pieOpacity: "0.92",
+      pieTitleTextColor: "#2E1C4A",
+      pieSectionTextColor: "#2E1C4A",
+      pieLegendTextColor: "#2E1C4A",
+    };
+
+    const FLOW_PLAIN = `graph LR
+  subgraph raw ["原料"]
+    原料A["丙烷"]
+    原料B["石脑油"]
+  end
+  subgraph proc ["工艺"]
+    工艺A{"PDH"}
+    工艺B{"蒸汽裂解"}
+  end
+  subgraph mid ["中间体"]
+    中间体A("丙烯")
+  end
+  subgraph prod ["产品"]
+    主产品["聚丙烯 PP"]
+  end
+  subgraph down ["下游"]
+    下游A("改性料")
+    下游B("纤维")
+  end
+  subgraph endUse ["终端"]
+    终端A{{"汽车"}}
+    终端B{{"家电"}}
+  end
+  原料A -->|进入| 工艺A
+  原料B -->|进入| 工艺B
+  工艺A -->|生成| 中间体A
+  工艺B -->|生成| 中间体A
+  中间体A -->|聚合| 主产品
+  主产品 -->|主要下游| 下游A
+  主产品 -->|次要下游| 下游B
+  下游A -->|终端行业| 终端A
+  下游B -->|终端行业| 终端B`;
+
+    const FLOW_SEMANTIC = `graph LR
+  subgraph 原料超边 ["原料超边"]
+    style 原料超边 fill:#F3EEF8,stroke:#7B5EA7,stroke-width:2px,color:#2E1C4A
+    原料A["丙烷"]:::rawMaterial
+    原料B["石脑油"]:::rawMaterial
+  end
+  subgraph 生产工艺超边 ["生产工艺超边"]
+    style 生产工艺超边 fill:#FEF3EB,stroke:#D4764A,stroke-width:2px,color:#4E2010
+    工艺A{"PDH"}:::process
+    工艺B{"蒸汽裂解"}:::process
+  end
+  subgraph 中间体超边 ["中间体超边"]
+    style 中间体超边 fill:#F2ECF7,stroke:#8B6BAE,stroke-width:2px,color:#3D2355
+    中间体A("丙烯"):::intermediate
+  end
+  subgraph 产品超边 ["产品超边"]
+    style 产品超边 fill:#FDF0F5,stroke:#D47B9C,stroke-width:2px,color:#4A2035
+    主产品["聚丙烯 PP"]:::product
+  end
+  subgraph 直接下游产品超边 ["直接下游产品超边"]
+    style 直接下游产品超边 fill:#EBF5F0,stroke:#3D8B62,stroke-width:2px,color:#143826
+    下游A("改性料"):::downstream
+    下游B("纤维"):::downstream
+  end
+  subgraph 终端行业超边 ["终端行业超边"]
+    style 终端行业超边 fill:#FCF8F1,stroke:#C49B4C,stroke-width:2px,color:#4A3010
+    终端A{{"汽车"}}:::endUse
+    终端B{{"家电"}}:::endUse
+  end
+  原料A -->|进入| 工艺A
+  原料B -->|进入| 工艺B
+  工艺A -->|生成| 中间体A
+  工艺B -->|生成| 中间体A
+  中间体A -->|聚合| 主产品
+  主产品 -->|主要下游| 下游A
+  主产品 -->|次要下游| 下游B
+  下游A -->|终端行业| 终端A
+  下游B -->|终端行业| 终端B
+  classDef rawMaterial fill:#DDD2EB,stroke:#7B5EA7,color:#2E1C4A
+  classDef intermediate fill:#E0D7F0,stroke:#8B6BAE,color:#2A1F44
+  classDef process fill:#FAD4BF,stroke:#D4764A,color:#4E2010
+  classDef product fill:#F5D0DE,stroke:#D47B9C,color:#4A2035
+  classDef downstream fill:#BFE0D0,stroke:#3D8B62,color:#143826
+  classDef endUse fill:#F2E1C0,stroke:#C49B4C,color:#4A3010`;
+
+    const PIE_PLAIN = `pie showData
+  title 丙烯下游需求结构 (约 2024)
+  "聚丙烯 PP" : 72
+  "环氧丙烷 PO" : 10
+  "丙烯腈 AN" : 7
+  "丙烯酸 AA" : 5
+  "丁辛醇/其他" : 6`;
+
+    function withInit(theme, source, themeVariables) {
+      const cfg = { theme };
+      if (themeVariables) cfg.themeVariables = themeVariables;
+      const json = JSON.stringify(cfg);
+      return `%%{init: ${json}}%%\n${source}`;
+    }
+
+    const PANELS = [
+      {
+        key: "default",
+        tag: "栏 1 · ChemClaw 现状近似",
+        tagClass: "tag",
+        title: "theme: default（无 classDef）",
+        desc: "当前 GUI 全局主题。饼图有色，但 flowchart 多为默认黄/白，subgraph 区分弱。",
+        flow: withInit("default", FLOW_PLAIN),
+        pie: withInit("default", PIE_PLAIN),
+      },
+      {
+        key: "semantic",
+        tag: "栏 2 · 目标观感上限",
+        tagClass: "tag goal",
+        title: "源码内 classDef + subgraph style",
+        desc: "完整柔和信息图风格。依赖模型输出 classDef（改 Skill 配色参考可引导，但不强制模板结构）。",
+        flow: withInit("base", FLOW_SEMANTIC),
+        pie: withInit("base", PIE_PLAIN, THEME_VARS),
+      },
+      {
+        key: "base-vars",
+        tag: "栏 3 · 只改渲染侧",
+        tagClass: "tag warn",
+        title: "theme: base + themeVariables（无 classDef）",
+        desc: "只改 MermaidBlock 全局配置时的上限：节点/默认 cluster/饼图更柔和，但不会按原料/工艺/产品自动分色。",
+        flow: withInit("base", FLOW_PLAIN, THEME_VARS),
+        pie: withInit("base", PIE_PLAIN, THEME_VARS),
+      },
+    ];
+
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "loose",
+      suppressErrorRendering: true,
+    });
+
+    function paintSwatches() {
+      const host = document.getElementById("swatches");
+      const colors = [
+        THEME_VARS.pie1, THEME_VARS.pie2, THEME_VARS.pie3, THEME_VARS.pie4,
+        THEME_VARS.pie5, THEME_VARS.pie6, THEME_VARS.pie7, THEME_VARS.pie8, THEME_VARS.pie9,
+      ];
+      host.innerHTML = colors
+        .map((c) => `<span class="swatch" style="background:${c}" title="${c}"></span>`)
+        .join("");
+    }
+
+    function makeCard(panel, kind, source) {
+      const card = document.createElement("article");
+      card.className = "card";
+      card.innerHTML = `
+        <header class="card-h">
+          <div class="${panel.tagClass}">${panel.tag}</div>
+          <h3>${panel.title}</h3>
+          <p>${panel.desc}</p>
+        </header>
+        <div class="diagram" data-kind="${kind}" data-key="${panel.key}"></div>
+        <details>
+          <summary>查看本栏源码</summary>
+          <pre></pre>
+        </details>
+      `;
+      card.querySelector("pre").textContent = source;
+      return card;
+    }
+
+    async function renderInto(el, source, id) {
+      try {
+        const { svg } = await mermaid.render(id, source);
+        el.innerHTML = svg;
+      } catch (err) {
+        el.innerHTML = `<div class="err">渲染失败：${err?.message || err}</div>`;
+      }
+    }
+
+    async function main() {
+      paintSwatches();
+      const flowGrid = document.getElementById("flow-grid");
+      const pieGrid = document.getElementById("pie-grid");
+      let n = 0;
+      for (const panel of PANELS) {
+        const flowCard = makeCard(panel, "flow", panel.flow);
+        const pieCard = makeCard(panel, "pie", panel.pie);
+        flowGrid.appendChild(flowCard);
+        pieGrid.appendChild(pieCard);
+        await renderInto(flowCard.querySelector(".diagram"), panel.flow, `flow-${panel.key}-${n++}`);
+        await renderInto(pieCard.querySelector(".diagram"), panel.pie, `pie-${panel.key}-${n++}`);
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

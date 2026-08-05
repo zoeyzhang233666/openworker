@@ -96,6 +96,10 @@
 
 - **D-061**：离开设置页或其他对话不取消正在进行的 turn（后端本就不因 WS 断开而 interrupt）。前端同会话重选不得清空 `running`/`streaming`；异会话回切通过 `ready.running` 与中途事件恢复 Stop/进行中状态，并在 `turn_done` 后用落盘消息追齐最终回答。不采用多会话常驻多路 WebSocket。
 
+## 对话并发（2026-08-05）
+
+- **D-062**：跨会话允许并行 turn（与业界 ChatGPT/Claude/claw 一致）。不做全局「最多 N 路对话」软上限——定时任务、频道投递、self-wake 也占用 `_running_sessions`，对话数硬顶会误伤用户或文案不诚实。同会话仍 single-flight。并行安全靠每次 `stream()` 使用独立 OpenAI SDK/httpx 客户端（测注入客户端除外）；前端 WS 事件按绑定 `sessionId` 过滤，避免切会话后旧事件串台。
+
 ## 协作治理
 
 - **D-057**：项目事实沉淀在 Git 跟踪的本地文档，而不是依赖聊天历史。

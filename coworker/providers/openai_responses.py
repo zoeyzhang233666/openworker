@@ -295,23 +295,33 @@ class OpenAIResponsesProvider(ProviderClient):
         # SecretStore). Tests inject a `client` directly. No base_url — a custom endpoint
         # routes to the Chat Completions provider instead (registry.py).
         self._client = client
+        self._client_injected = client is not None
         self._api_key = api_key
         self._secrets = secrets
         self.default_model = default_model
 
+    def _make_sdk_client(self) -> Any:
+        from openai import OpenAI
+
+        key = self._api_key or resolve_api_key(self._secrets)
+        if not key:
+            raise RuntimeError(
+                "No model API key configured. Set OPENAI_API_KEY in the environment, "
+                "or add your key in Manage → Settings."
+            )
+        return OpenAI(api_key=key)
+
     def _ensure_client(self) -> Any:
         if self._client is None:
             # Lazy import so the SDK is only required when actually talking to OpenAI.
-            from openai import OpenAI
-
-            key = self._api_key or resolve_api_key(self._secrets)
-            if not key:
-                raise RuntimeError(
-                    "No model API key configured. Set OPENAI_API_KEY in the environment, "
-                    "or add your key in Manage → Settings."
-                )
-            self._client = OpenAI(api_key=key)
+            self._client = self._make_sdk_client()
         return self._client
+
+    def _stream_client(self) -> tuple[Any, bool]:
+        """Fresh SDK client per stream unless tests injected one. See OpenAIProvider."""
+        if self._client_injected:
+            return self._client, False
+        return self._make_sdk_client(), True
 
     def _request_kwargs(
         self,
@@ -381,34 +391,44 @@ class OpenAIResponsesProvider(ProviderClient):
             model=model, messages=messages, tools=tools, settings=settings
         )
         kwargs["stream"] = True
-        events = self._create(self._ensure_client(), kwargs)
+        client, close_after = self._stream_client()
+        try:
+            events = self._create(client, kwargs)
 
-        text_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        final: Optional[Any] = None
-        for event in events:
-            kind = getattr(event, "type", None)
-            if kind == "response.output_text.delta":
-                delta = getattr(event, "delta", None)
-                if delta:
-                    text_parts.append(delta)
-                    yield StreamChunk(text_delta=delta)
-            elif kind == "response.reasoning_summary_text.delta":
-                delta = getattr(event, "delta", None)
-                if delta:
-                    reasoning_parts.append(delta)
-                    yield StreamChunk(reasoning_delta=delta)
-            elif kind in ("response.completed", "response.incomplete", "response.failed"):
-                final = getattr(event, "response", None)
+            text_parts: list[str] = []
+            reasoning_parts: list[str] = []
+            final: Optional[Any] = None
+            for event in events:
+                kind = getattr(event, "type", None)
+                if kind == "response.output_text.delta":
+                    delta = getattr(event, "delta", None)
+                    if delta:
+                        text_parts.append(delta)
+                        yield StreamChunk(text_delta=delta)
+                elif kind == "response.reasoning_summary_text.delta":
+                    delta = getattr(event, "delta", None)
+                    if delta:
+                        reasoning_parts.append(delta)
+                        yield StreamChunk(reasoning_delta=delta)
+                elif kind in ("response.completed", "response.incomplete", "response.failed"):
+                    final = getattr(event, "response", None)
 
-        if final is not None:
-            # The terminal event carries the full response — parse it whole so tool
-            # calls, finish reason, and the `_openai` sidecar come from one place.
-            yield StreamChunk(turn=_parse_response(final))
-        else:
-            yield StreamChunk(
-                turn=AssistantTurn(
-                    text="".join(text_parts) or None,
-                    reasoning="".join(reasoning_parts) or None,
+            if final is not None:
+                # The terminal event carries the full response — parse it whole so tool
+                # calls, finish reason, and the `_openai` sidecar come from one place.
+                yield StreamChunk(turn=_parse_response(final))
+            else:
+                yield StreamChunk(
+                    turn=AssistantTurn(
+                        text="".join(text_parts) or None,
+                        reasoning="".join(reasoning_parts) or None,
+                    )
                 )
-            )
+        finally:
+            if close_after:
+                close = getattr(client, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass

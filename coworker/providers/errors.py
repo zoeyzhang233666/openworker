@@ -39,6 +39,7 @@ _STREAM_TRANSPORT = (
     "incomplete chunked read",
     "peer closed connection",
     "remoteprotocolerror",
+    "connection error",
 )
 
 

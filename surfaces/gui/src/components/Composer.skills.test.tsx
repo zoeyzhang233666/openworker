@@ -39,7 +39,7 @@ const props = (extra: Partial<Parameters<typeof Composer>[0]> = {}) => ({
   ...extra,
 });
 
-const box = () => screen.getByPlaceholderText(/Ask the coworker/);
+const box = () => screen.getByPlaceholderText(/Ask ChemClaw|向 ChemClaw|Ask the coworker/);
 
 afterEach(() => {
   cleanup();
@@ -65,6 +65,36 @@ describe("Composer / skills popup", () => {
     await screen.findByText("/weekly-report");
     fireEvent.change(box(), { target: { value: "/wee" } });
     expect(screen.getByText("/weekly-report")).toBeTruthy();
+    expect(screen.queryByText("/greet")).toBeNull();
+  });
+
+  it("filters by Chinese description so users need not know the English skill id", async () => {
+    const zhMenu = {
+      skills: [
+        {
+          name: "chem-price-daily",
+          description: "行情服务工具。按品种分区域自动生成价格日报/周报。",
+          scope: "global",
+          enabled: true,
+        },
+        {
+          name: "greet",
+          description: "says hello",
+          scope: "project",
+          enabled: true,
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/skills")) return { ok: true, json: async () => zhMenu } as Response;
+        return { ok: true, json: async () => ({}) } as Response;
+      }),
+    );
+    render(<Composer {...props()} />);
+    fireEvent.change(box(), { target: { value: "/价格" } });
+    await screen.findByText("/chem-price-daily");
     expect(screen.queryByText("/greet")).toBeNull();
   });
 
@@ -124,6 +154,35 @@ describe("Composer / skills popup", () => {
     render(<Composer {...props({ sessionId: undefined })} />);
     fireEvent.change(box(), { target: { value: "/" } });
     expect(screen.queryByTestId("skill-popup")).toBeNull();
+  });
+
+  it("caps a long skill list with a scrollable max-height so the composer stays usable", async () => {
+    const longMenu = {
+      skills: Array.from({ length: 30 }, (_, i) => ({
+        name: `skill-${String(i).padStart(2, "0")}`,
+        description: `desc ${i}`,
+        scope: "global",
+        enabled: true,
+      })),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.includes("/skills")) return { ok: true, json: async () => longMenu } as Response;
+        return { ok: true, json: async () => ({}) } as Response;
+      }),
+    );
+    render(<Composer {...props()} />);
+    fireEvent.change(box(), { target: { value: "/" } });
+    const popup = await screen.findByTestId("skill-popup");
+    expect(popup.className).toMatch(/max-h-56/);
+    expect(popup.className).toMatch(/overflow-y-auto/);
+    expect(screen.getAllByRole("option")).toHaveLength(30);
+    // ArrowDown past the first screenful still moves selection (scrollIntoView keeps it in view).
+    for (let i = 0; i < 15; i++) fireEvent.keyDown(box(), { key: "ArrowDown" });
+    const selected = screen.getByRole("option", { selected: true });
+    expect(selected.textContent).toMatch(/\/skill-15/);
+    expect(selected.getAttribute("aria-selected")).toBe("true");
   });
 });
 

@@ -142,27 +142,45 @@ class OpenAIProvider(ProviderClient):
         # provider router for Ollama (`http://localhost:11434/v1`, with a placeholder key) and,
         # later, other OpenAI-shaped backends. When None, behavior is identical to stock OpenAI.
         self._client = client
+        self._client_injected = client is not None
         self._api_key = api_key
         self._base_url = base_url
         self._secrets = secrets
         self.default_model = default_model
 
+    def _make_sdk_client(self) -> Any:
+        """Build a new OpenAI SDK client from current key/base_url settings."""
+        from openai import OpenAI
+
+        key = self._api_key or resolve_api_key(self._secrets)
+        if not key:
+            raise RuntimeError(
+                "No model API key configured. Set OPENAI_API_KEY in the environment, "
+                "or add your key in Manage → Settings."
+            )
+        kwargs: dict[str, Any] = {"api_key": key}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        return OpenAI(**kwargs)
+
     def _ensure_client(self) -> Any:
         if self._client is None:
             # Lazy import so the SDK is only required when actually talking to OpenAI.
-            from openai import OpenAI
-
-            key = self._api_key or resolve_api_key(self._secrets)
-            if not key:
-                raise RuntimeError(
-                    "No model API key configured. Set OPENAI_API_KEY in the environment, "
-                    "or add your key in Manage → Settings."
-                )
-            kwargs: dict[str, Any] = {"api_key": key}
-            if self._base_url:
-                kwargs["base_url"] = self._base_url
-            self._client = OpenAI(**kwargs)
+            self._client = self._make_sdk_client()
         return self._client
+
+    def _stream_client(self) -> tuple[Any, bool]:
+        """Client for one stream() call.
+
+        Injected test clients are reused. Production builds a fresh SDK client per stream so
+        concurrent session turns (each on a thread-pool worker via TurnEngine._astream) do not
+        share one httpx connection pool — overlapping chunked bodies on a shared client show up
+        as APIConnectionError("Connection error.") on the background turn.
+        Returns (client, close_after).
+        """
+        if self._client_injected:
+            return self._client, False
+        return self._make_sdk_client(), True
 
     def complete(
         self,
@@ -228,32 +246,41 @@ class OpenAIProvider(ProviderClient):
         if tools:
             kwargs["tools"] = tools
         _pin_reasoning_effort(kwargs)
-        client = self._ensure_client()
+        client, close_after = self._stream_client()
 
         # Compat gateways sometimes close the chunked body mid-turn ("incomplete
         # chunked read"). Buffer each attempt fully so a dead partial never reaches
         # the UI, retry a couple of times, then fall back to non-streaming complete().
-        last_transport: Optional[BaseException] = None
-        for _attempt in range(3):
-            try:
-                buffered = _collect_stream_chunks(client, kwargs, tools=tools)
-            except Exception as exc:
-                if _is_stream_transport_error(exc):
-                    last_transport = exc
-                    continue
-                raise
-            for chunk in buffered:
-                yield chunk
-            return
+        try:
+            last_transport: Optional[BaseException] = None
+            for _attempt in range(3):
+                try:
+                    buffered = _collect_stream_chunks(client, kwargs, tools=tools)
+                except Exception as exc:
+                    if _is_stream_transport_error(exc):
+                        last_transport = exc
+                        continue
+                    raise
+                for chunk in buffered:
+                    yield chunk
+                return
 
-        turn = self.complete(
-            model=model, messages=messages, tools=tools, **settings
-        )
-        if last_transport is not None and not (
-            turn.text or turn.tool_calls or turn.reasoning
-        ):
-            raise last_transport
-        yield StreamChunk(turn=turn)
+            turn = self.complete(
+                model=model, messages=messages, tools=tools, **settings
+            )
+            if last_transport is not None and not (
+                turn.text or turn.tool_calls or turn.reasoning
+            ):
+                raise last_transport
+            yield StreamChunk(turn=turn)
+        finally:
+            if close_after:
+                close = getattr(client, "close", None)
+                if callable(close):
+                    try:
+                        close()
+                    except Exception:
+                        pass
 
 
 def _is_stream_transport_error(exc: BaseException) -> bool:
@@ -267,6 +294,9 @@ def _is_stream_transport_error(exc: BaseException) -> bool:
         "server disconnected",
         "connection reset",
         "incompleteread",
+        # OpenAI SDK APIConnectionError default message; also common when a shared
+        # httpx client loses a concurrent stream mid-body.
+        "connection error",
     )
     if any(m in text for m in markers) or any(m in name for m in markers):
         return True

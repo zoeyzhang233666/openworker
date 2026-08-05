@@ -4,6 +4,7 @@ import { isPdfFile, readFile } from "../attach";
 import { getSettings, inspectPdf, sessionSkills, type SessionSkillRow } from "../api";
 import { formatTokens, totalTokens } from "../usage";
 import { useI18n } from "../i18n";
+import { rankSlashSkills } from "../slashSkillMatch";
 import { Dropdown, type Option } from "./Dropdown";
 import { Icon } from "./Icon";
 import { Toggle } from "./Toggle";
@@ -109,9 +110,7 @@ export function Composer(props: Props) {
     !prefixIntact && props.sessionId && text.startsWith("/") && !/\s/.test(text.slice(1))
       ? text.slice(1).toLowerCase()
       : null;
-  const slashMatches = (slashSkills ?? []).filter((s) =>
-    s.name.toLowerCase().includes(slashQuery ?? ""),
-  );
+  const slashMatches = rankSlashSkills(slashSkills ?? [], slashQuery ?? "");
   useEffect(() => {
     // Fetch on each popup open (fresh menu); drop when closed.
     if (slashQuery === null) {
@@ -126,6 +125,10 @@ export function Composer(props: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slashQuery === null]);
+  // Re-anchor keyboard highlight when the filter query changes (not only on open/close).
+  useEffect(() => {
+    if (slashQuery !== null) setSlashIndex(0);
+  }, [slashQuery]);
   const pickSkill = (s: SessionSkillRow) => {
     setPendingSkill(s);
     setText(`/${s.name} `);
@@ -140,7 +143,14 @@ export function Composer(props: Props) {
   const [attachNotice, setAttachNotice] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const slashPopupRef = useRef<HTMLDivElement | null>(null);
   const noticeTimer = useRef<number | null>(null);
+  // Keep the keyboard-highlighted skill row visible inside the capped scrollable popup.
+  useLayoutEffect(() => {
+    if (slashQuery === null) return;
+    const selected = slashPopupRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+    selected?.scrollIntoView?.({ block: "nearest" });
+  }, [slashIndex, slashQuery, slashMatches.length]);
 
   // Rejected-attachment notice: visible ~8s, then clears (or on ✕).
   const showAttachNotice = (message: string) => {
@@ -492,7 +502,13 @@ export function Composer(props: Props) {
         {/* "/" force-run popup — in-flow above the textarea; rows are the session's
             effective menu only (muted/disabled skills never appear). */}
         {slashQuery !== null && (
-          <div className="px-2 pt-2" data-testid="skill-popup" role="listbox" aria-label={t("skills.slashTitle")}>
+          <div
+            ref={slashPopupRef}
+            className="px-2 pt-2 max-h-56 overflow-y-auto"
+            data-testid="skill-popup"
+            role="listbox"
+            aria-label={t("skills.slashTitle")}
+          >
             {slashSkills === null ? (
               <div className="px-2 py-1.5 text-[12px] text-faint">{t("skills.loading")}</div>
             ) : slashMatches.length === 0 ? (

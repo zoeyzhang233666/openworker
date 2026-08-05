@@ -29,6 +29,9 @@
   - ✅ Mermaid 悬停/聚焦才显示框线与工具栏（默认融文；错误态始终露出；工具栏 visibility 保占位防抖）
   - ✅ 设置页 Context compaction 已汉化；默认触发阈值/上限拉到允许最大值（95% / 2,000,000 tokens）
   - ✅ 后台对话继续与回切追齐：离开设置/其他对话不杀 turn；同会话重选不误清 streaming；`ready.running` + `turn_done` REST 追齐最终回答（D-061）
+  - ✅ 跨会话并行回答（D-062）：`stream()` 每路独立 OpenAI SDK 客户端，避免切新对话把后台 turn 打成 Connection error；WS 事件按绑定 session 过滤防 Interrupted 串台；不做全局对话数软上限（后台 turn 也占 running）
+  - ✅ `/` 技能弹出列表：`max-h-56 overflow-y-auto`，技能过多时可滚动且不挤掉输入框；键盘 ↑↓ 时 scrollIntoView 跟选中项
+  - ✅ `/` 介绍优先搜索：按 description 子串/子序列优先打分排序，中文场景词可命中英文 id 技能；name 仍为次要通道
   - 🔄 对话挂载条等待在上游 Skill 稳定后单独处理
 - 浏览器源码预览：默认显示简体中文，可切换英文并在刷新后保留选择。
 - 运行态修复（2026-08-03，开发 state）：
@@ -41,9 +44,17 @@
   - 回归状态（2026-08-04，Context compaction）：
   - `pytest tests/test_compaction_engine.py tests/test_compaction.py`：31 passed
   - `npm test`（i18n + localization-audit）：21 passed
+  - 回归状态（2026-08-05，跨会话并行 / D-062）：
+  - `pytest tests/test_providers.py`：29 passed（含双线程独立 stream 客户端、Connection error 重试）
+  - `pytest tests/test_openai_responses.py tests/test_model_errors.py tests/test_provider_router.py`：68 passed
+  - `npm test -- --run src/sessionResume.test.ts`：8 passed（含 WS 事件 session 绑定过滤）
   - 回归状态（2026-08-04，后台对话继续 / 回切追齐）：
   - `pytest tests/test_server.py::test_ws_ready_reports_running tests/test_session_events.py`：7 passed
   - `npm test -- --run src/sessionResume.test.ts src/itemsFromMessages.test.ts`：13 passed
+  - 回归状态（2026-08-05，`/` 技能列表滚动）：
+  - `npm test -- --run src/components/Composer.skills.test.tsx`：9 passed
+  - 回归状态（2026-08-05，`/` 介绍优先搜索）：
+  - `npm test -- --run src/slashSkillMatch.test.ts src/components/Composer.skills.test.tsx`：18 passed
 - 回归状态（2026-08-03）：
   - `pytest tests/test_engine.py`（空流 + 流式 + 无工具）：3 passed
   - `pytest` stream 重试/回退 + model errors：12 passed

@@ -44,6 +44,7 @@ import {
   eventImpliesRunning,
   runningFromReady,
   shouldApplySessionMessages,
+  shouldHandleSessionEvent,
   shouldSkipSessionReselect,
 } from "./sessionResume";
 import { addTurnUsage, emptyUsage, usageFromMessages } from "./usage";
@@ -587,7 +588,10 @@ export function App() {
   useEffect(() => {
     if (booting) return; // wait until boot/resume settles the session before connecting
     if (gatesWorkspace(agent) && !workspace) return; // Code needs a folder (gate handles it)
+    const boundSessionId = sessionId;
     const handleEvent = (ev: WsEvent) => {
+      // Stale in-flight onmessage after a fast session switch must not paint onto the new chat.
+      if (!shouldHandleSessionEvent(boundSessionId, sessionIdRef.current)) return;
       const d = ev.data || {};
       // An interrupted/errored turn never emits assistant_message, so its streamed partial
       // would otherwise live only in the ephemeral buffer until the next turn_start wipes it

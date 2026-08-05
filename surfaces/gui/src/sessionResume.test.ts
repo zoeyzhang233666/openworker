@@ -3,6 +3,7 @@ import {
   eventImpliesRunning,
   runningFromReady,
   shouldApplySessionMessages,
+  shouldHandleSessionEvent,
   shouldSkipSessionReselect,
 } from "./sessionResume";
 
@@ -58,5 +59,12 @@ describe("shouldApplySessionMessages", () => {
     expect(shouldApplySessionMessages(2, 2, "s1", "s1")).toBe(true);
     expect(shouldApplySessionMessages(1, 2, "s1", "s1")).toBe(false);
     expect(shouldApplySessionMessages(2, 2, "s1", "s2")).toBe(false);
+  });
+});
+
+describe("shouldHandleSessionEvent", () => {
+  it("accepts events only for the socket's bound session", () => {
+    expect(shouldHandleSessionEvent("a", "a")).toBe(true);
+    expect(shouldHandleSessionEvent("a", "b")).toBe(false);
   });
 });
