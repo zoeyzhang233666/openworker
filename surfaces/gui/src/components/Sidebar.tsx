@@ -27,7 +27,7 @@ import { PersonaGlyph, personaGlyph } from "./personaIcon";
 import { SearchModal } from "./SearchModal";
 import { baseName } from "../paths";
 import { showPersonas } from "../flags";
-import { useI18n, type Locale, type MessageKey } from "../i18n";
+import { useI18n, type Locale, type MessageKey, type MessageValues } from "../i18n";
 import { CLOUD_CONNECTION_LABEL_EN, CLOUD_CONNECTION_LABEL_ZH, PRODUCT_NAME } from "../product";
 
 // Session surfaces shown as accordions, in display order. The surfaced personas drive this list
@@ -1073,7 +1073,7 @@ export function Sidebar(props: Props) {
           "nav-skills",
         )}
         {primaryNavItem(
-          "diamond",
+          "lobster",
           t("nav.experts"),
           () => props.onOpenExperts?.(),
           !!props.expertsActive,
@@ -1357,9 +1357,8 @@ export function Sidebar(props: Props) {
   );
 }
 
-// New-session split button (§8): the primary action starts a session with the last-used persona
-// (`current`); the ▾ opens a menu of the enabled personas (from /v1/personas) plus a "Manage
-// personas…" entry. A plain custom split control — the pill-shaped Dropdown doesn't fit this shape.
+// New-session split button (§8 / D-067): primary starts with the starred default persona;
+// ▾ opens enabled+surfaced personas. Button stays single-line (no subtitle row).
 function NewSessionSplit({
   personas,
   current,
@@ -1374,10 +1373,24 @@ function NewSessionSplit({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const enabled = (personas || []).filter((p) => p.enabled);
-  // With a single enabled persona there is nothing to pick — the split collapses to a plain
-  // button (owner ask 2026-07-09). `personas === null` (still loading) keeps the split so the
-  // control doesn't visibly change shape once the list arrives with 2+.
-  const solo = personas !== null && enabled.length <= 1;
+  const inPicker = enabled.filter((p) => p.surfaced);
+  const menuList = inPicker.length > 0 ? inPicker : enabled;
+  const defaultId =
+    (personas || []).find((p) => p.enabled && p.default)?.id ||
+    menuList[0]?.id ||
+    current;
+  const defaultPersona = (personas || []).find((p) => p.id === defaultId);
+  const defaultLabel = personaNavLabel(t, defaultPersona?.id, defaultPersona?.name);
+  // With a single menu persona there is nothing to pick — collapse to a plain button.
+  const solo = personas !== null && menuList.length <= 1;
+
+  function labelFor(p: Persona): { name: string; tagline: string } {
+    return {
+      name: personaNavLabel(t, p.id, p.name),
+      tagline: personaNavTagline(t, p.id, p.tagline),
+    };
+  }
+
   return (
     <div className="px-3 pt-2 relative">
       <div className="flex">
@@ -1386,15 +1399,15 @@ function NewSessionSplit({
             "newsplit-primary flex-1 text-left px-3 py-2 bg-accent text-white text-[13px] font-medium hover:opacity-95 flex items-center gap-2 " +
             (solo ? "rounded-lg" : "rounded-l-lg")
           }
-          onClick={() => onNew(solo && enabled.length === 1 ? enabled[0].id : current)}
+          onClick={() => onNew(solo && menuList.length === 1 ? menuList[0].id : defaultId)}
         >
           <Icon name="plus" size={15} className="shrink-0" /> {t("sidebar.newConversation")}
         </button>
         {!solo && (
           <button
             className="px-2.5 rounded-r-lg bg-accent text-white border-l border-white/25 hover:opacity-95 flex items-center"
-            title={t("Start with a specific persona")}
-            aria-label={t("Choose a persona")}
+            title={t("experts.choosePersona", { name: defaultLabel })}
+            aria-label={t("experts.choosePersona", { name: defaultLabel })}
             onClick={() => setOpen((v) => !v)}
           >
             <Icon name="chevronDown" size={13} />
@@ -1406,9 +1419,11 @@ function NewSessionSplit({
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="newsplit-menu absolute left-3 right-3 mt-1 z-30 bg-panel border border-line rounded-xl2 shadow-xl p-1">
             <div className="px-2 py-1 text-[10.5px] uppercase tracking-[0.06em] text-faint font-semibold">
-              {t("Start a session as")}
+              {t("experts.startAs")}
             </div>
-            {enabled.map((p) => (
+            {menuList.map((p) => {
+              const { name, tagline } = labelFor(p);
+              return (
               <button
                 key={p.id}
                 className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-paper text-left"
@@ -1422,14 +1437,16 @@ function NewSessionSplit({
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[13px] font-medium truncate">
-                    {shortPersonaName(p.name, p.id)}
+                    {name}
+                    {p.default ? " ★" : ""}
                   </span>
-                  {p.tagline && (
-                    <span className="block text-[11px] text-muted truncate">{p.tagline}</span>
+                  {tagline && (
+                    <span className="block text-[11px] text-muted truncate">{tagline}</span>
                   )}
                 </span>
               </button>
-            ))}
+              );
+            })}
             {showPersonas() && (
               <div className="border-t border-line mt-1 pt-1">
                 <button
@@ -1439,7 +1456,7 @@ function NewSessionSplit({
                     onManage();
                   }}
                 >
-                  {t("Manage personas…")}
+                  {t("experts.managePersonas")}
                 </button>
               </div>
             )}
@@ -1448,4 +1465,28 @@ function NewSessionSplit({
       )}
     </div>
   );
+}
+
+function personaNavLabel(
+  t: (key: MessageKey, values?: MessageValues) => string,
+  id?: string,
+  fallback?: string,
+): string {
+  if (!id) return fallback || "";
+  const key = `experts.persona.${id}.name` as MessageKey;
+  const translated = t(key);
+  if (translated && translated !== key) return translated;
+  return shortPersonaName(fallback, id);
+}
+
+function personaNavTagline(
+  t: (key: MessageKey, values?: MessageValues) => string,
+  id?: string,
+  fallback?: string,
+): string {
+  if (!id) return fallback || "";
+  const key = `experts.persona.${id}.tagline` as MessageKey;
+  const translated = t(key);
+  if (translated && translated !== key) return translated;
+  return fallback || "";
 }

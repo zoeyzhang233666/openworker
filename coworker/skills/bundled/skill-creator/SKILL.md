@@ -61,6 +61,10 @@ skill-name/
     └── assets/           - Files used in output (templates, icons, fonts, etc.)
 ```
 
+If the skill will instruct the model to output Mermaid relationship diagrams
+(flowchart/graph/sequenceDiagram), require labeled edges in those instructions
+(e.g. `A -->|"关系"| B`). Do not rely on bare `A --> B`.
+
 #### SKILL.md (required)
 
 Every SKILL.md consists of:

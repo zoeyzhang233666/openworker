@@ -12,9 +12,19 @@
 - 业务代码（本 Worktree）：
   - ✅ 基于 upstream/main（OpenWorker Skills 官方实现）
   - ✅ ChemClaw 品牌 + 全界面汉化（cherry-pick 自旧分支）
-  - ✅ D-006 主导航：对话 / 技能 / 专家龙虾 / 定时任务 / 连接 / 设置
+  - ✅ D-006 主导航：对话 / 技能 / 智能体 / 定时任务 / 连接 / 设置
+  - ✅ D-066 智能体拆包联装：`package_scan` / `package_install`；`POST /v1/personas/install` 支持 `zip_b64`/`data_b64`/`package_dir` + 逐项 `decisions`；`skill_ids` + `persona_detail` 暴露 prompt/skills/路径
+  - ✅ D-069 OpenClaw 工作区合成 + 冲突批量/汉化：无 ChemClaw persona 且有 IDENTITY/SOUL 时，将 IDENTITY/SOUL/AGENTS/USER/TOOLS/MEMORY 等合成进一个智能体提示词（不当作多个智能体）；`memory/` 不整树导入；预览「全部覆盖/全部跳过」+ i18n
   - ✅ 技能页使用上游 `SkillsTab`，已汉化；不再使用自研 `SkillsView` / `capabilities`
-  - ✅ 专家龙虾页（`PersonasTab`）控件与内置专家文案已接入 i18n（此前只汉化了页标题）
+  - ✅ 智能体页（`PersonasTab`）控件与内置文案已接入 i18n；导航品类名「智能体」+ 单色龙虾图标（D-064）
+  - ✅ 新建对话 A1：主按钮按标星默认；▾ 中文选择器；`surfaced` 过滤；回答区显示本会话智能体名；空会话主标题统一「与 xxx 畅谈」（含 ChemClaw/`cowork`；▾ 选中立即 `setAgent`）（D-067）
+  - ✅ 智能体详情：列表右侧恢复 Sliders 图标；从智能体页进入可返回智能体；详情页加载/返回中文化（D-065）
+  - ✅ Zip 联装：上传带 `filename`；旧后端 `provide a dir…` 映射为重启提示；**需重启 sidecar** 才能加载含 `zip_b64` 的后端
+  - ✅ Mermaid 边标签：`agent.py` 全局 `_DIAGRAM_GUIDANCE`（D-063）；AGENTS.md 约定；产业链 Skill + skill-creator 补强；**不对用户展示**缺标签提示
+  - ✅ 全部智能体右侧栏显示产物；相对路径/artifact 文档链统一 ArtifactChip，单击打开预览；结束后长回答从「N 个步骤」提出
+  - ✅ 步骤组生命周期默认态（D-070）：进行中默认展开、成功结算收起、失败/中断保持展开；手动覆盖优先；不改 ThinkingBlock/raw/密度档位
+  - ✅ 默认技能接线：`build_engine(default_skill_ids=…)` 提醒 load_skill（D-068）
+  - ✅ 智能体只读详情：system_prompt / skills / install_path（D-065）
   - ✅ 首次启动 seed 完整内置 Skills（Serenity 七个中文投研 + builtin-skills 除 computer-use + chem-* 系列；含 references/scripts；可删且不回种）
   - ✅ Skill 名支持中文；zip 上传保留附属文件与扩展 frontmatter
   - ❌ 已移除薄提示词版 `serenity.industry-chain-mapping`（若开发态仍残留，可在技能页手动删除一次）
@@ -28,6 +38,7 @@
   - ✅ Mermaid 全局主题改为 `neo`（彩色现代主题；图内 `%%{init}%%` / `classDef` 仍可覆盖）
   - ✅ Mermaid 悬停/聚焦才显示框线与工具栏（默认融文；错误态始终露出；工具栏 visibility 保占位防抖）
   - ✅ 设置页 Context compaction 已汉化；默认触发阈值/上限拉到允许最大值（95% / 2,000,000 tokens）
+  - ✅ 设置页上下文用量条（原 Composer 卡片）已汉化：标题「输入框」、开关与说明走 `t()` + `interfaceMessagesZh`
   - ✅ 后台对话继续与回切追齐：离开设置/其他对话不杀 turn；同会话重选不误清 streaming；`ready.running` + `turn_done` REST 追齐最终回答（D-061）
   - ✅ 跨会话并行回答（D-062）：`stream()` 每路独立 OpenAI SDK 客户端，避免切新对话把后台 turn 打成 Connection error；WS 事件按绑定 session 过滤防 Interrupted 串台；不做全局对话数软上限（后台 turn 也占 running）
   - ✅ `/` 技能弹出列表：`max-h-56 overflow-y-auto`，技能过多时可滚动且不挤掉输入框；键盘 ↑↓ 时 scrollIntoView 跟选中项
@@ -37,6 +48,7 @@
 - 运行态修复（2026-08-03，开发 state）：
   - OpenAI 兼容网关 `base_url` 补全为 `…/v1`（缺 `/v1` 会导致 0 chunk 空回答）
   - 默认模型改为流式稳定的 `kimi-k2.5`（原 `deepseek-v4-flash` 在该网关上工具流易断）
+  - （2026-08-05 D-071）新鲜安装代码默认改为 `apihub-cn:deepseek-v4-flash`；已有 prefs 不改
   - 真实 WS 链路验证：`agent=chat` → 助手返回 `OK`
   - 回归状态（2026-08-04，bundled skills）：
   - `pytest tests/test_skills_store.py tests/test_skill_bootstrap.py tests/test_skills.py tests/test_skills_api.py`：71 passed, 1 skipped
@@ -55,6 +67,28 @@
   - `npm test -- --run src/components/Composer.skills.test.tsx`：9 passed
   - 回归状态（2026-08-05，`/` 介绍优先搜索）：
   - `npm test -- --run src/slashSkillMatch.test.ts src/components/Composer.skills.test.tsx`：18 passed
+  - 回归状态（2026-08-05，D-066 智能体拆包联装）：
+  - `pytest tests/test_persona_package_install.py tests/test_persona_connections.py::test_persona_detail_endpoint tests/test_persona_loading.py tests/test_persona_registry.py`：26 passed
+  - 回归状态（2026-08-05，D-069 工作区合成 + 冲突批量/汉化）：
+  - `pytest tests/test_persona_package_install.py`：9 passed（含顶层 AGENTS 等模板不误装、MEMORY.md 进提示词、无 IDENTITY 时 AGENTS.md 仍可作普通 persona）
+  - `npm test -- --run src/localization-audit.test.ts src/i18n.test.ts`：22 passed
+  - 真实 `serenity-full-package.zip` 探针：合成 `serenity`，composed_from 含 IDENTITY/SOUL/AGENTS/USER/TOOLS/MEMORY
+  - 回归状态（2026-08-05，智能体 UX + Mermaid 边标签）：
+  - `pytest tests/test_skills.py::test_build_engine_chat`：passed（含 `_DIAGRAM_GUIDANCE`）
+  - `npm test -- --run src/mermaidEdgeLabels.test.ts src/components/Sidebar.test.tsx`：10 passed
+  - 规格：`docs/superpowers/specs/2026-08-05-chemclaw-agents-mermaid-labels-design.md`；决策 D-063–D-068
+  - 回归状态（2026-08-05，空态/详情/zip 修补）：
+  - `npm test -- --run src/components/Sidebar.test.tsx src/localization-audit.test.ts`：26 passed
+  - `pytest tests/test_persona_package_install.py`：6 passed
+  - ✅ 界面语言：`useI18n` 无 Provider 时回退改为 zh-CN（不再是 en-US）；一次性把误落在英文的 `chemclaw.locale` 恢复为简体中文（设置里仍可改回 English）；空态任务文案收入 `intro.*` 词条
+  - ✅ 设置页语言卡片：标题独占一行、下拉按内容宽度左对齐换行，排版与「主题」卡片一致
+  - 回归状态（2026-08-05，步骤/产物/Mermaid 提示）：
+  - `npm test -- --run src/components/Transcript.test.tsx src/components/Markdown.test.tsx src/localization-audit.test.ts`：43 passed
+  - 回归状态（2026-08-05，步骤组生命周期 D-070）：
+  - `npm test -- --run src/components/Transcript.test.tsx`：21 passed
+  - ✅ ApiHub 一等提供商（D-071）：设置「模型」置顶 `ApiHub CN` / `ApiHub Intl`；独立密钥；共用云图标；新鲜默认 `apihub-cn:deepseek-v4-flash`（不迁移已有 prefs）
+  - 回归状态（2026-08-05，ApiHub providers）：
+  - `pytest tests/test_providers.py tests/test_provider_router.py tests/test_model_errors.py tests/test_settings.py`：相关用例通过（`test_config` 中 symlink 测因 Win 权限失败，与本改动无关）
 - 回归状态（2026-08-03）：
   - `pytest tests/test_engine.py`（空流 + 流式 + 无工具）：3 passed
   - `pytest` stream 重试/回退 + model errors：12 passed
@@ -66,9 +100,9 @@
 
 ## 下一道门禁
 
-1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航、技能页（中文投研 + chem-* 内置、可删除不回种）、Mermaid neo 可见。
+1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
-3. 规划对话挂载条、Serenity Agent（专家龙虾）、以及依赖型 Skill 的便携运行时安装器；Mermaid 手工 UI 验收清单见实施计划 Task 5。
+3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
 
 ## 文档索引
 

@@ -8,6 +8,8 @@ import { SkillsTab } from "./SkillsTab";
 // validation, the doors (write form / upload-with-preview / doorway-to-conversation).
 
 function renderSkillsTab(ui: ReactElement) {
+  // Skip one-time zh-CN restore so these hermetic cases stay on English copy.
+  localStorage.setItem("chemclaw.locale.zh-restore", "1");
   localStorage.setItem("chemclaw.locale", "en-US");
   return render(<LocaleProvider>{ui}</LocaleProvider>);
 }

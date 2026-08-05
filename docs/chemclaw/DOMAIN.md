@@ -30,6 +30,10 @@
 
 一个可对话的角色与编排配置，组合系统提示、默认 Skills、工具、MCP、模型偏好和权限策略。Agent 引用 Skill，不复制 Skill。
 
+### 智能体
+
+产品界面中 Agent 的品类名（一级导航与管理页）。英文界面为 Agents。代码与会话字段仍可使用 `persona` / `agent`。个别角色的显示名可以包含「龙虾」等品牌趣味，但品类导航不使用「专家龙虾」。
+
 ### 白毛股神 Serenity
 
 由 `serenity-full-package` 识别出的中文默认 Agent。它引用七个独立投研 Skills，并受 ChemClaw 权限与审批约束。
@@ -74,6 +78,10 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 
 保存模型、MCP、邮箱和外部服务秘密的系统边界。秘密不得进入模型上下文、日志、Skill Git 历史或默认备份。
 
+### ApiHub
+
+芯化和云提供的 OpenAI 兼容模型中转网关。ChemClaw 以两个独立提供商接入：`apihub-cn`（国内，默认端点 `https://apihub.chem-cloud.cn/v1`）与 `apihub-intl`（国际，默认端点 `https://www.tokenfoundryx.com/v1`）。各自独立密钥与精选模型目录；端点可自定义。ApiHub 不是 ChemClaw 品牌本身，卡片显示为 `ApiHub CN (chem-cloud)` / `ApiHub Intl (chem-cloud)`。
+
 ## OpenWorker 能力
 
 ### MCP 连接
@@ -87,6 +95,18 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 ### 自动化
 
 OpenWorker 原有的调度执行能力。ChemClaw 的定时任务界面复用该引擎。
+
+### 步骤组
+
+一次 turn 内工具调用、已决议审批与中间叙述收成的 disclosure（界面常显示为「N 个步骤」；代码 `TurnGroup`）。最终回答在步骤组之外以普通助手气泡展示。
+
+### 步骤组默认态
+
+用户尚未点击步骤组标题时的展开/收起策略：进行中默认展开；成功结算默认收起；失败或中断默认保持展开（见 D-069）。
+
+### 手动覆盖
+
+用户点击步骤组标题后产生的粘性开关，在该步骤组实例生命周期内优先于步骤组默认态。
 
 ## 知识与图谱
 

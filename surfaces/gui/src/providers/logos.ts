@@ -22,8 +22,11 @@ import qwen from "./logos/qwen.svg";
 import minimax from "./logos/minimax.svg";
 import xai from "./logos/xai.svg";
 import meta from "./logos/meta.svg";
+import apihub from "./logos/apihub.svg";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
+  "apihub-cn": apihub,
+  "apihub-intl": apihub,
   anthropic,
   openai,
   gemini,
@@ -44,6 +47,8 @@ export const PROVIDER_LOGOS: Record<string, string> = {
 };
 
 export const PROVIDER_ORDER = [
+  "apihub-cn",
+  "apihub-intl",
   "anthropic",
   "openai",
   "gemini",

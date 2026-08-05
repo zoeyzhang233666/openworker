@@ -434,10 +434,10 @@ function AppearanceSection() {
       <PanelHead title={t("settings.general")} sub={t("How ChemClaw looks and behaves on this machine.")} />
 
       <div className={CARD + " p-4 mb-4"}>
-        <label className={FIELD_LABEL} htmlFor="chemclaw-language">{t("settings.language")}</label>
+        <label className={FIELD_LABEL + " block"} htmlFor="chemclaw-language">{t("settings.language")}</label>
         <select
           id="chemclaw-language"
-          className={INPUT + " mt-2"}
+          className={INPUT + " mt-2.5 w-auto"}
           value={locale}
           onChange={(event) => setLocale(event.target.value as typeof locale)}
         >
@@ -831,6 +831,7 @@ function CompactionCard() {
 // The chip's bar is context-window occupancy; the session total (unbounded) lives in
 // the popover. Some people would rather not watch a meter at all, hence the toggle.
 function ContextBarCard() {
+  const { t } = useI18n();
   const [shown, setShown] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -847,7 +848,7 @@ function ContextBarCard() {
   if (shown === null) return null;
   return (
     <div className={CARD + " p-4 mb-4"} data-testid="context-bar-card">
-      <div className={FIELD_LABEL}>Composer</div>
+      <div className={FIELD_LABEL}>{t("Composer")}</div>
       <label className="flex items-start gap-3 py-2">
         <input
           type="checkbox"
@@ -857,11 +858,11 @@ function ContextBarCard() {
           onChange={(e) => save(e.target.checked)}
         />
         <span>
-          <span className="block text-[13px] text-ink">Show the context window bar</span>
+          <span className="block text-[13px] text-ink">{t("Show the context window bar")}</span>
           <span className="block text-[12px] text-muted">
-            A small meter showing how full the model&rsquo;s context window is. Turn it off
-            to show this session&rsquo;s token total instead; either way the full breakdown
-            is one click away.
+            {t(
+              "A small meter showing how full the model's context window is. Turn it off to show this session's token total instead; either way the full breakdown is one click away.",
+            )}
           </span>
         </span>
       </label>

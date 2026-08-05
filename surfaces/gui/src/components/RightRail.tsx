@@ -47,9 +47,7 @@ interface Props {
   // Fires when a full artifact preview opens/closes, so the app can auto-collapse the left nav
   // to give the preview (PDF/webpage/sheet) more room (#3).
   onPreviewChange?: (open: boolean) => void;
-  // §32: the rail is the ONE session panel for every non-chat persona. Artifacts stays
-  // cowork-only (deliverables; code-family gets "Files" later — slot reserved); the Access
-  // section (the former Session-settings drawer) renders for all.
+  // §32: the rail is the session panel for every agent. Artifacts list + Access for all.
   showArtifacts?: boolean;
   personaId?: string;
   projectScoped?: boolean;
@@ -121,11 +119,9 @@ export function RightRail({
     return readArtifact(sessionId, selected.path).then(setContent).catch(() => setContent(null));
   };
 
-  // §34 (UX-016): [Title](artifact:path) chips in the transcript open the viewer directly.
-  // Resolve against the loaded list first; on a miss, refresh once (the file may be
-  // seconds old), then fall back to a minimal record — readArtifact validates the path.
+  // §34 (UX-016): chips open the viewer. Listen even while the rail is hidden so the first
+  // click (App un-hides + this sets selected) lands in preview without a second click.
   useEffect(() => {
-    if (!active) return;
     const minimal = (path: string): ArtifactInfo => ({
       path,
       name: path.split("/").pop() || path,
@@ -152,7 +148,7 @@ export function RightRail({
     };
     window.addEventListener(OPEN_ARTIFACT_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_ARTIFACT_EVENT, onOpen);
-  }, [active, sessionId, artifacts]);
+  }, [sessionId, artifacts]);
 
   if (!active) return null;
 

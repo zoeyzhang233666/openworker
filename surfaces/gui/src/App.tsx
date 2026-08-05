@@ -37,7 +37,7 @@ import type {
   TodoItem,
   WsEvent,
 } from "./types";
-import { isProjectScoped } from "./personaScope";
+import { isProjectScoped, shortPersonaName } from "./personaScope";
 import { baseName } from "./paths";
 import { itemsFromMessages } from "./itemsFromMessages";
 import {
@@ -255,8 +255,10 @@ export function App() {
   const [personaViewId, setPersonaViewId] = useState<string>("");
   // Where the persona page returns on "back": the active session, or Settings ▸ Personas when it
   // was opened from there (persona config now lives in Settings).
-  const [personaViewReturn, setPersonaViewReturn] = useState<"session" | "settings">("session");
-  const openPersona = (id: string, from: "session" | "settings" = "session") => {
+  const [personaViewReturn, setPersonaViewReturn] = useState<"session" | "settings" | "experts">(
+    "session",
+  );
+  const openPersona = (id: string, from: "session" | "settings" | "experts" = "session") => {
     setPersonaViewReturn(from);
     setPersonaViewId(id);
     setSurface("persona");
@@ -345,6 +347,14 @@ export function App() {
     getPersonas().then(setPersonas).catch(() => {});
   }, []);
   const personaOf = (a: string) => personas?.find((p) => p.id === a);
+  const agentDisplayName = (() => {
+    const p = personaOf(agent);
+    const id = p?.id || agent;
+    const key = `experts.persona.${id}.name` as MessageKey;
+    const translated = t(key);
+    if (translated && translated !== key) return translated;
+    return p?.name || shortPersonaName(undefined, agent) || agent;
+  })();
 
   // Pending Inbox items for the ACTIVE session — surfaced inline above the composer so an
   // unattended session's blocking question/approval can be answered in context (resolving the
@@ -899,15 +909,14 @@ export function App() {
     if (atBottomRef.current) scrollToBottom();
   }, [items, streaming]);
 
-  // Track produced-file count for the topbar "Artifacts" affordance (works even when the rail is
-  // hidden, where the rail itself doesn't fetch). Cowork only; refreshes on file writes/turn end.
+  // Topbar Artifacts count for every agent (rail may be hidden and not fetching).
   useEffect(() => {
-    if (agent !== "cowork" || surface !== "session") {
+    if (surface !== "session") {
       setArtifactCount(0);
       return;
     }
     getArtifacts(sessionId).then((a) => setArtifactCount(a.length)).catch(() => {});
-  }, [agent, surface, sessionId, browserRefreshKey]);
+  }, [surface, sessionId, browserRefreshKey]);
 
   // Keep the active session's pending Inbox items fresh (answer-in-context card). Loads on session
   // change + after each turn, plus a slow poll so an unattended agent's new question surfaces.
@@ -979,27 +988,28 @@ export function App() {
 
   const startNewSession = (forAgent?: string) => {
     const target = forAgent || agent;
+    const switching = target !== agent;
     setSurface("session"); // return to the conversation view if we were on a sub-view
     setItems([]);
     setUsage(emptyUsage());
     setStreaming("");
     setTodo([]);
     setRunning(false);
-    // "New session" under a browsed persona switches to it (expand≠switch: the header alone
-    // doesn't switch; this explicit action does).
-    if (target !== agent) {
-      setAgent(target);
-      if (gatesWorkspace(target)) {
-        // Never inherit the previous persona's folder — it may be a scratch dir. Clearing it
-        // also blocks the connection effect, so nothing can chat behind the open gate.
+    // Always bind so ▾ picks update the empty-state greeting immediately (D-067).
+    setAgent(target);
+    if (gatesWorkspace(target)) {
+      if (switching) {
+        // Never inherit another persona's folder — it may be a scratch dir.
         setWorkspace(null);
         setBranch(null);
         setShowGate(true);
-      } else setShowGate(false);
+      }
+      // Same Code/Ops persona: keep the folder for the new session.
+    } else {
+      setShowGate(false);
+      // Knowledge family: orphan — clear so the server provisions a NEW scratch dir.
+      setWorkspace(null);
     }
-    // Knowledge family: a new conversation starts fresh (orphan) — clear the workspace so the
-    // server provisions a NEW scratch dir for the new session id. Code keeps its repo.
-    if (!gatesWorkspace(target)) setWorkspace(null);
     setSessionId(newId());
   };
   const startSkillConversation = (description: string) => {
@@ -1449,7 +1459,7 @@ export function App() {
       ) : surface === "skills" ? (
         <ChemClawSkillsView onCreateSkill={startSkillConversation} />
       ) : surface === "experts" ? (
-        <ChemClawExpertsView onOpenPersona={(id) => openPersona(id, "session")} />
+        <ChemClawExpertsView onOpenPersona={(id) => openPersona(id, "experts")} />
       ) : surface === "settings" ? (
         <SettingsView
           key={settingsTab}
@@ -1464,13 +1474,15 @@ export function App() {
       ) : surface === "persona" ? (
         <PersonaView
           personaId={personaViewId || agent}
-          onBack={() =>
-            personaViewReturn === "settings" ? openSettings("personas") : setSurface("session")
-          }
+          onBack={() => {
+            if (personaViewReturn === "settings") openSettings("personas");
+            else if (personaViewReturn === "experts") setSurface("experts");
+            else setSurface("session");
+          }}
           onOpenIntegrations={() => setSurface("integrations")}
         />
       ) : (
-      <div className={"main" + (surface === "session" && agent !== "chat" && !railHidden ? " rail-open" : "")}>
+      <div className={"main" + (surface === "session" && !railHidden ? " rail-open" : "")}>
         <div className="main-topbar">
           {/* Left: the contextual cluster — [sidebar] [+ new session] [search] — rendered ONLY
               while the sidebar is collapsed (§22; the expanded sidebar already owns those
@@ -1533,7 +1545,7 @@ export function App() {
           {/* Right: session-settings icon (§23) + panel toggle. Model/mode/persona chrome is
               gone — the facts live in the subtitle, the controls in the composer (§22). */}
           <div className="main-topbar-side main-topbar-actions" onPointerDown={beginWindowDrag}>
-            {agent === "cowork" && railHidden && artifactCount > 0 && (
+            {railHidden && artifactCount > 0 && (
               <button
                 className="topbar-artifacts-btn"
                 onMouseDown={(e) => e.stopPropagation()}
@@ -1545,19 +1557,16 @@ export function App() {
                 <span className="topbar-artifacts-count">{artifactCount}</span>
               </button>
             )}
-            {/* §32: the panel toggle is the ONE session-panel entry, for every non-chat persona
-                (the rail now carries Access, so code-family gets it too). */}
-            {agent !== "chat" && (
-              <button
-                className="topbar-icon-btn"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => setRailHidden((h) => !h)}
-                aria-label={railHidden ? t("Show side panel") : t("Hide side panel")}
-                title={railHidden ? t("Show side panel") : t("Hide side panel")}
-              >
-                <Icon name="sidebarRight" size={16} />
-              </button>
-            )}
+            {/* Session panel toggle — every agent (incl. chat) gets Progress / Artifacts / Access. */}
+            <button
+              className="topbar-icon-btn"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setRailHidden((h) => !h)}
+              aria-label={railHidden ? t("Show side panel") : t("Hide side panel")}
+              title={railHidden ? t("Show side panel") : t("Hide side panel")}
+            >
+              <Icon name="sidebarRight" size={16} />
+            </button>
           </div>
         </div>
         <div className={"main-workspace" + (railHidden ? " rail-hidden" : "")}>
@@ -1595,19 +1604,20 @@ export function App() {
             )}
             <div className="main-scroll" ref={scrollRef} onScroll={handleScroll}>
               {idle ? (
-                agent === "cowork" ? (
-                  <SessionIntro
-                    sessionId={sessionId}
-                    onOpenSessionSettings={openAccess}
-                    onPrefill={prefillComposer}
-                  />
-                ) : (
-                  <div className="hero">
-                    <h1 className="greeting">
-                      <span className="mark">✦</span>
-                      {agent === "chat" ? t("How can I help?") : t("Let's build something.")}
-                    </h1>
-                    {needsWorkspace(agent) && (
+                <div className="hero">
+                  <h1 className="greeting" data-testid="chat-with-agent">
+                    <span className="mark">✦</span>
+                    {t("experts.chatWith", { name: agentDisplayName })}
+                  </h1>
+                  {agent === "cowork" ? (
+                    <SessionIntro
+                      hideGreeting
+                      sessionId={sessionId}
+                      onOpenSessionSettings={openAccess}
+                      onPrefill={prefillComposer}
+                    />
+                  ) : (
+                    needsWorkspace(agent) && (
                       <div className="suggestions">
                         <div className="suggest-head">{t("Try a task")}</div>
                         {SUGGESTIONS.map((s, i) => (
@@ -1617,9 +1627,9 @@ export function App() {
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                )
+                    )
+                  )}
+                </div>
               ) : (
                 <>
                   <Transcript
@@ -1627,6 +1637,7 @@ export function App() {
                     onApprove={approve}
                     running={running}
                     onRetry={retry}
+                    agentLabel={agentDisplayName}
                     // §33 ref #3: sub-threshold streamed text renders INSIDE the live turn
                     // group (header when collapsed, quiet line when expanded) — never as a
                     // floating paragraph.
@@ -1651,7 +1662,7 @@ export function App() {
                   {streaming && streamMode(streaming, items, running) === "answer" && (
                     <div className="transcript">
                       <div className="bubble-assistant">
-                        <div className="who">{t("assistant")}</div>
+                        <div className="who">{agentDisplayName}</div>
                         <Markdown text={streaming} renderMermaid={false} />
                         <span className="stream-cursor">▍</span>
                       </div>
@@ -1745,19 +1756,19 @@ export function App() {
             />
                   </div>
           <RightRail
-            active={surface === "session" && agent !== "chat" && !railHidden}
+            active={surface === "session" && !railHidden}
             sessionId={sessionId}
             refreshKey={browserRefreshKey}
             toolNames={items.filter((i) => i.kind === "tool").map((i: any) => i.name)}
             todo={todo}
             running={running}
             onPreviewChange={onArtifactPreview}
-            showArtifacts={agent === "cowork"}
+            showArtifacts
             personaId={agent}
             projectScoped={isProjectScoped(personaOf(agent))}
             workspace={workspace || undefined}
             branch={branch}
-            scratchPrimary={agent === "cowork"}
+            scratchPrimary={agent === "cowork" || !isProjectScoped(personaOf(agent))}
             openAccessKey={accessKey}
             onOpenIntegrations={() => setSurface("integrations")}
           />

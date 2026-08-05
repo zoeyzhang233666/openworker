@@ -463,8 +463,8 @@ def test_first_configured_provider_wins_default(tmp_path, monkeypatch):
 
     mgr = SessionManager(data_dir=tmp_path)
     assert (
-        mgr.model == "gpt-5.6-sol"
-    )  # fresh install: built-in default, openai unconfigured
+        mgr.model == "apihub-cn:deepseek-v4-flash"
+    )  # fresh install: ChemClaw default; apihub-cn unconfigured
 
     # the first provider that gets a key takes over the default
     mgr.set_provider("anthropic", {"api_key": "sk-ant-x"})

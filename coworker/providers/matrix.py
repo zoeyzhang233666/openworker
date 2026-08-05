@@ -37,6 +37,10 @@ _AGENTIC = ModelCapabilities(
 _AGENTIC_VISION = ModelCapabilities(
     tools=True, vision=True, pdf=True, parallel_tool_calls=True, streaming=True
 )
+# Compat / reseller vision (no native PDF parts).
+_COMPAT_VISION = ModelCapabilities(
+    tools=True, vision=True, parallel_tool_calls=True, streaming=True
+)
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,35 @@ MATRIX: dict[str, ModelEntry] = {
     "xai:grok-4.3": ModelEntry("Grok 4.3 · xAI", _AGENTIC, 256_000),
     "mistral:mistral-large-latest": ModelEntry(
         "Mistral Large · Mistral", _AGENTIC, 128_000
+    ),
+    # -- chem-cloud ApiHub relay (OpenAI-compat; CN / Intl catalogs differ) --------
+    "apihub-cn:deepseek-v4-flash": ModelEntry(
+        "DeepSeek V4 Flash · via ApiHub CN", _AGENTIC, 128_000
+    ),
+    "apihub-cn:deepseek-v4-pro": ModelEntry(
+        "DeepSeek V4 Pro · via ApiHub CN", _AGENTIC, 128_000
+    ),
+    "apihub-cn:glm-5.2": ModelEntry("GLM-5.2 · via ApiHub CN", _AGENTIC, 128_000),
+    "apihub-cn:kimi-k3": ModelEntry(
+        "Kimi K3 · via ApiHub CN", _COMPAT_VISION, 1_000_000
+    ),
+    "apihub-intl:gpt-5.6-sol": ModelEntry(
+        "GPT-5.6 Sol · via ApiHub Intl", _COMPAT_VISION, 400_000
+    ),
+    "apihub-intl:gpt-5.6-luna": ModelEntry(
+        "GPT-5.6 Luna · via ApiHub Intl", _COMPAT_VISION, 400_000
+    ),
+    "apihub-intl:gpt-5.6-terra": ModelEntry(
+        "GPT-5.6 Terra · via ApiHub Intl", _COMPAT_VISION, 400_000
+    ),
+    "apihub-intl:claude-sonnet-5": ModelEntry(
+        "Claude Sonnet 5 · via ApiHub Intl", _COMPAT_VISION, 200_000
+    ),
+    "apihub-intl:claude-opus-5": ModelEntry(
+        "Claude Opus 5 · via ApiHub Intl", _COMPAT_VISION, 200_000
+    ),
+    "apihub-intl:claude-fable-5": ModelEntry(
+        "Claude Fable 5 · via ApiHub Intl", _COMPAT_VISION, 1_000_000
     ),
     # -- resellers (their model namespaces, verbatim) -----------------------------
     "together:thinkingmachines/Inkling": ModelEntry("Inkling · via Together"),

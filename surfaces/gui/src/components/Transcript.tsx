@@ -239,25 +239,46 @@ function StepRow({ tool, approval }: { tool: ToolItem; approval?: ApprovalItem }
   );
 }
 
+/** D-069: default open state when the user has not toggled the step group. */
+export function turnGroupAutoOpen(opts: {
+  live?: boolean;
+  tools: { status: string }[];
+  /** Settled turn followed by a warn notice (interrupt / error / stop). */
+  aborted?: boolean;
+}): boolean {
+  const inFlight = !!opts.live || opts.tools.some((t) => t.status === "…");
+  if (inFlight) return true;
+  if (opts.aborted) return true;
+  if (opts.tools.some((t) => t.status !== "ok")) return true;
+  return false;
+}
+
+function isTurnAbortNotice(item: Item): boolean {
+  return item.kind === "notice" && item.tone === "warn";
+}
+
 function TurnGroup({
   items,
   live,
   streamingText,
+  aborted,
 }: {
   items: TurnItem[];
   live?: boolean;
   // Sub-threshold streamed text belongs to THIS group (§33 ref #3): collapsed → it rides
   // the header as the live line; expanded → the small quiet line under the steps.
   streamingText?: string;
+  /** True when the next transcript block is a warn notice after this turn settled. */
+  aborted?: boolean;
 }) {
   const { t } = useI18n();
-  // Turns start COLLAPSED, running or not (owner call 2026-07-14) — the header's live
-  // line is the pulse; expanding is opt-in.
+  // D-069: in-flight / failed / interrupted → default open; successful settle → default closed.
+  // Manual toggle sticks for this TurnGroup instance (userToggle !== null).
   const rows = buildRows(items);
   const tools = items.filter((it): it is ToolItem => it.kind === "tool");
   const running = live || tools.some((t) => t.status === "…");
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
-  const open = userToggle ?? false;
+  const open = userToggle ?? turnGroupAutoOpen({ live, tools, aborted });
   const lastNarr = [...items].reverse().find((it): it is AssistantItem => it.kind === "assistant");
   const liveLine = streamingText || lastNarr?.text || "";
 
@@ -346,6 +367,8 @@ interface Props {
   // Re-run the failed turn (no new user message). Offered only on a retriable notice that
   // is the transcript tail of an idle session — anywhere else the error is history.
   onRetry?: () => void;
+  /** Session agent display name for the assistant "who" label (D-067). */
+  agentLabel?: string;
 }
 
 // The transcript index whose notice gets the Retry button: the tail error notice, looking
@@ -361,8 +384,9 @@ export function retryAnchor(items: Item[]): number {
   return -1;
 }
 
-export function Transcript({ items, running, streamingText, onRetry }: Props) {
+export function Transcript({ items, running, streamingText, onRetry, agentLabel }: Props) {
   const { t } = useI18n();
+  const who = agentLabel || t("assistant");
   // §33 grouping: a turn = the maximal run of assistant/tool/resolved-approval items between
   // breakers (user, connector, notices, plan/dir requests…). Trailing assistant texts are the
   // ANSWER and render as bubbles after the group; interior assistant texts are narration and
@@ -377,9 +401,27 @@ export function Transcript({ items, running, streamingText, onRetry }: Props) {
     // A live run with tool activity keeps its trailing text inside as the status line;
     // a live run with NO activity is a plain streaming reply — bubbles, as ever.
     const keepTrailing = live && turn.some((it) => it.kind !== "assistant");
-    if (!keepTrailing)
+    const toolsBusy = turn.some((it) => it.kind === "tool" && it.status === "…");
+    if (!keepTrailing) {
       while (turn.length && turn[turn.length - 1].kind === "assistant")
         answers.unshift(turn.pop() as AssistantItem);
+      // Deliverable often lands before later tools (assistant → tool → tool). When the turn
+      // is finished (not live, no in-flight tools), promote the last non-empty assistant.
+      if (
+        !toolsBusy &&
+        answers.length === 0 &&
+        turn.some((it) => it.kind !== "assistant") &&
+        turn.some((it) => it.kind === "assistant" && it.text?.trim())
+      ) {
+        for (let i = turn.length - 1; i >= 0; i--) {
+          const it = turn[i];
+          if (it.kind === "assistant" && it.text?.trim()) {
+            answers.unshift(turn.splice(i, 1)[0] as AssistantItem);
+            break;
+          }
+        }
+      }
+    }
     if (turn.some((it) => it.kind !== "assistant")) blocks.push({ turn, live });
     else turn.forEach((t) => blocks.push({ item: t, i: -1 }));
     answers.forEach((a) => blocks.push({ item: a, i: -1 }));
@@ -406,15 +448,20 @@ export function Transcript({ items, running, streamingText, onRetry }: Props) {
   return (
     <div className="transcript">
       {blocks.map((block, bi) => {
-        if ("turn" in block)
+        if ("turn" in block) {
+          const next = blocks[bi + 1];
+          const aborted =
+            !block.live && !!next && "item" in next && isTurnAbortNotice(next.item);
           return (
             <TurnGroup
               items={block.turn}
               live={block.live}
+              aborted={aborted}
               streamingText={block.live && bi === lastTurnIndex ? streamingText : undefined}
               key={bi}
             />
           );
+        }
         const { item } = block;
         switch (item.kind) {
           case "connector":
@@ -449,7 +496,7 @@ export function Transcript({ items, running, streamingText, onRetry }: Props) {
               );
             return (
               <div className="group bubble-assistant" key={bi}>
-                <div className="who">{t("assistant")}</div>
+                <div className="who">{who}</div>
                 {item.reasoning && <ThinkingBlock text={item.reasoning} />}
                 <Markdown text={item.text} />
                 <BubbleMeta text={item.text} ts={item.ts} align="left" />

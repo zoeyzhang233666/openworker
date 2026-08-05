@@ -164,6 +164,7 @@ http://localhost:1420
 - 如果一直显示 `Starting ChemClaw…` / `正在启动 ChemClaw…`，先确认 8765 健康，再重启 Vite。后端启动失败或 Vite 在 token 生成前启动都会造成这个现象。
 - **每次重启后端都会重写 `sidecar-<port>.token`**，必须随后重启 Vite，否则 GUI 会带着旧 token 请求并表现为连不上/对话无响应。
 - OpenAI 兼容自定义网关的 `base_url` 必须包含 `/v1`（例如 `https://apihub.chem-cloud.cn/v1`）。写成根域名时，SDK 会打到 `/chat/completions` 而非 `/v1/chat/completions`，表现为 0 chunk、空白回答。
+- **ApiHub 一等提供商（D-071）**：设置 → 模型画廊前两位为 `ApiHub CN (chem-cloud)` / `ApiHub Intl (chem-cloud)`（id `apihub-cn` / `apihub-intl`），默认端点分别为 `https://apihub.chem-cloud.cn/v1` 与 `https://www.tokenfoundryx.com/v1`，密钥独立。仍可用「自定义端点」或把其它兼容槽位指到同一网关；新鲜安装默认模型为 `apihub-cn:deepseek-v4-flash`（已有 `prefs.default_model` 不改）。
 - 验收时确认：品牌为 ChemClaw、默认中文、主导航含「技能」与「专家龙虾」、技能页可见完整内置 Skills（中文投研 + chem-* 等）；专家页控件为中文。
 ### 桌面程序源码模式
 

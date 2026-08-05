@@ -9,7 +9,7 @@
 - **D-003**：ChemClaw 是唯一对外品牌。正常界面、安装程序和快捷方式不出现 OpenWorker；MIT 署名只保留在关于和法律通知中。
 - **D-004**：UI Demo 只作为视觉和信息架构参考；所有假数据、假按钮和概念交互都不能直接当成完成的功能。
 - **D-005**：“数据底座”页面永久排除。未来相应区域改为 SAG 检索、2D/3D 图谱、探索模式和化工产业链知识。
-- **D-006**：V1 一级导航为对话、技能、专家龙虾、定时任务、连接和设置；审批、审计与历史为二级页面。
+- **D-006**：V1 一级导航为对话、技能、智能体、定时任务、连接和设置；审批、审计与历史为二级页面。（2026-08-05：品类名由「专家龙虾」改为「智能体」；角色显示名仍可含「龙虾」。）
 - **D-007**：所有可见按钮必须接入真实功能，未实现的功能不提前显示。
 
 ## 语言与展示
@@ -46,6 +46,16 @@
 - **D-028**：对话和 Markdown 报告预览支持 fenced `mermaid` 代码块真实渲染。
 - **D-029**：Mermaid 支持图形/源码切换、安全渲染、失败降级及 SVG/PNG 导出。
 - **D-030**：产业链类 Skill 可以要求输出 Mermaid，但阶段五的标准产业链图不依赖每次对话临时生成。
+- **D-063**：Mermaid 关系图（flowchart/graph/sequenceDiagram 等）的边必须带语义标签。约束集中注入 `coworker/agent.py` 全局附录与仓库 `AGENTS.md`；禁止复制到每个 Agent/Skill。仅出图类 Skill（如产业链层级测绘）与 skill-creator 模板可补强一句。渲染层忠实绘制、不得自动编造边文案，也**不得**向用户展示「缺标签」类提示（该要求仅面向模型）。
+
+## 智能体页与安装（2026-08-05）
+
+- **D-064**：产品对外品类名「智能体」= 领域 Agent = 代码 persona。导航图标为单色描边小龙虾 SVG；主题强调色维持钴蓝 `--accent`，不引入 Demo 橙。
+- **D-065**：内置智能体只读，靠发版更新（B1）；用户个性化通过二期「另存为自定义副本」。一期只做只读详情（提示词、默认技能、路径）。
+- **D-066**：智能体安装源为 GitHub、本地目录、zip/单文件 md。宽松扫描：含 `SKILL.md` 的目录整树装入技能库；persona `*.md` 只快照 md。冲突逐项覆盖或跳过；缺引用 Skill 仍装 Agent 并警告。运行时依赖不自动安装（对齐 D-060）。完整能力包依赖安装器仍属 D-019。
+- **D-067**：新建对话主按钮按标星默认一键开聊（按钮保持单行）；▾ 可选换智能体，菜单中文，`surfaced` 控制列表。回答区「助手」显示本会话智能体名；空会话提示「与 xxx 畅谈」。改全局默认不重绑当前会话（S1）。本会话中途切换与按条 `agent_id` 为二期。
+- **D-068**：智能体 frontmatter `skills:` 须在新建该智能体对话时自动挂载已安装的默认 Skill（未安装的可见提示）。
+- **D-069**：智能体 zip/目录安装扩展（D-066）：若包内**无**合法 ChemClaw persona md，但存在 OpenClaw `IDENTITY.md` 和/或 `SOUL.md`，判定为 OpenClaw 身份包。此时把工作区 md（IDENTITY/SOUL/AGENTS/USER/TOOLS/MEMORY，以及有实质内容的 HEARTBEAT）**合成进一个** ChemClaw 智能体提示词（写入 `.chemclaw-generated/manifest.md`），**不**把 AGENTS/USER/TOOLS/HEARTBEAT 安装为独立智能体；顶层同名模板与 `agents` 等子目录仅在该信号下排除出 persona 候选（不是全局文件名黑名单）。`MEMORY.md` 写入提示词；`memory/` 目录本阶段不整树导入。运行时只读合成后的 system_prompt，不热读 OpenClaw 工作区。包名含 serenity 或技能命中七个中文投研 Skill 时 id=`serenity`、名=`白毛股神 Serenity`。冲突预览支持「全部覆盖/全部跳过」与 i18n；完整能力包安装器仍属 D-019。
 
 ## Git、环境与发布
 
@@ -99,6 +109,14 @@
 ## 对话并发（2026-08-05）
 
 - **D-062**：跨会话允许并行 turn（与业界 ChatGPT/Claude/claw 一致）。不做全局「最多 N 路对话」软上限——定时任务、频道投递、self-wake 也占用 `_running_sessions`，对话数硬顶会误伤用户或文案不诚实。同会话仍 single-flight。并行安全靠每次 `stream()` 使用独立 OpenAI SDK/httpx 客户端（测注入客户端除外）；前端 WS 事件按绑定 `sessionId` 过滤，避免切会话后旧事件串台。
+
+## 步骤组默认态（2026-08-05）
+
+- **D-070**：对话步骤组（TurnGroup /「N 个步骤」）采用生命周期默认态，不做 Claude 式 Verbose/Normal/Summary 档位，也不默认展开 ThinkingBlock 或步骤 raw。无手动切换时：进行中（live 或工具仍为 `…`）默认展开；成功结算默认收起；工具失败，或结算后紧跟 tone=warn 的 notice（中断/错误/达迭代上限等）默认保持展开。用户点击步骤组标题后，该 TurnGroup 实例内手动覆盖优先到底。成功收起后的贴底跟随复用既有 FB-004，不另建 stick-to-bottom。改写上游 2026-07-14「运行中也默认收起」策略。（编号原误写为第二个 D-069，已更正为 D-070。）
+
+## 模型提供商（2026-08-05）
+
+- **D-071**：芯化和云 ApiHub 作为一等 OpenAI 兼容提供商接入设置「模型」页，拆成两个独立卡片并置顶：`apihub-cn` 显示 `ApiHub CN (chem-cloud)`（端点 `https://apihub.chem-cloud.cn/v1`），`apihub-intl` 显示 `ApiHub Intl (chem-cloud)`（端点 `https://www.tokenfoundryx.com/v1`）。画廊顺序为 CN → Intl → Claude → …；共用同一透明底云图标；密钥槽完全独立；端点预填且可在「自定义端点」中修改。CN 精选含 `deepseek-v4-flash`（主推荐）、`deepseek-v4-pro`、`glm-5.2`、`kimi-k3`；Intl 精选含 `gpt-5.6-sol`、`gpt-5.6-luna`（主推荐）、`gpt-5.6-terra`、`claude-sonnet-5`、`claude-opus-5`、`claude-fable-5`。新鲜安装 / 无已保存 `prefs.default_model` 时默认模型为 `apihub-cn:deepseek-v4-flash`；**不**迁移或覆盖已有用户 prefs。
 
 ## 协作治理
 

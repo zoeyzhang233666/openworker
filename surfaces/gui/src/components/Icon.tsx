@@ -9,6 +9,7 @@ export type IconName =
   | "signOut"
   | "chat"
   | "diamond"
+  | "lobster"
   | "book"
   | "search"
   | "folder"
@@ -256,6 +257,20 @@ export function Icon({
       return (
         <svg {...s} fill="currentColor" stroke="none">
           <path d="M12 3.2 20.8 12 12 20.8 3.2 12z" />
+        </svg>
+      );
+    case "lobster":
+      // Monochrome claw/lobster mark for Agents nav (D-064) — same stroke system as peers.
+      return (
+        <svg {...s}>
+          <path d="M8 9c-2.2-.2-3.8-1.6-4.2-3.2" />
+          <path d="M16 9c2.2-.2 3.8-1.6 4.2-3.2" />
+          <path d="M7.5 10.5c-1.2 1.4-1.4 3.2-.6 4.4" />
+          <path d="M16.5 10.5c1.2 1.4 1.4 3.2.6 4.4" />
+          <ellipse cx="12" cy="13" rx="3.2" ry="5.2" />
+          <path d="M10.2 17.5 9 20.5" />
+          <path d="M13.8 17.5 15 20.5" />
+          <path d="M11.2 10.2h1.6" />
         </svg>
       );
     case "pencil":

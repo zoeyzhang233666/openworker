@@ -442,8 +442,17 @@ def create_app(manager: SessionManager) -> FastAPI:
 
     @app.post("/v1/personas/install")
     def install_persona(body: dict) -> dict[str, Any]:
-        # Returns a consent summary per persona; they land disabled pending the user's approval
-        # (then POST /v1/personas/{id} {enabled:true, surfaced:true}).
+        # Package co-install (D-066): zip_b64 / data_b64 / package_dir → preview or install
+        # with per-item overwrite|skip. Legacy dir / git_url / gallery_slug keep one-shot
+        # persona-only install (consent summary; lands disabled pending approval).
+        body = body or {}
+        if (
+            body.get("zip_b64")
+            or body.get("data_b64")
+            or body.get("package_dir")
+        ):
+            return manager.install_persona_package(body)
+
         reg = manager.personas
         try:
             if body.get("git_url"):
@@ -483,7 +492,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             else:
                 return {
                     "ok": False,
-                    "error": "provide a `dir`, `git_url`, or `gallery_slug`",
+                    "error": "请提供 package_dir、zip_b64（或 data_b64）、dir、git_url 或 gallery_slug",
                 }
         except Exception as e:  # surface manifest/clone errors to the caller
             return {"ok": False, "error": str(e)}

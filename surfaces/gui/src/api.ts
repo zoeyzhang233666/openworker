@@ -956,15 +956,35 @@ export async function getCloudGalleryDetail(slug: string): Promise<GalleryDetail
 }
 
 export async function installPersona(
-  body: { dir?: string; git_url?: string; gallery_slug?: string },
-): Promise<{ ok: boolean; consent?: PersonaConsent[]; personas?: Persona[]; error?: string }> {
+  body: {
+    dir?: string;
+    git_url?: string;
+    gallery_slug?: string;
+    zip_b64?: string;
+    package_dir?: string;
+    filename?: string;
+    decisions?: Record<string, "overwrite" | "skip">;
+  },
+): Promise<{
+  ok: boolean;
+  consent?: PersonaConsent[];
+  personas?: Persona[];
+  preview?: boolean;
+  agents?: unknown[];
+  skills?: unknown[];
+  conflicts?: unknown[];
+  ignored?: string[];
+  composed_from?: string[];
+  warnings?: string[];
+  error?: string;
+}> {
   const res = await fetch(`${httpBase()}/v1/personas/install`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   const out = await res.json();
-  if (out.ok) announcePersonasChanged();
+  if (out.ok && !out.preview) announcePersonasChanged();
   return out;
 }
 
@@ -1001,6 +1021,10 @@ export interface PersonaDetail {
   workspace: string;
   recommends: PersonaRecommendation[];
   default_connections: PersonaDefaultConnection[];
+  system_prompt?: string;
+  skills?: { id: string; installed: boolean }[];
+  install_path?: string | null;
+  builtin?: boolean;
 }
 
 export async function getPersonaDetail(id: string): Promise<PersonaDetail> {

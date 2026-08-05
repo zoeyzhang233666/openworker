@@ -24,7 +24,10 @@ def test_new_flagships_in_matrix_with_labels():
 
 
 def test_flagships_are_the_defaults():
-    assert Config().model == "gpt-5.6-sol"
+    # ChemClaw fresh default is ApiHub CN; first-party vendors keep their own recommended models.
+    assert Config().model == "apihub-cn:deepseek-v4-flash"
+    assert get_descriptor("apihub-cn").recommended_model == "deepseek-v4-flash"
+    assert get_descriptor("apihub-intl").recommended_model == "gpt-5.6-luna"
     assert get_descriptor("openai").recommended_model == "gpt-5.6-sol"
     assert get_descriptor("anthropic").recommended_model == "claude-fable-5"
 

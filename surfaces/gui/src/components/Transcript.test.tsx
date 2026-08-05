@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Transcript } from "./Transcript";
+import { Transcript, turnGroupAutoOpen } from "./Transcript";
 import { humanizeTool } from "../humanize";
 import type { Item } from "../types";
 
@@ -9,6 +9,7 @@ afterEach(cleanup);
 // §33 TurnGroup: the user-message → final-answer span is ONE disclosure; interior assistant
 // text is narration INSIDE it, the trailing assistant text is the answer OUTSIDE it; steps
 // are humanized one-liners; approvals fold into their tool's row as a chip.
+// D-069: in-flight / failed / interrupted default OPEN; successful settle defaults CLOSED.
 const TURN: Item[] = [
   { kind: "user", text: "post the digest" },
   { kind: "assistant", text: "Checking what merged since yesterday." },
@@ -18,44 +19,100 @@ const TURN: Item[] = [
   { kind: "assistant", text: "Posted to #all-openworker." },
 ];
 
+describe("turnGroupAutoOpen (D-069)", () => {
+  it("opens while live or a tool is in flight", () => {
+    expect(turnGroupAutoOpen({ live: true, tools: [{ status: "ok" }] })).toBe(true);
+    expect(turnGroupAutoOpen({ tools: [{ status: "…" }] })).toBe(true);
+  });
+
+  it("closes on successful settle; opens on tool failure or abort notice", () => {
+    expect(turnGroupAutoOpen({ tools: [{ status: "ok" }, { status: "ok" }] })).toBe(false);
+    expect(turnGroupAutoOpen({ tools: [{ status: "ok" }, { status: "error" }] })).toBe(true);
+    expect(turnGroupAutoOpen({ tools: [{ status: "ok" }], aborted: true })).toBe(true);
+  });
+});
+
 describe("TurnGroup (Transcript §33)", () => {
   it("groups the whole turn; answer stays outside; narration and humanized steps inside", () => {
     const { container } = render(<Transcript items={TURN} onApprove={vi.fn()} />);
 
-    // Collapsed at rest: "2 steps", NO approval count, and no step/narration content visible.
-    expect(screen.getByText("2 steps")).toBeTruthy();
+    // Successful settle: collapsed by default (D-069) — "2 steps", no step/narration visible.
+    expect(screen.getByText(/2 steps|2 个步骤/)).toBeTruthy();
     expect(screen.queryByText(/approval/)).toBeNull();
     expect(screen.queryByTestId("turn-narration")).toBeNull();
-    expect(screen.queryByText(/Sent a Slack message/)).toBeNull();
+    expect(screen.queryByText(/Sent a Slack message|发送了 Slack/)).toBeNull();
 
     // The final answer is a normal bubble OUTSIDE the disclosure, visible while collapsed.
     expect(screen.getByText("Posted to #all-openworker.")).toBeTruthy();
 
-    // Expand → narration renders quiet inside; steps are English lines, not raw args;
+    // Expand → narration renders quiet inside; steps are humanized lines, not raw args;
     // the approval is a chip on the send_message row, not a separate box.
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
     expect(screen.getByTestId("turn-narration").textContent).toContain("Checking what merged");
     expect(screen.getByText("runbook.md")).toBeTruthy();
-    expect(screen.getByText(/Sent a Slack message to/)).toBeTruthy();
-    expect(screen.getByText("✓ approved")).toBeTruthy();
+    expect(screen.getByText(/Sent a Slack message to|已通过 Slack 发送消息/)).toBeTruthy();
+    expect(screen.getByText(/approved|已批准/)).toBeTruthy();
     expect(screen.queryByText("send_message approval")).toBeNull();
 
     // Raw stays one click away: the row's raw toggle reveals args + result verbatim.
-    fireEvent.click(screen.getAllByText("raw")[1]);
+    fireEvent.click(screen.getAllByText(/^(raw|原始数据)$/)[1]);
     expect(container.textContent).toContain('{"ok": true}');
   });
 
-  it("a running turn is labeled Running but starts COLLAPSED (§33 ref #3)", () => {
+  it("a running turn is labeled Running and starts EXPANDED (D-069)", () => {
     const items: Item[] = [
       { kind: "assistant", text: "Looking at the repo." },
       { kind: "tool", id: "t1", name: "grep", args: { pattern: "TODO" }, status: "…" },
     ];
-    const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
-    expect(screen.getByText(/Running 1 step…/)).toBeTruthy();
-    expect(screen.queryByTestId("turn-narration")).toBeNull(); // collapsed by default
-    expect(screen.getByTestId("turn-live-line").textContent).toContain("Looking at the repo");
-    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
+    render(<Transcript items={items} onApprove={vi.fn()} />);
+    expect(screen.getByText(/Running 1 step…|正在运行1 个步骤/)).toBeTruthy();
+    expect(screen.getByTestId("turn-narration").textContent).toContain("Looking at the repo");
     expect(screen.getByTestId("step-running")).toBeTruthy();
+    expect(screen.queryByTestId("turn-live-line")).toBeNull(); // live line only when collapsed
+  });
+
+  it("manual collapse sticks while still running", () => {
+    const items: Item[] = [
+      { kind: "assistant", text: "Looking at the repo." },
+      { kind: "tool", id: "t1", name: "grep", args: { pattern: "TODO" }, status: "…" },
+    ];
+    const { container } = render(<Transcript items={items} onApprove={vi.fn()} running />);
+    expect(screen.getByTestId("step-running")).toBeTruthy();
+    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
+    expect(screen.queryByTestId("step-running")).toBeNull();
+    expect(screen.getByTestId("turn-live-line").textContent).toContain("Looking at the repo");
+  });
+
+  it("manual expand sticks after a successful settle", () => {
+    const { container } = render(<Transcript items={TURN} onApprove={vi.fn()} />);
+    expect(screen.queryByTestId("turn-narration")).toBeNull();
+    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
+    expect(screen.getByTestId("turn-narration")).toBeTruthy();
+    // Re-render with same settle state must not auto-collapse after user opened
+    // (sticky userToggle on the mounted instance — click again would close; stay open).
+    expect(screen.getByTestId("turn-narration").textContent).toContain("Checking what merged");
+  });
+
+  it("keeps steps expanded after a failed tool", () => {
+    const items: Item[] = [
+      { kind: "user", text: "run it" },
+      { kind: "tool", id: "t1", name: "run_shell", args: { command: "false" }, status: "exit 1" },
+      { kind: "assistant", text: "The command failed." },
+    ];
+    render(<Transcript items={items} onApprove={vi.fn()} />);
+    expect(screen.getByTestId("turn-step")).toBeTruthy();
+    expect(screen.getByText("The command failed.")).toBeTruthy();
+  });
+
+  it("keeps steps expanded when a warn notice follows the turn (interrupt/error)", () => {
+    const items: Item[] = [
+      { kind: "user", text: "build" },
+      { kind: "tool", id: "t1", name: "read_file", args: { path: "a.md" }, status: "ok" },
+      { kind: "notice", tone: "warn", text: "Interrupted." },
+    ];
+    render(<Transcript items={items} onApprove={vi.fn()} />);
+    expect(screen.getByTestId("turn-step")).toBeTruthy();
+    expect(screen.getByText("Interrupted.")).toBeTruthy();
   });
 
   it("declined approvals keep their own 'Wanted to' row and surface on the collapsed line", () => {
@@ -64,12 +121,13 @@ describe("TurnGroup (Transcript §33)", () => {
       { kind: "approval", name: "run_shell", args: { command: "rm -rf build/" }, reason: "", resolved: "deny" },
     ];
     const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
-    expect(screen.getByTestId("stepgroup-declined").textContent).toBe("1 declined");
+    expect(screen.getByTestId("stepgroup-declined").textContent).toMatch(/1 declined|已拒绝 1 项/);
+    // Successful settle with only ok tools → collapsed; expand to see the ask row.
     fireEvent.click(container.querySelector("summary.stepgroup-head")!);
     const ask = screen.getByTestId("turn-ask");
-    expect(ask.textContent).toContain("Wanted to run");
+    expect(ask.textContent).toMatch(/Wanted to run|曾请求运行/);
     expect(ask.textContent).toContain("rm -rf build/");
-    expect(ask.textContent).toContain("✕ declined");
+    expect(ask.textContent).toMatch(/✕ declined|✕ 已拒绝/);
   });
 
   it("assistant-only turns stay plain bubbles (no disclosure)", () => {
@@ -80,6 +138,26 @@ describe("TurnGroup (Transcript §33)", () => {
     const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
     expect(container.querySelector("details.stepgroup")).toBeNull();
     expect(screen.getByText("Hello there.")).toBeTruthy();
+  });
+
+  it("promotes the last assistant when deliverable text precedes finished tools", () => {
+    const items: Item[] = [
+      { kind: "user", text: "research asphalt" },
+      {
+        kind: "assistant",
+        text: "完整分析已保存：[产业链分析](artifact:产业链分析.md)",
+      },
+      { kind: "tool", id: "t1", name: "write_file", args: { path: "产业链分析.md" }, status: "ok" },
+      { kind: "tool", id: "t2", name: "load_skill", args: { name: "map" }, status: "ok" },
+    ];
+    const { container } = render(<Transcript items={items} onApprove={vi.fn()} />);
+    const bubble = container.querySelector(".bubble-assistant");
+    expect(bubble?.textContent).toContain("完整分析已保存");
+    expect(screen.getByText(/2 steps|2 个步骤/)).toBeTruthy();
+    // Successful settle → collapsed; no narration left inside after promotion.
+    expect(screen.queryByTestId("turn-narration")).toBeNull();
+    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
+    expect(screen.queryByTestId("turn-narration")).toBeNull();
   });
 });
 
@@ -92,13 +170,8 @@ describe("live turns (§33 flicker fix)", () => {
 
   it("while running, trailing assistant text stays INSIDE the group — no answer bubble flash", () => {
     const { container } = render(<Transcript items={LIVE} onApprove={vi.fn()} running />);
-    // No assistant bubble anywhere; the group starts COLLAPSED with the narration riding
-    // the header as the live line (§33 ref #3 — expanding is opt-in).
+    // No assistant bubble; D-069 defaults the group OPEN so narration is visible inside.
     expect(container.querySelector(".bubble-assistant")).toBeNull();
-    expect(screen.queryByTestId("turn-narration")).toBeNull();
-    expect(screen.getByTestId("turn-live-line").textContent).toContain("Inspecting the fetched dataset");
-    // Expanding shows it as the quiet line inside.
-    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
     expect(screen.getByTestId("turn-narration").textContent).toContain("Inspecting the fetched dataset");
     // Once the turn ends (running=false), the same trailing text IS the answer bubble.
     cleanup();
@@ -106,9 +179,11 @@ describe("live turns (§33 flicker fix)", () => {
     expect(done.container.querySelector(".bubble-assistant")?.textContent).toContain(
       "Inspecting the fetched dataset",
     );
+    // Successful settle collapses the step group.
+    expect(done.container.querySelector("[data-testid=turn-step]")).toBeNull();
   });
 
-  it("quiet streamed text rides the collapsed header and the expanded body — never floats", () => {
+  it("quiet streamed text rides the expanded body by default — never floats as an answer bubble", () => {
     const { container } = render(
       <Transcript
         items={LIVE}
@@ -117,12 +192,13 @@ describe("live turns (§33 flicker fix)", () => {
         streamingText="The quote endpoint rate-limited, so I'm checking the historical pages."
       />,
     );
-    // Collapsed: the STREAMING text wins the header live line (fresher than the last item).
-    expect(screen.getByTestId("turn-live-line").textContent).toContain("quote endpoint rate-limited");
     expect(container.querySelector(".bubble-assistant")).toBeNull();
-    // Expanded: it renders as the small quiet line under the steps.
-    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
+    // D-069: open while running → stream line under the steps (not the collapsed header).
     expect(screen.getByTestId("turn-live-stream").textContent).toContain("quote endpoint rate-limited");
+    expect(screen.queryByTestId("turn-live-line")).toBeNull();
+    // Manual collapse → stream rides the header live line instead.
+    fireEvent.click(container.querySelector("summary.stepgroup-head")!);
+    expect(screen.getByTestId("turn-live-line").textContent).toContain("quote endpoint rate-limited");
   });
 
   it("a PENDING approval neither splits the turn nor promotes the narration", () => {
@@ -164,7 +240,7 @@ describe("bubble hover affordances (FB-005)", () => {
     expect(writeText).toHaveBeenCalledWith("post the digest");
     // "Copied" lands only after the clipboard write RESOLVES (a rejected write must
     // not claim success), hence the await.
-    await waitFor(() => expect(copies[0].textContent).toBe("Copied"));
+    await waitFor(() => expect(copies[0].textContent).toMatch(/Copied|已复制/));
     fireEvent.click(copies[1]);
     expect(writeText).toHaveBeenCalledWith("Done — posted to #all-openworker.");
   });

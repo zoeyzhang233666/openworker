@@ -81,11 +81,11 @@ describe("Sidebar group/filter control", () => {
     render(<Sidebar {...baseProps} />);
 
     // personas load drives the surfaces; the RECENT header's group/filter control is always present.
-    const control = await screen.findByLabelText("Group and filter conversations");
+    const control = await screen.findByLabelText(/Group and filter conversations|分组和筛选对话/);
 
     // Open the popover and choose "Group by → Persona".
     fireEvent.click(control);
-    fireEvent.click(await screen.findByText("Persona"));
+    fireEvent.click(await screen.findByText(/^(Persona|专家)$/));
 
     // POSTs the new layout pref.
     await waitFor(() => {
@@ -141,7 +141,7 @@ describe("Chronological list row actions (⋮ menu)", () => {
     openOpsMenu();
     fireEvent.click(screen.getByTestId("row-menu-delete"));
     expect(baseProps.onDeleteSession).not.toHaveBeenCalled();
-    expect(screen.getByTestId("row-menu-delete").textContent).toContain("Delete?");
+    expect(screen.getByTestId("row-menu-delete").textContent).toMatch(/Delete\?|确认删除/);
     fireEvent.click(screen.getByTestId("row-menu-delete"));
     expect(baseProps.onDeleteSession).toHaveBeenCalledWith("s-ops-1");
   });
@@ -212,54 +212,54 @@ describe("New-session split button", () => {
     await screen.findByText("incident watch");
 
     // No ▾ — nothing to pick; the primary button starts the sole enabled persona.
-    await waitFor(() => expect(screen.queryByLabelText("Choose a persona")).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText(/选择智能体|Choose agent/i)).toBeNull());
     fireEvent.click(container.querySelector(".newsplit-primary")!);
     expect(baseProps.onNewSession).toHaveBeenCalledWith("cowork");
   });
 
-  it("primary starts the last-used persona; the menu lists enabled personas + Manage personas…", async () => {
+  it("primary starts the starred default; the menu lists surfaced personas + Manage", async () => {
     localStorage.setItem("ocw.flag.personas", "1"); // Manage entry is launch-flagged off
     stubFetch([
       { match: "/v1/personas", method: "GET", json: PERSONAS },
       { match: "/v1/settings", method: "GET", json: { nav_layout: "flat" } },
     ]);
     const { container } = render(<Sidebar {...baseProps} />);
-    await screen.findByLabelText("Group and filter conversations");
+    await screen.findByLabelText(/Group and filter conversations|分组和筛选对话/);
 
-    // Primary action → a new session with the current (last-used) persona.
     fireEvent.click(container.querySelector(".newsplit-primary")!);
     expect(baseProps.onNewSession).toHaveBeenCalledWith("cowork");
 
-    // ▾ opens the persona menu: enabled personas appear, the disabled one does not, plus a manage entry.
-    fireEvent.click(screen.getByLabelText("Choose a persona"));
-    const menu = (await screen.findByText("Start a session as")).closest(".newsplit-menu") as HTMLElement;
+    fireEvent.click(screen.getByLabelText(/选择智能体|Choose agent/i));
+    const menu = (await screen.findByText(/选择对话智能体|Start a conversation as/i)).closest(
+      ".newsplit-menu",
+    ) as HTMLElement;
     const w = within(menu);
-    expect(w.getByText("Ops")).toBeTruthy();
-    expect(w.getByText("Code")).toBeTruthy();
+    expect(w.getByText(/运维龙虾|Ops Lobster|^Ops$/)).toBeTruthy();
+    expect(w.getByText(/^代码$|^Code$/)).toBeTruthy();
     expect(w.queryByText("Disabled One")).toBeNull();
-    expect(w.getByText("Manage personas…")).toBeTruthy();
+    expect(w.getByText(/管理智能体|Manage agents/i)).toBeTruthy();
 
-    // Selecting a persona starts a session as that persona.
-    fireEvent.click(w.getByText("Ops"));
+    fireEvent.click(w.getByText(/运维龙虾|Ops Lobster|^Ops$/));
     expect(baseProps.onNewSession).toHaveBeenCalledWith("ops");
 
-    // "Manage personas…" opens the persona management surface.
-    fireEvent.click(screen.getByLabelText("Choose a persona"));
-    fireEvent.click(await screen.findByText("Manage personas…"));
+    fireEvent.click(screen.getByLabelText(/选择智能体|Choose agent/i));
+    fireEvent.click(await screen.findByText(/管理智能体|Manage agents/i));
     expect(baseProps.onManagePersonas).toHaveBeenCalled();
   });
 
-  it("hides Manage personas… while the launch flag is off (the default)", async () => {
+  it("hides Manage agents while the launch flag is off (the default)", async () => {
     localStorage.removeItem("ocw.flag.personas");
     stubFetch([
       { match: "/v1/personas", method: "GET", json: PERSONAS },
       { match: "/v1/settings", method: "GET", json: { nav_layout: "flat" } },
     ]);
     render(<Sidebar {...baseProps} />);
-    await screen.findByLabelText("Group and filter conversations");
-    fireEvent.click(screen.getByLabelText("Choose a persona"));
-    const menu = (await screen.findByText("Start a session as")).closest(".newsplit-menu") as HTMLElement;
-    expect(within(menu).getByText("Ops")).toBeTruthy();
-    expect(within(menu).queryByText("Manage personas…")).toBeNull();
+    await screen.findByLabelText(/Group and filter conversations|分组和筛选对话/);
+    fireEvent.click(screen.getByLabelText(/选择智能体|Choose agent/i));
+    const menu = (await screen.findByText(/选择对话智能体|Start a conversation as/i)).closest(
+      ".newsplit-menu",
+    ) as HTMLElement;
+    expect(within(menu).getByText(/运维龙虾|Ops Lobster|^Ops$/)).toBeTruthy();
+    expect(within(menu).queryByText(/管理智能体|Manage agents/i)).toBeNull();
   });
 });

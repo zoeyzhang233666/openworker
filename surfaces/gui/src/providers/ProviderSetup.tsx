@@ -19,6 +19,8 @@ import { useI18n, type I18nValue } from "../i18n";
 
 // Where a non-developer gets an API key — deep link + one line of instructions.
 export const KEY_HELP: Record<string, { url: string; label: string }> = {
+  "apihub-cn": { url: "https://apihub.chem-cloud.cn", label: "apihub.chem-cloud.cn" },
+  "apihub-intl": { url: "https://www.tokenfoundryx.com", label: "tokenfoundryx.com" },
   anthropic: { url: "https://console.anthropic.com/settings/keys", label: "console.anthropic.com" },
   openai: { url: "https://platform.openai.com/api-keys", label: "platform.openai.com" },
   gemini: { url: "https://aistudio.google.com/apikey", label: "aistudio.google.com" },

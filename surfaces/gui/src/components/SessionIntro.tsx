@@ -25,11 +25,14 @@ export function SessionIntro({
   sessionId,
   onOpenSessionSettings,
   onPrefill,
+  hideGreeting = false,
 }: {
   sessionId: string;
   // Opens the §23 Session settings drawer (sources section) — the gated rows' Configure target.
   onOpenSessionSettings: () => void;
   onPrefill: (text: string, attachments?: Attachment[]) => void;
+  /** When true, skip the local h1 — App already shows「与 xxx 畅谈」(D-067). */
+  hideGreeting?: boolean;
 }) {
   const { t } = useI18n();
   const { roots, busy, error, addRoot } = useRoots(sessionId);
@@ -65,21 +68,24 @@ export function SessionIntro({
   };
 
   return (
-    <div className="intro">
-      <h1 className="greeting">
-        <span className="mark">✦</span> {t("What should we produce?")}
-      </h1>
-      <p className="intro-lede">
-        {t("Pick a task to start — I'll do the work and save the result. Or just type what you need below.")}
-      </p>
+    <div className={hideGreeting ? "intro intro-tasks-only" : "intro"}>
+      {!hideGreeting && (
+        <>
+          <h1 className="greeting">
+            <span className="mark">✦</span> {t("What should we produce?")}
+          </h1>
+          <p className="intro-lede">{t("intro.lede")}</p>
+        </>
+      )}
+      {hideGreeting && <p className="intro-lede mt-2">{t("intro.lede")}</p>}
 
       <div className="intro-tasks">
         <button className="task-card" data-testid="intro-task-folder" onClick={pickFolder}>
           <span className="task-card-body">
-            <span className="task-card-title">{t("Analyze the files in a directory")}</span>
-            <span className="task-card-sub">{t("I'll read them and summarize what matters")}</span>
+            <span className="task-card-title">{t("intro.task.folder.title")}</span>
+            <span className="task-card-sub">{t("intro.task.folder.sub")}</span>
           </span>
-          <span className="task-card-act">{t("Pick a folder →")}</span>
+          <span className="task-card-act">{t("intro.task.folder.act")}</span>
         </button>
         {addingFolder && (
           <div className="intro-addfolder">
@@ -103,13 +109,15 @@ export function SessionIntro({
           onClick={() => (hubspotReady ? onPrefill(HUBSPOT_PROMPT) : onOpenSessionSettings())}
         >
           <span className="task-card-body">
-            <span className="task-card-title">{t("Create a report from my HubSpot leads")}</span>
+            <span className="task-card-title">{t("intro.task.hubspot.title")}</span>
             <span className="task-card-sub">
               {dot("hubspot", hubspotReady)}
-              {t("Sources, stages, and who needs follow-up")}
+              {t("intro.task.hubspot.sub")}
             </span>
           </span>
-          <span className="task-card-act">{hubspotReady ? t("Start →") : t("Configure ›")}</span>
+          <span className="task-card-act">
+            {hubspotReady ? t("intro.act.start") : t("intro.act.configure")}
+          </span>
         </button>
 
         <button
@@ -118,16 +126,16 @@ export function SessionIntro({
           onClick={() => (ghSlackReady ? onPrefill(GH_SLACK_PROMPT) : onOpenSessionSettings())}
         >
           <span className="task-card-body">
-            <span className="task-card-title">
-              {t("Automate a weekly GitHub progress report to Slack")}
-            </span>
+            <span className="task-card-title">{t("intro.task.github.title")}</span>
             <span className="task-card-sub">
               {dot("github", live.has("github"))}
               {dot("slack", live.has("slack"))}
-              {t("Repo activity, summarized and posted every Friday")}
+              {t("intro.task.github.sub")}
             </span>
           </span>
-          <span className="task-card-act">{ghSlackReady ? t("Start →") : t("Configure ›")}</span>
+          <span className="task-card-act">
+            {ghSlackReady ? t("intro.act.start") : t("intro.act.configure")}
+          </span>
         </button>
       </div>
     </div>

@@ -8,7 +8,7 @@ const messages = {
   "zh-CN": {
     "nav.conversations": "对话",
     "nav.skills": "技能",
-    "nav.experts": "专家龙虾",
+    "nav.experts": "智能体",
     "nav.scheduled": "定时任务",
     "nav.connections": "连接",
     "nav.settings": "设置",
@@ -46,30 +46,51 @@ const messages = {
     "skills.fieldDescriptionHint": "助手用来判断何时启用此技能的一句话说明",
     "skills.fieldInstructions": "指令",
     "skills.saveSkill": "保存技能",
-    "experts.pageIntro": "角色型助手组合了提示词、工具与默认技能。启用后可在新建对话时选用。",
-    "experts.enableHint": "启用专家后，可选择是否出现在新建对话选择器中。标星的专家是新建对话的默认选项。",
+    "experts.pageIntro":
+      "智能体组合了提示词、工具与默认技能。启用后可在新建对话时选用；主按钮按标星默认一键开聊，也可点 ▾ 换一个。",
+    "experts.enableHint":
+      "启用后可选择是否出现在新建对话的 ▾ 列表中。标星的智能体是新建对话的默认选项（改标星不会更换已打开会话的智能体）。",
     "experts.enabled": "启用",
     "experts.inPicker": "出现在选择器",
     "experts.setDefault": "设为默认",
     "experts.builtin": "内置",
-    "experts.defaultTitle": "新建对话的默认专家",
-    "experts.configure": "配置 {name}",
+    "experts.defaultTitle": "新建对话的默认智能体",
+    "experts.configure": "查看 {name}",
+    "experts.view": "查看",
     "experts.delete": "删除",
     "experts.keep": "保留",
-    "experts.deleteTitle": "删除此专家",
+    "experts.deleteTitle": "删除此智能体",
     "experts.disableWarning": "禁用将归档其 {count} 个对话——仍可在「显示已归档」中查看。",
     "experts.disable": "禁用",
     "experts.keepEnabled": "保持启用",
-    "experts.add": "添加专家",
-    "experts.addHint": "从本地目录或公开 GitHub 仓库加载。文件会复制到托管区域（快照），因此即使源变更，专家定义也保持稳定。不会运行代码——专家只组合已审核的工具。",
+    "experts.add": "添加智能体",
+    "experts.addHint":
+      "支持 GitHub 地址、本地目录，或上传 zip / .md。包内含 SKILL.md 的目录会整树装入「技能」（保留 scripts 等）；OpenClaw 的 IDENTITY/SOUL 会合成进智能体提示词；安装前可预览冲突并批量覆盖或跳过。不会自动安装运行时依赖。",
     "experts.sourceGit": "GitHub 地址",
     "experts.sourceDir": "本地目录",
+    "experts.sourceZip": "上传 zip / md",
     "experts.placeholderGit": "https://github.com/acme/ops-persona",
     "experts.placeholderDir": "/path/to/personas",
     "experts.install": "安装",
     "experts.installing": "正在安装…",
-    "experts.installed": "已安装 {count} 个专家——请在下方审阅并启用。",
+    "experts.installed": "已安装 {count} 个智能体——请在下方审阅并启用。",
     "experts.installFailed": "安装失败",
+    "experts.packageAgents": "智能体：{list}",
+    "experts.packageSkills": "技能：{list}",
+    "experts.packageIgnored": "已忽略：{list}",
+    "experts.packageEmpty": "无",
+    "experts.decisionOverwrite": "覆盖",
+    "experts.decisionSkip": "跳过",
+    "experts.overwriteAll": "全部覆盖",
+    "experts.skipAll": "全部跳过",
+    "experts.composedFrom": "已从 {list} 生成智能体提示词（安装后生效，非 OpenClaw 热读）",
+    "experts.ignoredHint":
+      "已合成进提示词的工作区文件不会出现在忽略列表；memory/ 目录本阶段不整树导入。",
+    "experts.zipUnsupported":
+      "当前服务未支持压缩包安装，请完全退出并重启 ChemClaw 后再试（需加载含 zip 联装的版本）。",
+    "experts.detailBack": "返回",
+    "experts.detailLoading": "正在加载…",
+    "experts.detailLoadFailed": "无法加载此智能体详情。",
     "experts.deleteFailed": "删除失败",
     "experts.tools": "工具：{tools}",
     "experts.risk": "风险：{risk}",
@@ -77,6 +98,26 @@ const messages = {
     "experts.messaging": " · 消息通道",
     "experts.mcp": " · MCP：{mcp}",
     "experts.recommendedMode": "推荐模式：{mode}。在上方启用后即可使用。",
+    "experts.chatWith": "与 {name} 畅谈",
+    "experts.choosePersona": "选择智能体（当前默认：{name}）",
+    "experts.startAs": "选择对话智能体",
+    "experts.managePersonas": "管理智能体…",
+    "experts.systemPrompt": "系统提示词",
+    "experts.defaultSkills": "默认技能",
+    "experts.skillMissing": "未安装",
+    "experts.installPath": "安装路径",
+    "experts.openFolder": "打开文件夹",
+    "experts.builtinReadonly": "内置智能体由产品维护，提示词只读。个性化请等待「另存为副本」（后续版本）。",
+    "intro.lede": "选择一个任务开始——我会完成工作并保存结果。你也可以直接在下方输入需求。",
+    "intro.task.folder.title": "分析文件夹中的文件",
+    "intro.task.folder.sub": "我会读取文件并总结重点",
+    "intro.task.folder.act": "选择文件夹 →",
+    "intro.task.hubspot.title": "根据我的 HubSpot 线索创建报告",
+    "intro.task.hubspot.sub": "来源、阶段以及需要跟进的对象",
+    "intro.task.github.title": "自动生成每周 GitHub 进展报告并发送到 Slack",
+    "intro.task.github.sub": "汇总仓库活动，并在每周五发送",
+    "intro.act.start": "开始 →",
+    "intro.act.configure": "配置 ›",
     "experts.persona.cowork.name": "ChemClaw",
     "experts.persona.cowork.tagline": "产出可交付成果——研究、分析、脚本",
     "experts.persona.code.name": "代码",
@@ -147,7 +188,7 @@ const messages = {
   "en-US": {
     "nav.conversations": "Conversations",
     "nav.skills": "Skills",
-    "nav.experts": "Experts",
+    "nav.experts": "Agents",
     "nav.scheduled": "Automations",
     "nav.connections": "Connectors",
     "nav.settings": "Settings",
@@ -185,30 +226,51 @@ const messages = {
     "skills.fieldDescriptionHint": "One line the worker uses to decide when this applies",
     "skills.fieldInstructions": "Instructions",
     "skills.saveSkill": "Save skill",
-    "experts.pageIntro": "Expert personas combine prompts, tools, and default skills. Enable one to use it when starting a conversation.",
-    "experts.enableHint": "Enable a coworker, then choose whether it appears in the new-session picker. The starred persona is the default for new sessions.",
+    "experts.pageIntro":
+      "Agents combine prompts, tools, and default skills. Enable one to use it for new chats — the primary button uses the starred default; ▾ lets you pick another.",
+    "experts.enableHint":
+      "After enabling, choose whether it appears in the new-chat ▾ list. The starred agent is the default for new conversations (changing the star does not rebind an open session).",
     "experts.enabled": "Enabled",
     "experts.inPicker": "In picker",
     "experts.setDefault": "Set default",
     "experts.builtin": "built-in",
-    "experts.defaultTitle": "Default for new sessions",
-    "experts.configure": "Configure {name}",
+    "experts.defaultTitle": "Default agent for new chats",
+    "experts.configure": "View {name}",
+    "experts.view": "View",
     "experts.delete": "Delete",
     "experts.keep": "Keep",
-    "experts.deleteTitle": "Delete this persona",
+    "experts.deleteTitle": "Delete this agent",
     "experts.disableWarning": "Disabling archives its {count} conversation(s) — they stay available under “Show archived”.",
     "experts.disable": "Disable",
     "experts.keepEnabled": "Keep enabled",
-    "experts.add": "Add personas",
-    "experts.addHint": "Load from a local directory or a public GitHub repo. Files are copied into a managed area (a snapshot), so the persona stays stable even if the source changes. No code runs — a persona only composes vetted tools.",
+    "experts.add": "Add agents",
+    "experts.addHint":
+      "GitHub URL, local directory, or upload a zip / .md. Folders with SKILL.md install into Skills (full tree). OpenClaw IDENTITY/SOUL are composed into the agent prompt. Preview conflicts and apply overwrite/skip in bulk. Runtime dependencies are not auto-installed.",
     "experts.sourceGit": "GitHub URL",
     "experts.sourceDir": "Local directory",
+    "experts.sourceZip": "Upload zip / md",
     "experts.placeholderGit": "https://github.com/acme/ops-persona",
     "experts.placeholderDir": "/path/to/personas",
     "experts.install": "Install",
     "experts.installing": "Installing…",
-    "experts.installed": "Installed {count} persona(s) — review and enable below.",
+    "experts.installed": "Installed {count} agent(s) — review and enable below.",
     "experts.installFailed": "install failed",
+    "experts.packageAgents": "Agents: {list}",
+    "experts.packageSkills": "Skills: {list}",
+    "experts.packageIgnored": "Ignored: {list}",
+    "experts.packageEmpty": "none",
+    "experts.decisionOverwrite": "Overwrite",
+    "experts.decisionSkip": "Skip",
+    "experts.overwriteAll": "Overwrite all",
+    "experts.skipAll": "Skip all",
+    "experts.composedFrom": "Agent prompt composed from {list} (applied on install; not OpenClaw live files)",
+    "experts.ignoredHint":
+      "Workspace files folded into the prompt are omitted from Ignored; the memory/ directory is not imported as a tree.",
+    "experts.zipUnsupported":
+      "This server build does not support zip install. Fully quit and restart ChemClaw so the zip co-install backend is loaded.",
+    "experts.detailBack": "Back",
+    "experts.detailLoading": "Loading…",
+    "experts.detailLoadFailed": "Could not load this agent.",
     "experts.deleteFailed": "delete failed",
     "experts.tools": "Tools: {tools}",
     "experts.risk": "Risk: {risk}",
@@ -216,13 +278,35 @@ const messages = {
     "experts.messaging": " · messaging",
     "experts.mcp": " · mcp: {mcp}",
     "experts.recommendedMode": "Recommended mode: {mode}. Enable it above to use it.",
+    "experts.chatWith": "Chatting with {name}",
+    "experts.choosePersona": "Choose agent (default: {name})",
+    "experts.startAs": "Start a conversation as",
+    "experts.managePersonas": "Manage agents…",
+    "experts.systemPrompt": "System prompt",
+    "experts.defaultSkills": "Default skills",
+    "experts.skillMissing": "Not installed",
+    "experts.installPath": "Install path",
+    "experts.openFolder": "Open folder",
+    "experts.builtinReadonly":
+      "Built-in agents are product-maintained and read-only. Personalize later via “Save as copy”.",
+    "intro.lede":
+      "Pick a task to start — I'll do the work and save the result. Or just type what you need below.",
+    "intro.task.folder.title": "Analyze the files in a directory",
+    "intro.task.folder.sub": "I'll read them and summarize what matters",
+    "intro.task.folder.act": "Pick a folder →",
+    "intro.task.hubspot.title": "Create a report from my HubSpot leads",
+    "intro.task.hubspot.sub": "Sources, stages, and who needs follow-up",
+    "intro.task.github.title": "Automate a weekly GitHub progress report to Slack",
+    "intro.task.github.sub": "Repo activity, summarized and posted every Friday",
+    "intro.act.start": "Start →",
+    "intro.act.configure": "Configure ›",
     "experts.persona.cowork.name": "ChemClaw",
     "experts.persona.cowork.tagline": "Produce a deliverable — research, analysis, scripts.",
     "experts.persona.code.name": "Code",
     "experts.persona.code.tagline": "Work in a codebase — files, git, shell.",
     "experts.persona.chat.name": "Chat",
     "experts.persona.chat.tagline": "Quick questions — no workspace.",
-    "experts.persona.ops.name": "Ops Coworker",
+    "experts.persona.ops.name": "Ops Lobster",
     "experts.persona.ops.tagline": "Operate and investigate — runbooks, logs, infrastructure.",
     "boot.starting": "Starting ChemClaw…",
     "boot.restoring": "Restoring your conversation…",
@@ -312,16 +396,26 @@ export interface I18nValue {
   t: (key: MessageKey, values?: MessageValues) => string;
 }
 
+// D-008: ChemClaw defaults to Simplified Chinese — including the context fallback used when a
+// component renders outside LocaleProvider (or briefly during HMR). Never fall back to English.
 const fallbackLocale: I18nValue = {
-  locale: "en-US",
+  locale: "zh-CN",
   setLocale: () => {},
-  t: (key, values) => translate("en-US", key, values),
+  t: (key, values) => translate("zh-CN", key, values),
 };
 
 const LocaleContext = createContext<I18nValue>(fallbackLocale);
 
 function initialLocale(): Locale {
   try {
+    // One-time restore to zh-CN (D-008). English fallback / HMR had left some installs on
+    // en-US; users who want English can switch again under 设置 → 语言.
+    if (localStorage.getItem("chemclaw.locale.zh-restore") !== "1") {
+      localStorage.setItem("chemclaw.locale.zh-restore", "1");
+      localStorage.setItem("chemclaw.locale", "zh-CN");
+      return "zh-CN";
+    }
+    // Only honor an explicit English preference; anything else (missing/corrupt) → zh-CN.
     return localStorage.getItem("chemclaw.locale") === "en-US" ? "en-US" : "zh-CN";
   } catch {
     return "zh-CN";
@@ -329,10 +423,22 @@ function initialLocale(): Locale {
 }
 
 export function LocaleProvider({ children }: { children: React.ReactNode }): JSX.Element {
-  const [locale, setLocale] = useState<Locale>(initialLocale);
+  const [locale, setLocaleState] = useState<Locale>(() => initialLocale());
+  const setLocale = (next: Locale) => {
+    setLocaleState(next);
+    try {
+      localStorage.setItem("chemclaw.locale", next);
+    } catch {
+      /* best effort */
+    }
+  };
   useEffect(() => {
     document.documentElement.lang = locale;
-    try { localStorage.setItem("chemclaw.locale", locale); } catch { /* best effort */ }
+    try {
+      localStorage.setItem("chemclaw.locale", locale);
+    } catch {
+      /* best effort */
+    }
   }, [locale]);
   const value = useMemo<I18nValue>(
     () => ({ locale, setLocale, t: (key, values) => translate(locale, key, values) }),

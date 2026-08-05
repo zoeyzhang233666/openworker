@@ -418,6 +418,8 @@ def test_stream_retries_generic_connection_error(monkeypatch):
 # -- OpenAI-compatible vendor providers (Z AI, DeepSeek, Kimi, MiniMax, Qwen, xAI, Mistral) ------
 
 COMPAT_VENDORS = {
+    "apihub-cn": "https://apihub.chem-cloud.cn/v1",
+    "apihub-intl": "https://www.tokenfoundryx.com/v1",
     "zai": "https://api.z.ai/api/paas/v4",
     "deepseek": "https://api.deepseek.com",
     "kimi": "https://api.moonshot.ai/v1",
@@ -482,6 +484,8 @@ def test_compat_models_route_and_get_tool_capabilities():
         ProviderRouter
     )  # only using _provider_name (stateless)
     for model in (
+        "apihub-cn:deepseek-v4-flash",
+        "apihub-intl:gpt-5.6-luna",
         "zai:glm-5.2",
         "deepseek:deepseek-v4-flash",
         "kimi:kimi-k2.6",
@@ -531,8 +535,10 @@ def test_matrix_labels_and_custom_model_fallback():
     labels = model_labels()
     assert labels["together:zai-org/GLM-5.2"] == "GLM-5.2 · via Together"
     assert labels["zai:glm-5.2"] == "GLM-5.2 · Z AI"
+    assert labels["apihub-cn:deepseek-v4-flash"] == "DeepSeek V4 Flash · via ApiHub CN"
+    assert labels["apihub-intl:gpt-5.6-luna"] == "GPT-5.6 Luna · via ApiHub Intl"
     # Deliberately small: agent-capable current models only (owner call, 2026-07-04).
-    assert len(MATRIX) < 60
+    assert len(MATRIX) < 80
     assert all(e.caps.tools for e in MATRIX.values())
     # A custom (unlisted) reseller model falls back to the conservative default — usable,
     # but at the user's own risk (no parallel tool calls assumed).

@@ -81,6 +81,15 @@ you're doing and why (e.g. "Checking what merged since yesterday's digest."). It
 to the user as live progress. Don't narrate trivial single-call follow-ups, don't repeat \
 the previous line, and never let narration replace your final answer."""
 
+# ChemClaw D-063: one shared rule for every persona — do not copy into each Agent/Skill.
+_DIAGRAM_GUIDANCE = """\
+Mermaid diagrams: when you output a fenced mermaid block for a directed relationship graph \
+(flowchart, graph, or sequenceDiagram), every edge MUST include a semantic label. \
+Good: `A -->|"采购"| B` or `A->>B: 请求`. Bad: bare `A --> B`. Use Chinese labels by \
+default (English if the user asked for English). Quote labels that contain special characters. \
+Do not invent labels that change meaning; prefer short verbs or relation names \
+(e.g. `"接着"`, `"依赖"`, `"上下游"`)."""
+
 
 def _enabled_connector_tools(secrets: SecretStore) -> tuple[set[str], set[str]]:
     connectors = {c["name"]: c for c in connector_list(secrets)}
@@ -142,7 +151,7 @@ def build_engine(
     *,
     agent: Agent,
     workspace: Optional[str | Path] = None,
-    model: str = "gpt-5.6-sol",
+    model: str = "apihub-cn:deepseek-v4-flash",
     mode: Mode = Mode.INTERACTIVE,
     approver: Optional[Approver] = None,
     provider: Optional[ProviderClient] = None,
@@ -167,6 +176,8 @@ def build_engine(
     connector_filter: Optional[set[str]] = None,
     # A set (static snapshot) or a zero-arg callable (live, re-evaluated per load_skill).
     skill_filter: Optional[set[str] | Callable[[], set[str]]] = None,
+    # Persona frontmatter `skills:` (D-068) — remind the model to load_skill these first.
+    default_skill_ids: Optional[list[str]] = None,
 ) -> TurnEngine:
     ws = Path(workspace).expanduser().resolve() if workspace else None
     if agent.needs_workspace and ws is None:
@@ -274,7 +285,16 @@ def build_engine(
     if wake_store is not None and session_id and agent.family == "knowledge":
         registry.register_all(selfwake_tools(wake_store, session_id))
 
-    instructions = f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}"
+    instructions = (
+        f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}\n\n{_DIAGRAM_GUIDANCE}"
+    )
+    if default_skill_ids:
+        listed = ", ".join(f"`{s}`" for s in default_skill_ids)
+        instructions = (
+            f"{instructions}\n\nDefault skills for this role: {listed}. "
+            "At the start of specialized work, call `load_skill` for each that is still "
+            "available in the catalog (skip any that are missing or disabled)."
+        )
     if ws is not None:
         instructions = f"{instructions}\n\n{environment_context(ws)}"
         conventions = load_agents_md(ws)

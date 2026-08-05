@@ -218,6 +218,7 @@ def _compat(
     recommended_model: str,
     env_key: str,
     endpoint_help: str = "",
+    blurb: str = "",
 ) -> ProviderDescriptor:
     """Descriptor for an OpenAI-compatible vendor: key + a prefilled, editable endpoint."""
     vendor = title.split(" (")[0]
@@ -244,7 +245,8 @@ def _compat(
         build=_openai_compat(vendor, base_url, env_key),
         recommended_model=recommended_model,
         env_key=env_key,
-        blurb=f"Uses {vendor}'s OpenAI-compatible API — the endpoint is prefilled, just add your key.",
+        blurb=blurb
+        or f"Uses {vendor}'s OpenAI-compatible API — the endpoint is prefilled, just add your key.",
     )
 
 
@@ -465,6 +467,23 @@ DESCRIPTORS: list[ProviderDescriptor] = [
     # OpenAI-compatible vendors, listed as first-class providers so users don't need to know the
     # "point the OpenAI slot at a different endpoint" trick (owner call, 2026-07-04). Each keeps
     # its own key profile; the endpoint is prefilled and editable (regional variants in `help`).
+    # chem-cloud ApiHub relay (CN / Intl) — gallery order is PROVIDER_ORDER in the GUI.
+    _compat(
+        "apihub-cn",
+        "ApiHub CN (chem-cloud)",
+        base_url="https://apihub.chem-cloud.cn/v1",
+        recommended_model="deepseek-v4-flash",
+        env_key="APIHUB_CN_API_KEY",
+        blurb="chem-cloud's OpenAI-compatible ApiHub relay (China). Endpoint is prefilled; just add your key.",
+    ),
+    _compat(
+        "apihub-intl",
+        "ApiHub Intl (chem-cloud)",
+        base_url="https://www.tokenfoundryx.com/v1",
+        recommended_model="gpt-5.6-luna",
+        env_key="APIHUB_INTL_API_KEY",
+        blurb="chem-cloud's OpenAI-compatible ApiHub relay (international). Endpoint is prefilled; just add your key.",
+    ),
     _compat(
         "zai",
         "Z AI (GLM)",

@@ -291,6 +291,23 @@ class PersonaRegistry:
             for e in self._entries.values()
         ]
 
+    def skill_ids(self, persona_id: str) -> list[str]:
+        """Stable Skill ids declared on the persona manifest (references only)."""
+        entry = self._entries.get(persona_id)
+        if entry is None or entry.manifest is None:
+            return []
+        return list(entry.manifest.skills)
+
+    def install_path(self, persona_id: str) -> Optional[str]:
+        """Managed snapshot directory for an installed (non-builtin) persona, if any."""
+        entry = self._entries.get(persona_id)
+        if entry is None or entry.builtin:
+            return None
+        if self.installed_dir is None:
+            return None
+        snap = self.installed_dir / persona_id
+        return str(snap) if snap.is_dir() else None
+
     # -- mutations --------------------------------------------------------------
     def set_enabled(self, persona_id: str, enabled: bool) -> None:
         if persona_id not in self._entries:

@@ -20,6 +20,38 @@ export const OPEN_ARTIFACT_EVENT = "ocw-open-artifact";
 
 const REMARK_PLUGINS = [remarkGfm];
 
+/** Suffixes that open in the session artifact viewer (aligned with server list_artifacts). */
+const ARTIFACT_SUFFIXES = new Set([
+  ".md",
+  ".markdown",
+  ".html",
+  ".htm",
+  ".txt",
+  ".json",
+  ".csv",
+  ".tsv",
+  ".py",
+  ".js",
+  ".ts",
+  ".tsx",
+  ".css",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".webp",
+  ".gif",
+  ".svg",
+  ".pdf",
+  ".xlsx",
+  ".xls",
+  ".pptx",
+  ".ppt",
+  ".pptm",
+  ".docx",
+  ".doc",
+  ".docm",
+]);
+
 function urlTransform(url: string): string {
   return url.startsWith("artifact:") ? url : defaultUrlTransform(url);
 }
@@ -33,6 +65,19 @@ export function artifactPathFromHref(href: string): string {
   } catch {
     return raw;
   }
+}
+
+/** Workspace-relative deliverable links → ArtifactChip; http(s)/mailto stay external. */
+export function isArtifactHref(href: string | undefined): boolean {
+  if (!href) return false;
+  if (href.startsWith("artifact:")) return true;
+  if (/^(https?:|mailto:|tel:|#|\/\/)/i.test(href)) return false;
+  const path = href.split(/[?#]/)[0] || "";
+  const slash = path.lastIndexOf("/");
+  const base = slash >= 0 ? path.slice(slash + 1) : path;
+  const dot = base.lastIndexOf(".");
+  if (dot < 0) return false;
+  return ARTIFACT_SUFFIXES.has(base.slice(dot).toLowerCase());
 }
 
 function ArtifactChip({ path, title }: { path: string; title: string }) {
@@ -79,9 +124,9 @@ function MarkdownLink({
   children?: ReactNode;
   [key: string]: unknown;
 }) {
-  if (href?.startsWith("artifact:")) {
+  if (isArtifactHref(href)) {
     const title = Array.isArray(children) ? children.join("") : String(children ?? "");
-    return <ArtifactChip path={artifactPathFromHref(href)} title={title} />;
+    return <ArtifactChip path={artifactPathFromHref(href!)} title={title} />;
   }
   return (
     <a href={href} {...props} target="_blank" rel="noreferrer">

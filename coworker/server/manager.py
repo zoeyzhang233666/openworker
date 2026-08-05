@@ -117,7 +117,7 @@ class SessionManager:
         *,
         workspace: Optional[str | Path] = None,  # default/seed workspace (e.g. --cwd)
         data_dir: Optional[str | Path] = None,
-        model: str = "gpt-5.6-sol",
+        model: str = "apihub-cn:deepseek-v4-flash",
         mode: Mode = Mode.INTERACTIVE,
         provider: Optional[ProviderClient] = None,
     ) -> None:
@@ -474,6 +474,12 @@ class SessionManager:
             # Per-session skill menu, LIVE (SKILLS-SPEC §3): a callable so load_skill sees
             # disables/new skills immediately; the catalog snapshot is taken at build.
             skill_filter=lambda sid=session_id, w=ws: self.effective_skill_names(sid, w),
+            default_skill_ids=[
+                sid
+                for sid in self.personas.skill_ids(agent_name)
+                if sid in self.effective_skill_names(session_id, ws)
+            ]
+            or None,
         )
         # An automation run rebuilt here (manual "Run now" over WS, durable resume) still
         # carries its task's standing allowances — the rules live on the task record.
@@ -609,7 +615,7 @@ class SessionManager:
 
     def persona_detail(self, persona_id: str) -> Optional[dict[str, Any]]:
         """Identity + capabilities + recommends(+connected) + default connections for one persona
-        (UI-REFRESH §5). Returns None for an unknown id (the route maps that to an error).
+        (UI-REFRESH §5 / D-065). Returns None for an unknown id (the route maps that to an error).
         """
         entry = self.personas.get(persona_id)
         if entry is None:
@@ -625,6 +631,15 @@ class SessionManager:
                 "connected": rec.ref in connected,
             }
             for rec in (manifest.recommends if manifest else [])
+        ]
+        if manifest is not None:
+            system_prompt = manifest.system_prompt
+        else:
+            system_prompt = entry.agent().system_prompt
+        installed_skill_names = {row["name"] for row in self.skill_store.rows()}
+        skills = [
+            {"id": sid, "installed": sid in installed_skill_names}
+            for sid in self.personas.skill_ids(persona_id)
         ]
         return {
             "id": entry.id,
@@ -643,7 +658,94 @@ class SessionManager:
             "default_connections": self._persona_default_connections(
                 persona_id, manifest, connected
             ),
+            "system_prompt": system_prompt,
+            "skills": skills,
+            "install_path": self.personas.install_path(persona_id),
+            "builtin": bool(entry.builtin),
         }
+
+    def install_persona_package(self, body: dict[str, Any]) -> dict[str, Any]:
+        """D-066 package co-install: unzip/scan preview, or install with overwrite|skip decisions.
+
+        Accepts ``package_dir``, or ``zip_b64`` / ``data_b64`` (mirrors skill upload encoding).
+        Optional ``filename`` helps bare ``.md`` uploads. ``decisions`` None → preview only.
+        """
+        import base64
+        import binascii
+        import io
+        import tempfile
+        import zipfile
+
+        from ..personas.package_install import preview_or_install
+
+        decisions = body.get("decisions")
+        if decisions is not None and not isinstance(decisions, dict):
+            return {"ok": False, "error": "decisions 必须是对象（item key → overwrite|skip）"}
+
+        package_dir = str(body.get("package_dir") or "").strip()
+        raw_b64 = str(body.get("zip_b64") or body.get("data_b64") or "")
+        filename = str(body.get("filename") or "")
+
+        if package_dir:
+            try:
+                return preview_or_install(
+                    self.personas,
+                    self.skill_store,
+                    package_dir,
+                    decisions=decisions,
+                )
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+
+        if not raw_b64:
+            return {"ok": False, "error": "请提供 package_dir 或 zip_b64"}
+
+        try:
+            data = base64.b64decode(raw_b64, validate=True)
+        except (ValueError, binascii.Error):
+            return {"ok": False, "error": "无效的压缩包编码"}
+
+        try:
+            with tempfile.TemporaryDirectory(prefix="persona-pkg-") as td:
+                dest = Path(td)
+                try:
+                    archive = zipfile.ZipFile(io.BytesIO(data))
+                except zipfile.BadZipFile:
+                    # Bare persona .md (or skill md) — mirror skill upload's non-zip path.
+                    name = Path(filename).name if filename else "persona.md"
+                    if not name.lower().endswith(".md"):
+                        name = "persona.md"
+                    (dest / name).write_bytes(data)
+                    return preview_or_install(
+                        self.personas,
+                        self.skill_store,
+                        dest,
+                        decisions=decisions,
+                    )
+                names = [
+                    n
+                    for n in archive.namelist()
+                    if not n.endswith("/")
+                    and "__MACOSX" not in Path(n).parts
+                    and Path(n).name != ".DS_Store"
+                    and not Path(n).name.startswith("._")
+                ]
+                for entry in names:
+                    p = Path(entry)
+                    if p.is_absolute() or ".." in p.parts or (p.parts and ":" in p.parts[0]):
+                        return {"ok": False, "error": "压缩包包含不安全路径"}
+                for entry in names:
+                    target = dest / entry
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(archive.read(entry))
+                return preview_or_install(
+                    self.personas,
+                    self.skill_store,
+                    dest,
+                    decisions=decisions,
+                )
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
 
     def set_persona_connection(
         self, persona_id: str, connector: str, enabled: bool
@@ -1555,6 +1657,20 @@ class SessionManager:
     # Suggestions for the OpenAI-compatible vendor providers (checked against vendor docs
     # 2026-07-04; refresh alongside `recommended_model` in providers/registry.py).
     COMPAT_MODELS = {
+        "apihub-cn": [
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "glm-5.2",
+            "kimi-k3",
+        ],
+        "apihub-intl": [
+            "gpt-5.6-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-terra",
+            "claude-sonnet-5",
+            "claude-opus-5",
+            "claude-fable-5",
+        ],
         "zai": ["glm-5.2", "glm-4.6"],
         "deepseek": ["deepseek-v4-flash", "deepseek-v4-pro"],
         "kimi": ["kimi-k2.6", "kimi-k2.5"],
@@ -2747,6 +2863,12 @@ class SessionManager:
             skill_filter=lambda sid=session_id, w=task.workspace: (
                 self.effective_skill_names(sid, w)
             ),
+            default_skill_ids=[
+                sid
+                for sid in self.personas.skill_ids(task.agent)
+                if sid in self.effective_skill_names(session_id, task.workspace)
+            ]
+            or None,
         )
         self._seed_task_permissions(engine, task)
         return engine

@@ -58,6 +58,19 @@ describe("Markdown artifact links", () => {
 
     window.removeEventListener(OPEN_ARTIFACT_EVENT, listener);
   });
+
+  it("renders relative workspace .md links as chips (not blue external anchors)", () => {
+    const seen: string[] = [];
+    const listener = (e: Event) => seen.push((e as CustomEvent).detail.path);
+    window.addEventListener(OPEN_ARTIFACT_EVENT, listener);
+
+    const { container } = render(<Markdown text="见 [产业链分析](产业链分析.md)" />);
+    expect(container.querySelector("a")).toBeNull();
+    fireEvent.click(screen.getByTestId("artifact-chip"));
+    expect(seen).toEqual(["产业链分析.md"]);
+
+    window.removeEventListener(OPEN_ARTIFACT_EVENT, listener);
+  });
 });
 
 describe("Markdown mermaid fence", () => {

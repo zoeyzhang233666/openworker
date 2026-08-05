@@ -69,6 +69,8 @@ describe("LocaleProvider", () => {
   });
 
   it("restores the persisted English locale after a refresh", () => {
+    // Skip the one-time zh-CN restore so an explicit English preference can round-trip.
+    localStorage.setItem("chemclaw.locale.zh-restore", "1");
     localStorage.setItem("chemclaw.locale", "en-US");
 
     render(
@@ -80,5 +82,21 @@ describe("LocaleProvider", () => {
     expect(screen.getByTestId("locale").textContent).toBe("en-US");
     expect(screen.getByTestId("home-title").textContent).toBe("What should we produce?");
     expect(document.documentElement.lang).toBe("en-US");
+  });
+
+  it("one-time restore forces Simplified Chinese even if locale was English", () => {
+    localStorage.setItem("chemclaw.locale", "en-US");
+    // chemclaw.locale.zh-restore unset → migrate to zh-CN
+
+    render(
+      <LocaleProvider>
+        <LocaleProbe />
+      </LocaleProvider>,
+    );
+
+    expect(screen.getByTestId("locale").textContent).toBe("zh-CN");
+    expect(screen.getByTestId("skills").textContent).toBe("技能");
+    expect(localStorage.getItem("chemclaw.locale")).toBe("zh-CN");
+    expect(localStorage.getItem("chemclaw.locale.zh-restore")).toBe("1");
   });
 });

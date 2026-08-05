@@ -17,6 +17,7 @@ import {
   type PersonaDetail,
 } from "../api";
 import { ConnectorBadge } from "../connectors/ConnectorIcon";
+import { useI18n } from "../i18n";
 import { fullPersonaName, shortPersonaName } from "../personaScope";
 import { Icon } from "./Icon";
 import { PersonaGlyph } from "./personaIcon";
@@ -41,6 +42,7 @@ export function PersonaView({
   onBack?: () => void;
   onOpenIntegrations?: () => void;
 }) {
+  const { t } = useI18n();
   const [detail, setDetail] = useState<PersonaDetail | null>(null);
   const [byName, setByName] = useState<ConnectorMap>({});
   const [error, setError] = useState<string | null>(null);
@@ -51,14 +53,14 @@ export function PersonaView({
     setError(null);
     getPersonaDetail(personaId)
       .then((d) => live && setDetail(d))
-      .catch(() => live && setError("Could not load this persona."));
+      .catch(() => live && setError(t("experts.detailLoadFailed")));
     getConnectors()
       .then((list) => live && setByName(indexConnectors(list)))
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [personaId]);
+  }, [personaId, t]);
 
   const toggleEnabled = async (next: boolean) => {
     setDetail((d) => (d ? { ...d, enabled: next } : d)); // optimistic
@@ -83,12 +85,12 @@ export function PersonaView({
             className="inline-flex items-center gap-1 text-[12.5px] text-muted hover:text-ink"
             onClick={onBack}
           >
-            <Icon name="arrowLeft" size={15} /> Back
+            <Icon name="arrowLeft" size={15} /> {t("experts.detailBack")}
           </button>
           <span className="text-faint">·</span>
         </>
       )}
-      <span className="text-[13px] font-semibold">Persona</span>
+      <span className="text-[13px] font-semibold">{t("nav.experts")}</span>
     </div>
   );
 
@@ -96,7 +98,9 @@ export function PersonaView({
     return (
       <main className="flex-1 min-w-0 flex flex-col bg-paper">
         {header}
-        <div className="p-12 text-center text-faint text-[13px]">{error || "Loading…"}</div>
+        <div className="p-12 text-center text-faint text-[13px]">
+          {error || t("experts.detailLoading")}
+        </div>
       </main>
     );
   }
@@ -118,8 +122,14 @@ export function PersonaView({
               <p className="text-[13px] text-muted mt-0.5">{detail.tagline}</p>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-[12px] text-muted">{detail.enabled ? "Enabled" : "Disabled"}</span>
-              <Toggle checked={detail.enabled} onChange={toggleEnabled} title="Enable this persona" />
+              <span className="text-[12px] text-muted">
+                {detail.enabled ? t("experts.enabled") : t("experts.disable")}
+              </span>
+              <Toggle
+                checked={detail.enabled}
+                onChange={toggleEnabled}
+                title={t("experts.configure", { name: fullPersonaName(detail.name, personaId) })}
+              />
             </div>
           </header>
 
@@ -128,6 +138,45 @@ export function PersonaView({
             <section>
               <div className={`${SEC_H} mb-1.5`}>About</div>
               <p className="text-[14px] leading-relaxed text-ink/90">{detail.description}</p>
+            </section>
+          )}
+
+          {detail.builtin && (
+            <p className="text-[12.5px] text-muted leading-relaxed">{t("experts.builtinReadonly")}</p>
+          )}
+
+          {detail.system_prompt && (
+            <section>
+              <div className={`${SEC_H} mb-1.5`}>{t("experts.systemPrompt")}</div>
+              <pre className="text-[12.5px] leading-relaxed whitespace-pre-wrap rounded-xl2 border border-line bg-panel p-3 max-h-80 overflow-y-auto hairline-scroll">
+                {detail.system_prompt}
+              </pre>
+            </section>
+          )}
+
+          {(detail.skills?.length ?? 0) > 0 && (
+            <section>
+              <div className={`${SEC_H} mb-2`}>{t("experts.defaultSkills")}</div>
+              <ul className="space-y-1.5">
+                {detail.skills!.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center gap-2 text-[13px] px-2.5 py-1.5 rounded-lg border border-line bg-panel"
+                  >
+                    <span className="font-mono flex-1 min-w-0 truncate">{s.id}</span>
+                    {!s.installed && (
+                      <span className="text-[11px] text-warnInk shrink-0">{t("experts.skillMissing")}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {detail.install_path && (
+            <section>
+              <div className={`${SEC_H} mb-1.5`}>{t("experts.installPath")}</div>
+              <code className="text-[12px] text-muted break-all">{detail.install_path}</code>
             </section>
           )}
 

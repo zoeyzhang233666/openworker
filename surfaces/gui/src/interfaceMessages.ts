@@ -379,6 +379,10 @@ export const interfaceMessagesZh = {
   "Session's own model (default)": "使用当前会话模型（默认）",
   "The summary is written by this model. The default follows whatever model the session is using.":
     "摘要由该模型生成。默认跟随当前会话所用模型。",
+  "Composer": "输入框",
+  "Show the context window bar": "显示上下文窗口用量条",
+  "A small meter showing how full the model's context window is. Turn it off to show this session's token total instead; either way the full breakdown is one click away.":
+    "用小型进度条显示模型上下文窗口已占用多少。关闭后改为显示本会话 Token 总量；无论哪种方式，完整明细都只需点一下即可查看。",
   "Sidebar": "侧栏",
   "Conversations shown per coworker": "每位助手显示的对话数",
   "Longer lists collapse behind “Show more”. Applies per coworker and per project.":
