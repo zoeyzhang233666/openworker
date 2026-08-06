@@ -26,7 +26,7 @@ const BTN_ACCENT = "text-[12.5px] px-3 py-2 rounded-lg bg-accent text-white shri
 const BTN_BORDERED =
   "text-[12.5px] px-2.5 py-1.5 rounded-lg border border-line bg-paper hover:border-lineStrong shrink-0 disabled:opacity-40 disabled:hover:border-line";
 
-const BUILTIN_IDS = new Set(["cowork", "code", "chat", "ops"]);
+const BUILTIN_IDS = new Set(["cowork", "code", "chat", "ops", "chain-lobster"]);
 
 /** Map legacy / opaque install errors to a restart hint (old sidecars ignore zip_b64). */
 function mapInstallError(

@@ -14,6 +14,7 @@ const LEGACY: Record<string, IconName> = {
   chat: "chat",
   code: "code",
   ops: "wrench",
+  "chain-lobster": "search",
 };
 
 // The glyphs a persona manifest may name directly (a curated, persona-appropriate subset).

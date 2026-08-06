@@ -178,6 +178,7 @@ def pick_boundary(messages: list[dict[str, Any]], *, keep_tokens: int) -> Option
 
 _WRITE_HINTS = ("write", "edit", "append", "save", "create", "patch")
 _ARTIFACT_HINTS = ("artifact", "publish", "deploy")
+_MCP_QUERY_KEYS = ("q", "query", "product_name", "name", "cas", "keyword", "keywords")
 
 
 def _iter_tool_calls(span: list[dict[str, Any]]):
@@ -216,12 +217,36 @@ def _result_status(result: Any) -> str:
     return ""
 
 
+def _mcp_query_from_args(args: dict[str, Any]) -> str:
+    for key in _MCP_QUERY_KEYS:
+        if key in args and args[key] not in (None, ""):
+            text = str(args[key]).strip()
+            return text[:120] + ("…" if len(text) > 120 else "")
+    for key, value in args.items():
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            text = f"{key}={value}"
+            return text[:120] + ("…" if len(text) > 120 else "")
+    return ""
+
+
+def _mcp_result_preview(result: Any, *, limit: int = 240) -> str:
+    if result is None:
+        return ""
+    text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
 def extract_working_state(span: list[dict[str, Any]]) -> str:
     """The mechanical block appended to the summary by CODE, from the span's tool-call
-    records: files written, recent commands (+ exit status), artifacts, tools used."""
+    records: files written, recent commands (+ exit status), artifacts, MCP queries,
+    tools used."""
     files: list[str] = []
     commands: list[str] = []
     artifacts: list[str] = []
+    mcp_lines: list[str] = []
     tools: list[str] = []
     for name, args, result in _iter_tool_calls(span):
         if name and name not in tools:
@@ -238,6 +263,20 @@ def extract_working_state(span: list[dict[str, Any]]) -> str:
             location = args.get("url") or args.get("path") or args.get("title")
             if location:
                 artifacts.append(str(location))
+        if name.startswith("mcp__"):
+            query = _mcp_query_from_args(args if isinstance(args, dict) else {})
+            preview = _mcp_result_preview(result)
+            short_name = name
+            if short_name.startswith("mcp__"):
+                parts = short_name.split("__")
+                if len(parts) >= 3:
+                    short_name = "__".join(parts[2:]) or short_name
+            piece = f"{short_name}"
+            if query:
+                piece += f" · {query}"
+            if preview:
+                piece += f" → {preview}"
+            mcp_lines.append(piece)
 
     def _dedupe_recent_first(items: list[str], limit: int) -> list[str]:
         seen: list[str] = []
@@ -261,6 +300,10 @@ def extract_working_state(span: list[dict[str, Any]]) -> str:
     if made:
         lines.append("Artifacts produced:")
         lines += [f"- {a}" for a in made]
+    recent_mcp = _dedupe_recent_first(mcp_lines, 15)
+    if recent_mcp:
+        lines.append("MCP queries (most recent first):")
+        lines += [f"- {m}" for m in recent_mcp]
     if tools:
         lines.append("Tools used in the summarized span: " + ", ".join(sorted(tools)))
     return "\n".join(lines) if len(lines) > 1 else ""
@@ -479,8 +522,9 @@ def trim_state(
     prior_users = list(prior.user_messages) if prior is not None else []
     summary = (
         (prior.summary_text + "\n\n" if prior is not None and prior.summary_text else "")
-        + "(Older turns were trimmed to fit the context window; no summary is available "
-        "for them. Re-read files and re-run commands if earlier results are needed.)"
+        + "（较早轮次已硬裁以适应上下文窗口；无 LLM 摘要可用。"
+        "请依据下方 working_state、用户原话与近期原文继续；"
+        "必要时重新读取工作区产物或重跑工具。）"
     )
     users, dropped = _cap_user_messages(
         prior_users + extract_user_messages(span),

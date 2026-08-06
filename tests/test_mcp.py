@@ -195,9 +195,18 @@ def test_schema_and_metadata():
     assert fn.__name__ == "mcp__fs__read_file"
     meta = fn.__aisuite_tool_metadata__
     assert meta.category == "mcp" and meta.requires_approval is True
+    assert meta.risk_level == "low"  # read_* heuristic → parallel-safe after authorize
     schema = fn.__coworker_schema__["function"]
     assert schema["name"] == "mcp__fs__read_file"
     assert schema["parameters"]["required"] == ["path"]
+
+
+def test_write_mcp_stays_medium_risk():
+    server = MCPServerDef(name="fs", transport="stdio", requires_approval=True)
+    fn = build_callables(
+        server, [_fake_tool("delete_file")], lambda t, a: None, asyncio.new_event_loop()
+    )[0]
+    assert fn.__aisuite_tool_metadata__.risk_level == "medium"
 
 
 def test_include_exclude_filter():

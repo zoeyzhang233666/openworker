@@ -37,7 +37,11 @@
   - ✅ Mermaid 全屏：以矢量 SVG（viewBox）铺满视口，缩放改 CSS 宽高而非 bitmap transform，避免又小又糊
   - ✅ Mermaid 全局主题改为 `neo`（彩色现代主题；图内 `%%{init}%%` / `classDef` 仍可覆盖）
   - ✅ Mermaid 悬停/聚焦才显示框线与工具栏（默认融文；错误态始终露出；工具栏 visibility 保占位防抖）
+  - ✅ Mermaid 渲染失败补救（D-074）：语法失败自动就地修 1 次并显示「正在修正图表…」；仍失败保留「修复图表」；成功图/过长/库加载失败不进模型修图；`POST /v1/sessions/{id}/mermaid-repair` + `message_updated`
   - ✅ 设置页 Context compaction 已汉化；默认触发阈值/上限拉到允许最大值（95% / 2,000,000 tokens）
+- ✅ （2026-08-05 D-073）长程任务不再因上下文过大阻塞：压缩失败不弹阻塞式 QUESTION；出站工具大回包统一裁剪到 40,000 字符并溢出落盘；压缩后续跑依赖 `<compacted-history>`（**2026-08-06 已撤销** `task-progress.md` 落盘与「查看任务进度」入口）
+- ✅ （2026-08-06 D-075）Agent Runtime 提速与体验 A–C：产物错误中文化；禁止本地 browser 自检；只读 MCP 并行 + 30s 默认超时（慢查询可用 `CHEMCLAW_MCP_TOOL_TIMEOUT=120` 覆盖后重启 sidecar）；MCP 结构化摘要；Trim 中文硬裁；**已撤销**任务进度 md / MCP 批次落盘；规格/计划见 `2026-08-06-chemclaw-agent-runtime-ux-*`（里程碑 D 待做）
+- ✅ （2026-08-06 D-076）首包空窗 UX：live Thinking 首包阶段默认展开；无 reasoning 时龙虾等待文案按前→后池约每 3s 轮播（中英）；不再长期「正在等待 Agent…」；规格/计划见 `2026-08-06-chemclaw-first-token-wait-ux-*`
   - ✅ 设置页上下文用量条（原 Composer 卡片）已汉化：标题「输入框」、开关与说明走 `t()` + `interfaceMessagesZh`
   - ✅ 后台对话继续与回切追齐：离开设置/其他对话不杀 turn；同会话重选不误清 streaming；`ready.running` + `turn_done` REST 追齐最终回答（D-061）
   - ✅ 跨会话并行回答（D-062）：`stream()` 每路独立 OpenAI SDK 客户端，避免切新对话把后台 turn 打成 Connection error；WS 事件按绑定 session 过滤防 Interrupted 串台；不做全局对话数软上限（后台 turn 也占 running）
@@ -89,6 +93,20 @@
   - ✅ ApiHub 一等提供商（D-071）：设置「模型」置顶 `ApiHub CN` / `ApiHub Intl`；独立密钥；共用云图标；新鲜默认 `apihub-cn:deepseek-v4-flash`（不迁移已有 prefs）
   - 回归状态（2026-08-05，ApiHub providers）：
   - `pytest tests/test_providers.py tests/test_provider_router.py tests/test_model_errors.py tests/test_settings.py`：相关用例通过（`test_config` 中 symlink 测因 Win 权限失败，与本改动无关）
+  - ✅ 产业链龙虾内置（D-072）：id `chain-lobster`，显示名「产业链龙虾」；13 默认 Skill；空态三条通俗推荐；全局 M4 Mermaid + G4 grilling 指针；过程 Skill 全量 bundled（superpowers + mattpocock）不挂默认 `skills:`；默认新建对话仍为 ChemClaw/`cowork`
+  - 回归状态（2026-08-05，D-072）：
+  - `pytest tests/test_chain_lobster.py tests/test_skills.py::test_build_engine_chat tests/test_persona_loading.py tests/test_persona_registry.py`：22 passed
+  - `npm test -- --run src/localization-audit.test.ts src/i18n.test.ts`：22 passed
+  - `scripts/vendor_process_skills.py` 修复：相对路径隐藏段跳过（避免 Windows `.chemclaw-dev` 误杀）；bundled 含 `grilling`/`grill-me`/`grill-with-docs`/`brainstorming` 等
+  - 回归状态（2026-08-06，Mermaid 失败补救 D-074）：
+  - `pytest tests/test_mermaid_repair.py`：7 passed
+  - `npm test -- --run src/components/MermaidBlock.test.tsx src/components/Markdown.test.tsx src/localization-audit.test.ts src/i18n.test.ts`：47 passed
+  - 规格：`docs/superpowers/specs/2026-08-06-chemclaw-mermaid-repair-design.md`；计划：`docs/superpowers/plans/2026-08-06-chemclaw-mermaid-repair.md`
+  - 回归状态（2026-08-06，D-075 Agent Runtime A–C + 撤销任务进度 md）：
+  - `pytest tests/test_artifact_walk.py tests/test_outbound_clip.py tests/test_mcp.py tests/test_compaction.py`：39 passed
+  - `npm test -- --run src/components/RightRail.artifacts.test.tsx src/localization-audit.test.ts src/i18n.test.ts`：24 passed
+  - 规格：`docs/superpowers/specs/2026-08-06-chemclaw-agent-runtime-ux-design.md`；计划：`docs/superpowers/plans/2026-08-06-chemclaw-agent-runtime-ux.md`（里程碑 D 待做；任务进度 md 已按产品决定撤销）
+  - MCP 超时运维：`CHEMCLAW_MCP_TOOL_TIMEOUT=120` 后重启 sidecar（默认 30s 暂不回滚）
 - 回归状态（2026-08-03）：
   - `pytest tests/test_engine.py`（空流 + 流式 + 无工具）：3 passed
   - `pytest` stream 重试/回退 + model errors：12 passed
@@ -112,6 +130,8 @@
 - [测试、开发环境与源码预览](TESTING.md)
 - 仓库级协作入口：`AGENTS.md`
 - [阶段 1 实施计划](../superpowers/plans/2026-07-29-chemclaw-first-vertical-slice.md)
+- [Agent Runtime 提速规格（D-075）](../superpowers/specs/2026-08-06-chemclaw-agent-runtime-ux-design.md)
+- [Agent Runtime 里程碑 D 计划](../superpowers/plans/2026-08-06-chemclaw-agent-runtime-ux.md)
 
 ## 路线图摘要
 

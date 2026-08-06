@@ -34,6 +34,10 @@ export const interfaceMessagesZh = {
   "Account: not signed in": "账户：未登录",
   "Search": "搜索",
   "Progress": "进度",
+  "This file is not in the conversation folder yet — it may not have been created, the path may not match, or it was moved or deleted.":
+    "文件尚未生成，或不在会话文件夹中（可能路径不匹配、已移动或已删除）。",
+  "This path is outside the conversation workspace.": "该路径不在会话工作区内。",
+  "This conversation has no workspace.": "当前会话没有工作区。",
   "Artifacts": "产物",
   "Access": "访问权限",
   "No previewable files yet.": "暂无可预览文件。",
@@ -151,6 +155,13 @@ export const interfaceMessagesZh = {
   "Try a task": "试试这些任务",
   "Jump to latest": "跳到最新内容",
   "Waiting for agent...": "正在等待 Agent…",
+  // D-076 first-token lobster wait pools (English key = en-US display)
+  "Lobster's scratching its head…": "龙虾正在挠头想…",
+  "Lobster's breaking the question into bits…": "龙虾正把问题掰开揉碎…",
+  "Still diving deep — bubbles soon…": "龙虾还在深潜，马上冒泡…",
+  "Thinking long — not napping…": "龙虾思考有点长，别以为它睡着了…",
+  "Still chewing on it — bubbles soon…": "龙虾还在啃这道题，马上吐泡…",
+  "Slow-cooking a good answer…": "龙虾在慢慢熬一锅好回答…",
   "Pick a task to start — I'll do the work and save the result. Or just type what you need below.":
     "选择一个任务开始——我会完成工作并保存结果。你也可以直接在下方输入需求。",
   "Analyze the files in a directory": "分析文件夹中的文件",

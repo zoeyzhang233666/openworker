@@ -37,6 +37,8 @@ function kindFromPath(path: string): string {
   return "text";
 }
 
+const HIDDEN_CHEMCLAW_PREFIX = "._chemclaw/";
+
 interface Props {
   active: boolean;
   sessionId: string;
@@ -84,7 +86,17 @@ export function RightRail({
   const [selected, setSelected] = useState<ArtifactInfo | null>(null);
   const [content, setContent] = useState<ArtifactContent | null>(null);
 
-  const refreshArtifacts = () => getArtifacts(sessionId).then(setArtifacts).catch(() => setArtifacts([]));
+  const visibleArtifacts = (list: ArtifactInfo[]) =>
+    list.filter((a) => !String(a.path).replaceAll("\\", "/").startsWith(HIDDEN_CHEMCLAW_PREFIX));
+
+  const refreshArtifacts = () =>
+    getArtifacts(sessionId)
+      .then((list) => {
+        setArtifacts(visibleArtifacts(list));
+      })
+      .catch(() => {
+        setArtifacts([]);
+      });
 
   useEffect(() => {
     if (!active) return;
@@ -141,7 +153,8 @@ export function RightRail({
       }
       getArtifacts(sessionId)
         .then((list) => {
-          setArtifacts(list);
+          setTaskProgressAvailable(hasTaskProgress(list));
+          setArtifacts(visibleArtifacts(list));
           setSelected(match(list, path) ?? minimal(path));
         })
         .catch(() => setSelected(minimal(path)));
@@ -215,6 +228,7 @@ export function RightRail({
                 ))}
               </div>
             )}
+
           </RailSection>
           )}
 
@@ -235,6 +249,28 @@ export function RightRail({
       )}
     </aside>
   );
+}
+
+function localizeArtifactError(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  error: string,
+  _path: string,
+): string {
+  const key = error.trim();
+  if (key === "artifact_not_found") {
+    return t("This file is not in the conversation folder yet — it may not have been created, the path may not match, or it was moved or deleted.");
+  }
+  if (key === "artifact_path_mismatch" || key === "path escapes workspace") {
+    return t("This path is outside the conversation workspace.");
+  }
+  if (key === "artifact_no_workspace" || key === "no workspace") {
+    return t("This conversation has no workspace.");
+  }
+  // Legacy English copy from older sidecars.
+  if (key.includes("isn't in the conversation's folder anymore")) {
+    return t("This file is not in the conversation folder yet — it may not have been created, the path may not match, or it was moved or deleted.");
+  }
+  return error;
 }
 
 function ProgressSummary({ running, toolNames, todo }: { running: boolean; toolNames: string[]; todo: TodoItem[] }) {
@@ -379,7 +415,7 @@ function ArtifactViewer({
         {!content ? (
           <div className="rail-muted">{t("Loading...")}</div>
         ) : content.error ? (
-          <div className="rail-error">{content.error}</div>
+          <div className="rail-error">{localizeArtifactError(t, content.error, artifact.path)}</div>
         ) : content.kind === "html" ? (
           <iframe
             key={`${artifact.path}-${reloadKey}`}

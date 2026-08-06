@@ -17,7 +17,7 @@
 - **D-008**：默认语言固定为 `zh-CN`，支持 `en-US` 切换并持久保存。
 - **D-009**：所有第一方页面、错误、审批、安装器和配置向导都必须中英文可用；默认 Agent 回答中文，用户明确要求英文时切换。
 - **D-010**：名称和介绍使用中英文展示元数据；实际执行指令保留一份权威内容，默认不自动翻译执行正文。
-- **D-011**：Agent “Serenity”默认显示为“白毛股神 Serenity”，相关介绍默认中文。
+- **D-011**：ChemClaw 内置化工产业链智能体对外显示名为「产业链龙虾」（代码 id `chain-lobster`）。历史名称「白毛股神 Serenity」仅用于 OpenClaw 能力包合成产物（`serenity`）与来源说明，不再作为 ChemClaw 内置默认展示名。（原表述已由 D-072 修订。）
 
 ## 领域模型
 
@@ -117,6 +117,38 @@
 ## 模型提供商（2026-08-05）
 
 - **D-071**：芯化和云 ApiHub 作为一等 OpenAI 兼容提供商接入设置「模型」页，拆成两个独立卡片并置顶：`apihub-cn` 显示 `ApiHub CN (chem-cloud)`（端点 `https://apihub.chem-cloud.cn/v1`），`apihub-intl` 显示 `ApiHub Intl (chem-cloud)`（端点 `https://www.tokenfoundryx.com/v1`）。画廊顺序为 CN → Intl → Claude → …；共用同一透明底云图标；密钥槽完全独立；端点预填且可在「自定义端点」中修改。CN 精选含 `deepseek-v4-flash`（主推荐）、`deepseek-v4-pro`、`glm-5.2`、`kimi-k3`；Intl 精选含 `gpt-5.6-sol`、`gpt-5.6-luna`（主推荐）、`gpt-5.6-terra`、`claude-sonnet-5`、`claude-opus-5`、`claude-fable-5`。新鲜安装 / 无已保存 `prefs.default_model` 时默认模型为 `apihub-cn:deepseek-v4-flash`；**不**迁移或覆盖已有用户 prefs。
+
+## 产业链龙虾与过程 Skill（2026-08-05）
+
+- **D-072**：内置智能体 `chain-lobster` 显示名「产业链龙虾」（无 Serenity 副标题）；化工产业链为锚，股票/宏观为同对话延伸。默认 Skill：七个中文投研 + `pdf`/`chart-image`/`file-search`/`multi-search-engine` + `market-analysis`/`stock-analysis`。新建对话默认仍为 ChemClaw/`cowork`（Def1）。空态三条推荐通俗、无固定品名、用「稀缺」表述。Mermaid **M4**：全局安全+边标签+美观工具箱+反模板；「产业链层级测绘」补化工类型样式。过程库 **B1**：superpowers + mattpocock-skills-zh-CN 全量 bundled，不写入各智能体默认 `skills:`。澄清 **G4**：全局一句指针指向 `load_skill(grilling|grill-me|…)`，不另写先对齐长流程；默认 Markdown，可白话问是否要更美观的网页。上传 zip 合成的 `serenity` 与内置龙虾并存（I1）。
+
+## 长程任务上下文韧性（2026-08-05）
+
+- **D-073**：长程任务禁止因上下文过大而阻塞用户交互。具体：
+  - 压缩器（上下文摘要）失败时也不弹阻塞式 QUESTION；统一走自动 Trim 并继续。
+  - 出站视图中（role=`tool`）的大回包统一裁剪到 40,000 字符；溢出完整内容落盘到会话产物文件，并在出站内容中给出可读路径指针。
+  - 压缩后续跑依赖 OPE-27 `<compacted-history>`（LLM 摘要 + 机械 working_state + 用户原话 + 近期原文尾）；Trim 硬裁几乎无叙事摘要，模型应优先依赖该压缩块、工作区产物与必要时重跑工具。
+  - **（2026-08-06 修订）** 撤销 `._chemclaw/task-progress.md` 引擎落盘与「查看任务进度」入口；侧栏 Progress/`todo_write` 保留为人看的计划 UI，不替代压缩记忆。
+
+## Mermaid 失败补救（2026-08-06）
+
+- **D-074**：Mermaid 语法/解析渲染失败时，对会话助手消息中的该 fenced 块自动就地修一次（窄通道、无工具、不代发用户气泡），并显示「正在修正图表…」；仍失败保留「修复图表」手动再试。已成功出图、源码过长、库加载失败不进模型修图。产物 MD 预览本期不写回文件。扩展 D-029 失败降级，不改 D-028/D-063。
+
+## Agent Runtime 提速与体验（2026-08-06）
+
+- **D-075**：在 OpenWorker 内核上渐进增强 Agent Runtime（不整体替换）。具体：
+  - 产物缺失错误用稳定 key + GUI 中文区分「尚未生成 / 路径不匹配 / 不在工作区」。
+  - 全局长程附录与产业链龙虾禁止用浏览器验证 `file://` 与 localhost；最终交付必须用 `[标题](artifact:相对路径)`。
+  - 只读 MCP（名称启发式）标记 `risk_level=low`；授权通过后可与其他 low 工具并行；默认桥接超时 30s（可用 `CHEMCLAW_MCP_TOOL_TIMEOUT` / `COWORKER_MCP_TOOL_TIMEOUT` 覆盖；含 batch/export 等慢词保留 120s）。不绕过审批总闸。
+  - **（运维备注 / A4）** chem-data-hub 等慢查询在 30s + 并行排队下易大面积 `TimeoutError`（`error` 常为空字符串，因 `str(TimeoutError())` 为空）。默认值暂不回滚；临时止血：设 `CHEMCLAW_MCP_TOOL_TIMEOUT=120` 后重启 sidecar。后续可再议同服务器串行 / 提高默认 / 超时取消飞行请求。
+  - 出站 MCP/大 JSON 优先结构化摘要再落盘溢出；`extract_working_state` 记录 MCP 查询与结果预览。
+  - Trim 回退摘要使用中文硬裁说明（不再指向任务进度文件）。
+  - **（2026-08-06 修订）** 撤销任务进度 md 与 MCP 批次追加落盘；压缩记忆仅靠 `<compacted-history>` 等既有通道。
+  - 里程碑 D（压缩态可见 / Plan-then-Act 时间线）见规格 `2026-08-06-chemclaw-agent-runtime-ux-design.md`，另案实施。
+
+## 首包空窗 UX（2026-08-06）
+
+- **D-076**：发送后至首条可见进展前，不得长期只显示「正在等待 Agent…」。有 `reasoning_delta` 时 live ThinkingBlock 在首包思考阶段默认展开（手动点击粘性覆盖）；无 reasoning 时用全局龙虾文案按前池→后池顺序约每 3s 轮播（中英对等；新等待从第 1 句重启）。压缩态仍用「正在压缩上下文…」。不纳入压缩细化 / 工具间隙 / Plan-then-Act（仍属里程碑 D）。规格/计划：`2026-08-06-chemclaw-first-token-wait-ux-*`。
 
 ## 协作治理
 

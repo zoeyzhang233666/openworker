@@ -91,7 +91,9 @@ def test_build_engine_chat(tmp_path):
     assert engine.agent_name == "chat"
     # D-063: Mermaid edge-label rule is injected once for every agent.
     sys_msg = engine.messages[0]["content"]
-    assert "every edge MUST include a semantic label" in sys_msg
+    assert "every edge MUST have a semantic label" in sys_msg
+    assert "load_skill" in sys_msg and "grilling" in sys_msg
+    assert "nicer-looking webpage" in sys_msg or "美观" in sys_msg
     assert 'A -->|"采购"| B' in sys_msg
 
 

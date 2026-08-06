@@ -57,6 +57,8 @@ import { Sidebar } from "./components/Sidebar";
 import { ThinkingBlock, Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { Markdown } from "./components/Markdown";
+import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
+import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen } from "./firstTokenWaitCopy";
 import { SearchModal } from "./components/SearchModal";
 import { SessionIntro } from "./components/SessionIntro";
 import { FolderGate } from "./components/FolderGate";
@@ -673,7 +675,7 @@ export function App() {
         case "reasoning_delta":
           setReasoningStream(reasoningRef.current + (d.text || ""));
           break;
-        case "assistant_message": {
+          case "assistant_message": {
           if (d.usage) setUsage((u) => addTurnUsage(u, d.usage));
           // The event's reasoning is authoritative (covers background-delivered turns);
           // the local buffer is the fallback for older servers.
@@ -684,12 +686,31 @@ export function App() {
               {
                 kind: "assistant",
                 text: d.text || "",
-                ts: Date.now() / 1000,
+                // D-074: prefer server ts so mermaid-repair can target this message.
+                ts: typeof d.ts === "number" ? d.ts : Date.now() / 1000,
                 ...(reasoning ? { reasoning } : {}),
               },
             ]);
           setStreaming(""); // finalized into items (or empty tool-only turn)
           setReasoningStream("");
+          break;
+        }
+        case "message_updated": {
+          // D-074: in-place mermaid (or other) content patch on an assistant message.
+          const content = d.message?.content;
+          const ts = typeof d.message_ts === "number" ? d.message_ts : d.message?.ts;
+          if (typeof content === "string") {
+            setItems((p) => {
+              let replaced = false;
+              return p.map((it) => {
+                if (replaced || it.kind !== "assistant") return it;
+                if (typeof ts === "number" && it.ts !== ts) return it;
+                if (typeof ts !== "number" && it.text === content) return it;
+                replaced = true;
+                return { ...it, text: content, ...(typeof ts === "number" ? { ts } : {}) };
+              });
+            });
+          }
           break;
         }
         case "tool_proposed":
@@ -952,6 +973,26 @@ export function App() {
     dropSessionInbox("approval");
     sessionRef.current?.approve(decision);
   };
+  const onMermaidRepaired = useCallback(
+    (info: {
+      oldSource: string;
+      newSource: string;
+      content: string;
+      messageTs?: number;
+    }) => {
+      setItems((prev) => {
+        let replaced = false;
+        return prev.map((it) => {
+          if (replaced || it.kind !== "assistant") return it;
+          if (typeof info.messageTs === "number" && it.ts !== info.messageTs) return it;
+          if (!it.text.includes(info.oldSource)) return it;
+          replaced = true;
+          return { ...it, text: info.content };
+        });
+      });
+    },
+    [],
+  );
   const respondPlan = (approved: boolean, mode?: string, feedback?: string) => {
     setItems((p) => resolveLastPlan(p, approved ? "approved" : "rejected"));
     dropSessionInbox("plan");
@@ -1609,9 +1650,10 @@ export function App() {
                     <span className="mark">✦</span>
                     {t("experts.chatWith", { name: agentDisplayName })}
                   </h1>
-                  {agent === "cowork" ? (
+                  {agent === "cowork" || agent === "chain-lobster" ? (
                     <SessionIntro
                       hideGreeting
+                      variant={agent === "chain-lobster" ? "chain-lobster" : "cowork"}
                       sessionId={sessionId}
                       onOpenSessionSettings={openAccess}
                       onPrefill={prefillComposer}
@@ -1638,27 +1680,35 @@ export function App() {
                     running={running}
                     onRetry={retry}
                     agentLabel={agentDisplayName}
+                    sessionId={sessionId}
+                    onMermaidRepaired={onMermaidRepaired}
                     // §33 ref #3: sub-threshold streamed text renders INSIDE the live turn
                     // group (header when collapsed, quiet line when expanded) — never as a
                     // floating paragraph.
                     streamingText={streamMode(streaming, items, running) === "quiet" ? streaming : undefined}
                   />
-                  {/* Live thinking (reasoning models): a quiet collapsed block that streams the
-                      trace for anyone who expands it; folds into the answer's disclosure when
-                      the message finalizes. */}
+                  {/* Live thinking (D-076): expand during first-token window so users see work. */}
                   {running && reasoningStream && !streaming && (
                     <div className="transcript">
-                      <ThinkingBlock text={reasoningStream} live />
+                      <ThinkingBlock
+                        text={reasoningStream}
+                        live
+                        defaultOpen={isFirstTokenThinkingOpen(items)}
+                      />
                     </div>
                   )}
                   {/* Compaction runs between provider turns (nothing streams during it), so
                       the transient takes over the waiting slot with a specific label. */}
                   {running && compacting && <WaitingForAgent label={t("Compacting context…")} />}
-                  {running &&
-                    !compacting &&
-                    !reasoningStream &&
-                    (!streaming || streamMode(streaming, items, running) === "hold") &&
-                    !lastItemIsAssistant(items) && <WaitingForAgent />}
+                  {/* D-076: first-token empty window uses lobster copy; not mid-turn tool gaps. */}
+                  <FirstTokenWaitLabel
+                    active={isFirstTokenEmptyWindow(items, {
+                      running,
+                      compacting,
+                      reasoningStream,
+                      streaming,
+                    })}
+                  />
                   {streaming && streamMode(streaming, items, running) === "answer" && (
                     <div className="transcript">
                       <div className="bubble-assistant">
@@ -1812,15 +1862,6 @@ export function App() {
       )}
     </div>
   );
-}
-
-function lastItemIsAssistant(items: Item[]): boolean {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i];
-    if (item.kind === "notice") continue;
-    return item.kind === "assistant";
-  }
-  return false;
 }
 
 function WaitingForAgent({ label }: { label?: string }) {

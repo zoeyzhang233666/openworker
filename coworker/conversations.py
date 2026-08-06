@@ -217,6 +217,29 @@ class ConversationStore:
             self._conn.commit()
         self.touch_workspace(record.workspace)
 
+    def rewrite_messages(self, session_id: str, messages: list[dict]) -> bool:
+        """Full rewrite of the message jsonl (same length in-place edits, e.g. mermaid repair).
+
+        Append-only `save()` skips content changes when message count is unchanged.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT session_id FROM sessions WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            if not row:
+                return False
+            path = self._file(session_id)
+            with open(path, "w", encoding="utf-8") as f:
+                for m in messages:
+                    f.write(json.dumps(m) + "\n")
+            self._conn.execute(
+                "UPDATE sessions SET n_msgs = ?, messages = NULL, updated_at = CURRENT_TIMESTAMP "
+                "WHERE session_id = ?",
+                (len(messages), session_id),
+            )
+            self._conn.commit()
+        return True
+
     def load(self, session_id: str) -> Optional[SessionRecord]:
         with self._lock:
             row = self._conn.execute(

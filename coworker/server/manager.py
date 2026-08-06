@@ -1414,24 +1414,27 @@ class SessionManager:
     def _artifact_target(
         self, session_id: str, path: str, *, allow_dir: bool = False
     ) -> tuple[Optional[Path], Optional[str]]:
-        """Resolve an artifact path under the session's workspace, or (None, error)."""
+        """Resolve an artifact path under the session's workspace, or (None, error).
+
+        Error strings are stable English keys the GUI localizes (see interfaceMessages).
+        """
         record = self.session_store.load(session_id)
         workspace = record.workspace if record else self.default_workspace
         if not workspace:
-            return None, "no workspace"
+            return None, "artifact_no_workspace"
         root = Path(workspace).expanduser().resolve()
-        target = (root / path).expanduser().resolve()
+        # Normalize separators so Windows clients and artifact: chips match.
+        rel = str(path or "").replace("\\", "/").lstrip("/")
+        target = (root / rel).expanduser().resolve()
         try:
             target.relative_to(root)
         except ValueError:
-            return None, "path escapes workspace"
+            return None, "artifact_path_mismatch"
         if allow_dir and target.is_dir():
             return target, None
         if not target.is_file():
-            return None, (
-                "This isn't in the conversation's folder anymore — it may have been "
-                "moved or deleted."
-            )
+            # Distinguishes "never created / wrong relative path" from a deleted deliverable.
+            return None, "artifact_not_found"
         return target, None
 
     def read_artifact(self, session_id: str, path: str) -> dict[str, Any]:
@@ -3810,6 +3813,91 @@ class SessionManager:
             return list(engine.messages)
         record = self.session_store.load(session_id)
         return record.messages if record else []
+
+    def repair_mermaid(
+        self,
+        session_id: str,
+        *,
+        source: str,
+        error: str = "",
+        message_ts: Optional[float] = None,
+    ) -> dict[str, Any]:
+        """D-074: no-tools LLM rewrite of one failed mermaid fence; patch assistant message in place.
+
+        Does not mark the session as running (parallel with a normal turn is allowed).
+        """
+        from ..mermaid_repair import (
+            find_message_index_for_source,
+            parse_repaired_mermaid,
+            repair_prompt_messages,
+            replace_mermaid_source,
+        )
+
+        source = source or ""
+        if not source.strip():
+            return {"ok": False, "error": "缺少图表源码"}
+        if len(source) > 50_000:
+            return {"ok": False, "error": "图表源码过长，无法修复"}
+
+        messages = self.session_messages(session_id)
+        if not messages and self.session_store.load(session_id) is None:
+            return {"ok": False, "error": "会话不存在"}
+
+        idx = find_message_index_for_source(messages, source, message_ts=message_ts)
+        if idx is None:
+            return {"ok": False, "error": "未找到包含该图表的助手消息"}
+
+        engine = self._engines.get(session_id)
+        model = getattr(engine, "model", None) if engine is not None else None
+        if not model:
+            record = self.session_store.load(session_id)
+            model = (record.model if record else None) or self.model
+
+        prompt = repair_prompt_messages(source, error)
+        try:
+            turn = self.provider_complete(model, prompt, tools=None)
+        except Exception as exc:
+            return {"ok": False, "error": f"模型调用失败：{exc}"}
+
+        new_source = parse_repaired_mermaid(turn.text or "")
+        if not new_source:
+            return {"ok": False, "error": "模型未返回有效的 mermaid 代码块"}
+
+        old_content = messages[idx].get("content") or ""
+        if not isinstance(old_content, str):
+            return {"ok": False, "error": "助手消息内容无效"}
+        new_content = replace_mermaid_source(old_content, source, new_source)
+        if new_content is None:
+            return {"ok": False, "error": "替换图表源码失败"}
+
+        if engine is not None:
+            engine.messages[idx] = {**engine.messages[idx], "content": new_content}
+            msgs = list(engine.messages)
+            patched = engine.messages[idx]
+        else:
+            record = self.session_store.load(session_id)
+            if record is None:
+                return {"ok": False, "error": "会话不存在"}
+            msgs = list(record.messages)
+            msgs[idx] = {**msgs[idx], "content": new_content}
+            patched = msgs[idx]
+
+        # Append-only save() skips same-length edits — always rewrite the jsonl.
+        if not self.session_store.rewrite_messages(session_id, msgs):
+            # Session row may be missing for a brand-new live engine; fall back to persist.
+            if engine is not None:
+                self.persist_session(session_id)
+                if not self.session_store.rewrite_messages(session_id, list(engine.messages)):
+                    return {"ok": False, "error": "无法保存修复后的消息"}
+            else:
+                return {"ok": False, "error": "无法保存修复后的消息"}
+
+        return {
+            "ok": True,
+            "source": new_source,
+            "message": patched,
+            "message_ts": patched.get("ts"),
+        }
 
     def rename_session(self, session_id: str, title: str) -> dict[str, Any]:
         if session_id.startswith("__"):

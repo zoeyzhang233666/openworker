@@ -415,11 +415,15 @@ class TurnEngine:
                 # window on this round-trip (estimate fallback when never reported).
                 self._last_context_tokens = turn.usage.context_tokens
 
-            self.messages.append(_assistant_message(turn, model=self.model))
+            assistant_msg = _assistant_message(turn, model=self.model)
+            self.messages.append(assistant_msg)
             payload: dict[str, Any] = {
                 "text": turn.text,
                 "tool_calls": [tc.name for tc in turn.tool_calls],
             }
+            # D-074: surface server ts so the GUI can target in-place mermaid repair.
+            if isinstance(assistant_msg.get("ts"), (int, float)):
+                payload["ts"] = assistant_msg["ts"]
             if turn.reasoning:
                 payload["reasoning"] = turn.reasoning
             if turn.usage is not None:
@@ -476,11 +480,14 @@ class TurnEngine:
         )
 
     async def _compact_now(self, *, force: bool = False) -> Optional[str]:
-        """Run the compaction policy. Callers gate on `_compaction_due()` (or `force`,
-        the overflow path). Returns the user-facing notice text when the outbound view
-        changed, else None. Failure policy per spec: retry once (both modes); attended →
-        Retry / Trim prompt; unattended → auto-trim and continue (never park a run on
-        bookkeeping)."""
+        """Run the compaction policy.
+
+        Callers gate on `_compaction_due()` (or `force`, the overflow path). Returns the
+        user-facing notice text when the outbound view changed, else None.
+
+        Failure policy: retry once (both modes) and then auto-trim + continue.
+        IMPORTANT: do not park / block the turn waiting for a user decision.
+        """
         cfg = self._compaction_config()
         pct = float(cfg["threshold_pct"])
         cap = int(cfg["cap_tokens"])
@@ -509,31 +516,6 @@ class TurnEngine:
                 break
             except Exception:
                 failed = True
-        if failed and self.question_asker is not None and self.is_attended and self.is_attended():
-            while True:
-                answer = await self._interruptible(
-                    self.question_asker(
-                        {
-                            "question": (
-                                "Context compaction failed — the summarizer couldn't "
-                                "condense this session's history. How should I proceed?"
-                            ),
-                            "options": ["Retry", "Trim oldest 10%"],
-                            "allow_text": False,
-                            "header": "Compaction",
-                        },
-                        None,
-                    ),
-                    interrupted=None,
-                )
-                if not answer or answer.get("answer") != "Retry":
-                    break
-                try:
-                    state = await asyncio.to_thread(_build)
-                    failed = False
-                    break
-                except Exception:
-                    continue
         if state is not None:
             self.compaction_state = state
             self._last_context_tokens = None  # stale once the outbound view shrank
@@ -543,7 +525,7 @@ class TurnEngine:
             if trimmed is not None:
                 self.compaction_state = trimmed
                 self._last_context_tokens = None
-                return "Context trimmed — oldest turns dropped (summary unavailable)"
+                return "上下文已自动裁剪（摘要不可用）"
         return None
 
     # -- helpers ----------------------------------------------------------------
@@ -553,11 +535,9 @@ class TurnEngine:
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
         tools = self.registry.schemas() or None
-        model, messages, settings = (
-            self.model,
-            self._outbound_messages(),
-            self.model_settings,
-        )
+        model = self.model
+        messages = self._outbound_messages()
+        settings = self.model_settings
         provider = self.provider
 
         def produce():
@@ -677,13 +657,12 @@ class TurnEngine:
         )
 
     def _parallel_safe(self, tool_call: ToolCall) -> bool:
-        # Only metadata-declared low-risk tools (reads, searches, git queries) run
-        # concurrently; writes, shell, and anything unannotated stay strictly ordered.
+        # Only metadata-declared low-risk tools (reads, searches, git queries, read-only
+        # MCP) run concurrently. Approval already ran above; do not re-block on
+        # requires_approval here or authorized MCP reads stay serial forever.
         spec = self.registry.get(tool_call.name)
         metadata = spec.metadata if spec else None
-        return getattr(metadata, "risk_level", "") == "low" and not getattr(
-            metadata, "requires_approval", False
-        )
+        return getattr(metadata, "risk_level", "") == "low"
 
     async def _authorize(self, tool_call: ToolCall) -> "AsyncIterator[Event | bool]":
         """Permission flow for one call (TOOL_PROPOSED is emitted by the caller). Yields
@@ -1128,6 +1107,40 @@ class TurnEngine:
                     )
                     for msg in out
                 ]
+
+        # Clamp tool/MCP result sizes in the outbound view so we cannot blow the model's
+        # context window due to a single massive result. Overflow goes to workspace
+        # artifacts for exact recovery.
+        from .outbound_clip import clip_tool_result
+
+        id_to_name: dict[str, str] = {}
+        for msg in out:
+            if msg.get("role") != "assistant":
+                continue
+            for tc in msg.get("tool_calls") or []:
+                tid = tc.get("id")
+                fn = tc.get("function") or {}
+                if tid and fn.get("name"):
+                    id_to_name[str(tid)] = str(fn["name"])
+
+        cap_chars = 40_000
+        for i in range(len(out)):
+            msg = out[i]
+            if msg.get("role") != "tool":
+                continue
+            content = msg.get("content")
+            if not isinstance(content, str):
+                continue
+            clipped, _ = clip_tool_result(
+                content,
+                workspace_root=self.permissions.workspace_root,
+                cap_chars=cap_chars,
+                tool_name=id_to_name.get(str(msg.get("tool_call_id") or "")),
+            )
+            if clipped != content:
+                msg = dict(msg)
+                msg["content"] = clipped
+                out[i] = msg
 
         context = (
             self.context_provider() if self.context_provider is not None else ""

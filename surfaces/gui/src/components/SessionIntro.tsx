@@ -14,6 +14,8 @@ import { AddFolderForm } from "./AddFolderForm";
 // OUTCOME, never connection state. Sources ready → "Start →" on hover, click prefills the
 // composer. Not ready → "Configure ›" always visible (for a gated row the setup action IS the
 // row's meaning), opening the §23 Session settings drawer — no second setup surface here.
+//
+// chain-lobster variant (D-072): three chemical value-chain starters; no fixed product name.
 
 const FOLDER_PROMPT = "Analyze the files in this folder and summarize what matters.";
 const HUBSPOT_PROMPT =
@@ -21,11 +23,19 @@ const HUBSPOT_PROMPT =
 const GH_SLACK_PROMPT =
   "Set up a weekly progress report: summarize activity in my GitHub repos and post it to Slack every Friday morning.";
 
+const CHAIN_PROMPT_1 =
+  "请帮我拆解一个化工品从原料到最终用途的上下游关系，并说明相关企业；需要时画出带关系标签的产业链图。请先问清楚品种、用途边界和范围。";
+const CHAIN_PROMPT_2 =
+  "请帮我找出某条化工产业链里最稀缺的环节，并给证据定级。请先问清楚主题边界和范围，再区分事实与推测。";
+const CHAIN_PROMPT_3 =
+  "请从化工产业链的稀缺环节出发，分析可能对应哪些上市公司机会。请先把产业环节说清楚，再映射到公司和行情，并标明不确定处。";
+
 export function SessionIntro({
   sessionId,
   onOpenSessionSettings,
   onPrefill,
   hideGreeting = false,
+  variant = "cowork",
 }: {
   sessionId: string;
   // Opens the §23 Session settings drawer (sources section) — the gated rows' Configure target.
@@ -33,6 +43,8 @@ export function SessionIntro({
   onPrefill: (text: string, attachments?: Attachment[]) => void;
   /** When true, skip the local h1 — App already shows「与 xxx 畅谈」(D-067). */
   hideGreeting?: boolean;
+  /** cowork = folder/HubSpot/GitHub; chain-lobster = chemical value-chain starters. */
+  variant?: "cowork" | "chain-lobster";
 }) {
   const { t } = useI18n();
   const { roots, busy, error, addRoot } = useRoots(sessionId);
@@ -79,6 +91,43 @@ export function SessionIntro({
       )}
       {hideGreeting && <p className="intro-lede mt-2">{t("intro.lede")}</p>}
 
+      {variant === "chain-lobster" ? (
+        <div className="intro-tasks" data-testid="intro-tasks-chain-lobster">
+          <button
+            className="task-card"
+            data-testid="intro-task-chain-map"
+            onClick={() => onPrefill(CHAIN_PROMPT_1)}
+          >
+            <span className="task-card-body">
+              <span className="task-card-title">{t("intro.chain.task1.title")}</span>
+              <span className="task-card-sub">{t("intro.chain.task1.sub")}</span>
+            </span>
+            <span className="task-card-act">{t("intro.act.start")}</span>
+          </button>
+          <button
+            className="task-card"
+            data-testid="intro-task-chain-scarce"
+            onClick={() => onPrefill(CHAIN_PROMPT_2)}
+          >
+            <span className="task-card-body">
+              <span className="task-card-title">{t("intro.chain.task2.title")}</span>
+              <span className="task-card-sub">{t("intro.chain.task2.sub")}</span>
+            </span>
+            <span className="task-card-act">{t("intro.act.start")}</span>
+          </button>
+          <button
+            className="task-card"
+            data-testid="intro-task-chain-equity"
+            onClick={() => onPrefill(CHAIN_PROMPT_3)}
+          >
+            <span className="task-card-body">
+              <span className="task-card-title">{t("intro.chain.task3.title")}</span>
+              <span className="task-card-sub">{t("intro.chain.task3.sub")}</span>
+            </span>
+            <span className="task-card-act">{t("intro.act.start")}</span>
+          </button>
+        </div>
+      ) : (
       <div className="intro-tasks">
         <button className="task-card" data-testid="intro-task-folder" onClick={pickFolder}>
           <span className="task-card-body">
@@ -138,6 +187,7 @@ export function SessionIntro({
           </span>
         </button>
       </div>
+      )}
     </div>
   );
 }

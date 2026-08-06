@@ -7,6 +7,8 @@ const renderMock = vi.fn(async (_id: string, _src: string) => ({
   svg: '<svg data-testid="fake-svg" xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200"><rect width="400" height="200" fill="#ddd"/></svg>',
 }));
 
+const repairMermaidMock = vi.fn();
+
 vi.mock("mermaid", () => ({
   default: {
     initialize: vi.fn(),
@@ -14,9 +16,14 @@ vi.mock("mermaid", () => ({
   },
 }));
 
+vi.mock("../api", () => ({
+  repairMermaid: (...args: unknown[]) => repairMermaidMock(...args),
+}));
+
 afterEach(() => {
   cleanup();
   renderMock.mockClear();
+  repairMermaidMock.mockReset();
 });
 
 describe("MermaidBlock", () => {
@@ -154,5 +161,54 @@ describe("MermaidBlock", () => {
     const svg = stage.querySelector("svg");
     expect(svg).toBeTruthy();
     expect(svg!.hasAttribute("viewBox") || svg!.getAttribute("viewBox")).toBeTruthy();
+  });
+
+  it("does not call repair API without repairContext", async () => {
+    renderMock.mockRejectedValueOnce(new Error("parse"));
+    render(<MermaidBlock source={"broken-no-ctx"} />);
+    await waitFor(() => expect(screen.getByTestId("mermaid-error")).toBeTruthy());
+    expect(repairMermaidMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("mermaid-repair")).toBeNull();
+  });
+
+  it("auto-repairs once on syntax failure when repairContext is set", async () => {
+    const broken = "broken-auto-unique-aaa";
+    const fixed = "graph TD; A-->B";
+    renderMock.mockRejectedValueOnce(new Error("parse"));
+    repairMermaidMock.mockResolvedValueOnce({
+      ok: true,
+      source: fixed,
+      message: { role: "assistant", content: "```mermaid\n" + fixed + "\n```", ts: 1 },
+      message_ts: 1,
+    });
+    const onRepaired = vi.fn();
+    render(
+      <MermaidBlock
+        source={broken}
+        repairContext={{ sessionId: "s1", messageTs: 1, onRepaired }}
+      />,
+    );
+    await waitFor(() => expect(repairMermaidMock).toHaveBeenCalledTimes(1));
+    expect(repairMermaidMock).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({ source: broken, message_ts: 1 }),
+    );
+    await waitFor(() => expect(onRepaired).toHaveBeenCalled());
+    expect(onRepaired.mock.calls[0][0].newSource).toBe(fixed);
+  });
+
+  it("shows repair button after failed auto-repair", async () => {
+    const broken = "broken-manual-unique-bbb";
+    renderMock.mockRejectedValueOnce(new Error("parse"));
+    repairMermaidMock.mockResolvedValueOnce({ ok: false, error: "nope" });
+    render(
+      <MermaidBlock
+        source={broken}
+        repairContext={{ sessionId: "s1", messageTs: 2 }}
+      />,
+    );
+    await waitFor(() => expect(repairMermaidMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("mermaid-repair")).toBeTruthy());
+    expect(screen.getByTestId("mermaid-error").textContent).toMatch(/nope|无法|Could not/i);
   });
 });

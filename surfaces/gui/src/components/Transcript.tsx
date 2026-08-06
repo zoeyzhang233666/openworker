@@ -3,6 +3,7 @@ import type { ApprovalDecision, Item } from "../types";
 import { shortArgs } from "./ApprovalCard";
 import { humanizeAsk, humanizeTool, type HumanLine } from "../humanize";
 import { Markdown } from "./Markdown";
+import type { MermaidRepairContext } from "./MermaidBlock";
 import { ConnectorMessageCard } from "./ConnectorMessageCard";
 import { Icon } from "./Icon";
 import { useI18n, type I18nValue, type MessageKey } from "../i18n";
@@ -77,9 +78,18 @@ function BubbleMeta({ text, ts, align }: { text: string; ts?: number; align: "le
 // Reasoning-model thinking text (model-layer roadmap item 4): a quiet disclosure —
 // collapsed by default, the trace one click away. `live` = still streaming (pulsing label);
 // App renders that variant above the transcript, this one rides a finalized assistant item.
-export function ThinkingBlock({ text, live }: { text: string; live?: boolean }) {
+// `defaultOpen` (D-076 first-token): initial expand only; click sticky-overrides for this instance.
+export function ThinkingBlock({
+  text,
+  live,
+  defaultOpen,
+}: {
+  text: string;
+  live?: boolean;
+  defaultOpen?: boolean;
+}) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!defaultOpen);
   return (
     <div className="thinking">
       <button
@@ -369,6 +379,9 @@ interface Props {
   onRetry?: () => void;
   /** Session agent display name for the assistant "who" label (D-067). */
   agentLabel?: string;
+  /** D-074: enable in-place mermaid repair for assistant bubbles. */
+  sessionId?: string;
+  onMermaidRepaired?: MermaidRepairContext["onRepaired"];
 }
 
 // The transcript index whose notice gets the Retry button: the tail error notice, looking
@@ -384,7 +397,15 @@ export function retryAnchor(items: Item[]): number {
   return -1;
 }
 
-export function Transcript({ items, running, streamingText, onRetry, agentLabel }: Props) {
+export function Transcript({
+  items,
+  running,
+  streamingText,
+  onRetry,
+  agentLabel,
+  sessionId,
+  onMermaidRepaired,
+}: Props) {
   const { t } = useI18n();
   const who = agentLabel || t("assistant");
   // §33 grouping: a turn = the maximal run of assistant/tool/resolved-approval items between
@@ -498,7 +519,18 @@ export function Transcript({ items, running, streamingText, onRetry, agentLabel 
               <div className="group bubble-assistant" key={bi}>
                 <div className="who">{who}</div>
                 {item.reasoning && <ThinkingBlock text={item.reasoning} />}
-                <Markdown text={item.text} />
+                <Markdown
+                  text={item.text}
+                  repairContext={
+                    sessionId
+                      ? {
+                          sessionId,
+                          messageTs: item.ts,
+                          onRepaired: onMermaidRepaired,
+                        }
+                      : undefined
+                  }
+                />
                 <BubbleMeta text={item.text} ts={item.ts} align="left" />
               </div>
             );

@@ -166,6 +166,26 @@ def test_working_state_files_commands_tools():
     assert "run_shell" in block and "write_file" in block
 
 
+def test_working_state_includes_mcp_queries():
+    span = [
+        user("查丙烯酸"),
+        *tool_turn(
+            "mcp__chem_data_hub__search_compound",
+            {"q": "丙烯酸"},
+            {"name": "丙烯酸", "cas": "79-10-7", "summary": "重要单体"},
+        ),
+        *tool_turn(
+            "mcp__chem_data_hub__get_price_trend",
+            {"product_name": "丙烯酸"},
+            {"points": [{"date": "2026-01", "price": 100}]},
+        ),
+    ]
+    block = extract_working_state(span)
+    assert "MCP queries" in block
+    assert "丙烯酸" in block
+    assert "search_compound" in block
+
+
 def test_working_state_empty_span():
     assert extract_working_state([user("hi"), assistant("yo")]) == ""
 
@@ -268,7 +288,7 @@ def test_trim_advances_boundary_and_keeps_user_messages():
     assert state is not None and state.trimmed
     assert msgs[state.boundary_index]["role"] in ("user", "assistant")
     assert state.user_messages  # preserved mechanically even without a summary
-    assert "trimmed" in state.summary_text
+    assert "硬裁" in state.summary_text
     out = apply_to_outbound(msgs, state)
     assert len(out) < len(msgs) + 1
 

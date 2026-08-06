@@ -81,14 +81,50 @@ you're doing and why (e.g. "Checking what merged since yesterday's digest."). It
 to the user as live progress. Don't narrate trivial single-call follow-ups, don't repeat \
 the previous line, and never let narration replace your final answer."""
 
-# ChemClaw D-063: one shared rule for every persona — do not copy into each Agent/Skill.
+# ChemClaw long-turn hard guidance (D-073): resume via compacted-history + deliverables.
+_LONG_TASK_GUIDANCE = """\
+Long-turn research:
+- After context compaction/Trim, resume from the injected `<compacted-history>` block \
+(summary, working_state, user messages, recent turns). Re-read workspace deliverables or \
+re-run tools when needed — do NOT call write_file/create_artifact solely to checkpoint \
+scratch memory (that would trigger a write-approval card).
+- When delivering the user-facing final report, write a normal deliverable artifact \
+(outside `._chemclaw/`) and keep updating the same report file across phases. End the \
+reply with a markdown link `[标题](artifact:相对路径.md)` using the exact workspace-relative \
+path you wrote — never a bare filename without the link, never `file://`, never an absolute \
+OS path. After writing, the chip must open the right-rail preview.
+- Do NOT use browser tools (`browser_open_url`, `browser_read_url`, etc.) to verify local \
+HTML/Markdown deliverables. `file://` and `localhost`/`127.0.0.1` are blocked by design. \
+Validate local pages with static checks (tag balance, script syntax) or rely on the in-app \
+artifact preview — never start a local HTTP server just to open it in the browser tool."""
+
+# ChemClaw D-063 / D-071 (M4): shared Mermaid rules for every persona.
+# Do not copy into each Agent/Skill. Industry-chain type→shape/color lives in 产业链层级测绘.
 _DIAGRAM_GUIDANCE = """\
-Mermaid diagrams: when you output a fenced mermaid block for a directed relationship graph \
-(flowchart, graph, or sequenceDiagram), every edge MUST include a semantic label. \
-Good: `A -->|"采购"| B` or `A->>B: 请求`. Bad: bare `A --> B`. Use Chinese labels by \
-default (English if the user asked for English). Quote labels that contain special characters. \
-Do not invent labels that change meaning; prefer short verbs or relation names \
-(e.g. `"接着"`, `"依赖"`, `"上下游"`)."""
+Mermaid diagrams (all conversations):
+- Directed graphs (flowchart/graph/sequenceDiagram): every edge MUST have a semantic label. \
+Good: `A -->|"采购"| B` or `A->>B: 请求`. Bad: bare `A --> B`. Default Chinese labels \
+(English if the user asked for English). Quote labels with special characters.
+- Content first: only include entities and relations you have grounds for. Freely choose \
+grouping, node count, and depth from the facts. Do NOT invent nodes or subgraphs for aesthetics \
+or to fill a template. If a category has no evidence, omit it.
+- Safety: never put citation marks (e.g. [1], [网1]), URLs, or footnotes inside node IDs, \
+display names, edge labels, or subgraph titles. Put sources after the fence under a separate \
+heading if needed. One statement per line (nodes, edges, style, classDef); never two edges on \
+one line. Prefer short safe node IDs; put real names (CAS, /, %, brackets, etc.) in display text.
+- Beauty toolbox (optional): when a node type exists, you MAY apply soft low-saturation \
+classDef colors; do not add nodes just to use a color. Prefer readable information-design \
+style over neon/glow.
+- Prefer `graph LR` for value-chain style flows when it fits; do not force a fixed subgraph \
+checklist."""
+
+# ChemClaw D-072 (G4): one-line pointer to real process skills — not a parallel "clarify" protocol.
+_CLARIFY_POINTER = """\
+Clarification: when the user's goal, scope, or deliverable shape is unclear, call `load_skill` \
+for a thin process skill such as `grilling` or `grill-me` (one question at a time) instead of \
+guessing. Default deliverable format is Markdown. If a polished page might help, ask in plain \
+language whether they also want a nicer-looking webpage — do not assume they know what HTML is."""
+
 
 
 def _enabled_connector_tools(secrets: SecretStore) -> tuple[set[str], set[str]]:
@@ -286,7 +322,9 @@ def build_engine(
         registry.register_all(selfwake_tools(wake_store, session_id))
 
     instructions = (
-        f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}\n\n{_DIAGRAM_GUIDANCE}"
+        f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}\n\n"
+        f"{_LONG_TASK_GUIDANCE}\n\n"
+        f"{_DIAGRAM_GUIDANCE}\n\n{_CLARIFY_POINTER}"
     )
     if default_skill_ids:
         listed = ", ".join(f"`{s}`" for s in default_skill_ids)

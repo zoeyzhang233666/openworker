@@ -152,6 +152,28 @@ export async function getSessionMessages(sessionId: string): Promise<Conversatio
   return (await res.json()).messages ?? [];
 }
 
+/** D-074: in-place repair of one failed mermaid fence in an assistant message. */
+export async function repairMermaid(
+  sessionId: string,
+  body: { source: string; error?: string; message_ts?: number },
+): Promise<{
+  ok: boolean;
+  error?: string;
+  source?: string;
+  message?: ConversationMessage;
+  message_ts?: number;
+}> {
+  const res = await fetch(
+    `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/mermaid-repair`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  return res.json();
+}
+
 export async function renameSession(sessionId: string, title: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}`, {
     method: "PATCH",

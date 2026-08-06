@@ -48,3 +48,33 @@ def test_os_data_dirs_are_not_traversed(tmp_path, monkeypatch):
 
 def test_os_data_dirs_cover_mac_and_windows():
     assert {"Library", "AppData", "Application Data"} <= OS_DATA_DIRS
+
+
+def test_list_artifacts_hides_dot_chemclaw_process_files(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "report.md").write_text("# ok", encoding="utf-8")
+    progress = ws / "._chemclaw" / "task-progress.md"
+    progress.parent.mkdir(parents=True)
+    progress.write_text("# leftover\n", encoding="utf-8")
+
+    m = SessionManager(data_dir=tmp_path / "data", workspace=str(ws))
+    arts = m.list_artifacts("s1")
+    paths = [a["path"].replace("\\", "/") for a in arts]
+    assert "report.md" in paths
+    assert "._chemclaw/task-progress.md" not in paths
+
+
+def test_artifact_target_error_keys(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    m = SessionManager(data_dir=tmp_path / "data", workspace=str(ws))
+
+    target, err = m._artifact_target("s1", "missing.md")
+    assert target is None and err == "artifact_not_found"
+
+    target, err = m._artifact_target("s1", "._chemclaw/task-progress.md")
+    assert target is None and err == "artifact_not_found"
+
+    target, err = m._artifact_target("s1", "../outside.md")
+    assert target is None and err == "artifact_path_mismatch"

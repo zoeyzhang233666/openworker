@@ -2,6 +2,7 @@ import {
   Children,
   isValidElement,
   useMemo,
+  useRef,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -9,7 +10,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
-import { MermaidBlock } from "./MermaidBlock";
+import { MermaidBlock, type MermaidRepairContext } from "./MermaidBlock";
 
 // §34 (UX-016): the agent ends a deliverable turn with plain markdown —
 // [Title](artifact:relative/path) — and the renderer turns it into a chip that opens the
@@ -143,14 +144,28 @@ function MarkdownLink({
 // remarkPlugins / urlTransform / components MUST stay referentially stable across parent
 // re-renders. Inline object/array identities made react-markdown remount custom nodes,
 // which cleared MermaidBlock state, collapsed scrollHeight, and jittered the transcript.
-export function Markdown({ text, renderMermaid = true }: { text: string; renderMermaid?: boolean }) {
+export function Markdown({
+  text,
+  renderMermaid = true,
+  repairContext,
+}: {
+  text: string;
+  renderMermaid?: boolean;
+  repairContext?: MermaidRepairContext;
+}) {
+  // Keep components identity stable across parent re-renders (scroll follow, etc.).
+  // MermaidBlock reads the latest repairContext via its own ref each render.
+  const repairRef = useRef(repairContext);
+  repairRef.current = repairContext;
+
   const components = useMemo(
     () => ({
       a: MarkdownLink,
       pre: ({ children }: { children?: ReactNode }) => {
         if (renderMermaid) {
           const src = mermaidSourceFromPreChildren(children);
-          if (src !== null) return <MermaidBlock source={src} />;
+          if (src !== null)
+            return <MermaidBlock source={src} repairContext={repairRef.current} />;
         }
         return <pre>{children}</pre>;
       },

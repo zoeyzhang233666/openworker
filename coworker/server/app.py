@@ -664,6 +664,40 @@ def create_app(manager: SessionManager) -> FastAPI:
     def session_messages(session_id: str) -> dict[str, Any]:
         return {"messages": manager.session_messages(session_id)}
 
+    @app.post("/v1/sessions/{session_id}/mermaid-repair")
+    async def session_mermaid_repair(session_id: str, body: dict) -> dict[str, Any]:
+        """D-074: repair one failed mermaid fence in an assistant message (no tools)."""
+        body = body or {}
+        source = str(body.get("source") or "")
+        error = str(body.get("error") or "")
+        raw_ts = body.get("message_ts")
+        message_ts: float | None
+        try:
+            message_ts = float(raw_ts) if raw_ts is not None and raw_ts != "" else None
+        except (TypeError, ValueError):
+            message_ts = None
+
+        result = await asyncio.to_thread(
+            manager.repair_mermaid,
+            session_id,
+            source=source,
+            error=error,
+            message_ts=message_ts,
+        )
+        if result.get("ok"):
+            await manager.broadcast_session(
+                session_id,
+                {
+                    "type": "message_updated",
+                    "data": {
+                        "message": result.get("message"),
+                        "message_ts": result.get("message_ts"),
+                        "source": result.get("source"),
+                    },
+                },
+            )
+        return result
+
     @app.patch("/v1/sessions/{session_id}")
     def session_patch(session_id: str, body: dict) -> dict[str, Any]:
         body = body or {}
