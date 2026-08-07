@@ -37,6 +37,11 @@ from .secrets import SecretStore
 CLOUD_AUTH_PROFILE = "cloud:auth"
 LOGIN_SCOPES = "openid profile email offline_access"
 
+# ChemClaw trial / V1: keep the upstream OpenWorker cloud broker dark until
+# chem-cloud ships its own Auth + OAuth broker. Manual token paste stays open.
+CLOUD_SIGNIN_ENABLED = False
+CLOUD_SIGNIN_DISABLED_ERROR = "ChemClaw 云连接即将上线，请使用手动添加 Token"
+
 from . import __version__ as APP_VERSION  # noqa: E402
 
 # connector id (canonical, = descriptor name) -> broker provider key

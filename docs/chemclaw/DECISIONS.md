@@ -163,6 +163,22 @@
   - **非目标**：不做对话区内嵌大板 Artifact；不恢复硬同源校验器；不把网页当第二研究代理。
   - 修订 D-072 G4；原规格 `2026-08-06-chemclaw-report-webpage-cook-*` 标为已废止自动烹饪。
 
+## 问答空态（2026-08-07）
+
+- **D-083**：「问答」(`chat`) 空态不再使用「与 问答 畅谈」。标题覆盖为「有什么想问的？」（英：What can I answer?）；其余智能体仍用「与 {name} 畅谈」（D-067）。补三条无需工作区的轻量推荐（解释概念/缩写、对比材料或工艺、拆成追问清单），与 ChemClaw 交付物卡、产业链龙虾拆链卡区分；不改 chat 无 file/shell 能力边界。
+
+## 代码工作区门禁（2026-08-07）
+
+- **D-082**：项目作用域智能体（`family: code`，如「代码」）新建/切换对话时**不**立刻弹出「选择项目文件夹」。先展示空态（标题 + 推荐）；在用户发送、点击推荐任务、或点「选择文件夹」CTA 时再开门禁。`FolderGate` **必须始终可关闭**（无工作区时也不允许卡死）；关闭后回到空态，待发内容回填输入框。`newProject` 仍立刻开门禁。「新建项目」语义不变。不改为 ChemClaw 式自动 scratch。
+
+## 智能体 surfaces 回弹（2026-08-07）
+
+- **D-081**：遗留 prefs `show_chat` / `show_code`（设置 `surfaces`，默认关）不得把当前会话从「代码 / 问答」强制打回 ChemClaw/`cowork`。新建对话 ▾ 与智能体页的启用 / `surfaced` / 标星默认（D-067）是唯一选择器可见性来源。前端删除「hidden surface → switchAgent(cowork)」副作用；后端 surfaces API 本轮保留、可后续清理。
+
+## 默认智能体空态（2026-08-07）
+
+- **D-080**：ChemClaw/`cowork` 新对话空态去掉 OpenWorker 遗留的 HubSpot、GitHub+Slack 连接器门控任务卡。三条推荐改为化工知识工作向：研究备忘录、近期价格与走势要点、阅读本地文件夹提炼要点；lede 改为化工研究/分析口吻。共用主标题「与 {name} 畅谈」不变（D-067）。产业链龙虾空态仍按 D-072；prefill 走 i18n 中英对等。
+
 ## 短气泡、价格与 HTML 预览沙箱（2026-08-07）
 
 - **D-078**：在 D-077 可选网页版之上：
@@ -170,6 +186,26 @@
   - **价格**：产业链龙虾默认挂载 `chem-price-daily`；化工品研究可取价时用 MCP（如 `get_price_trend`）取数，**MD 写价格表**；用户要网页版时用同一序列画**可悬停交互走势图**（可用 CDN 图库）；无数据则注明，禁止编造。
   - **预览沙箱**：允许外链 `<script src=https>` 与 CSP `script-src https:`（Chart.js 等）；`fetch`/`XHR` 仍仅 GET/HEAD；禁止把本地报告 POST 外泄。深度研究仍走对话 MCP/技能，网页负责展示与轻量只读刷新。
   - 修订 D-072 默认 Skill 列表与 D-077 沙箱/短气泡表述。
+
+## 云连接（2026-08-07）
+
+- **D-084**：试用与 ChemClaw V1 默认关闭上游 OpenWorker 云登录（`CLOUD_SIGNIN_ENABLED=false`）。隐藏侧栏/Onboarding/连接页登录按钮与 Persona Gallery；`POST /v1/cloud/login` 与 managed connect / gallery API 硬拒绝且不打开浏览器。手动 Token/PAT 与 ApiHub 模型不受影响。芯化和云自有 Auth + OAuth broker 就绪后再改端点并打开开关。对齐 D-003 / D-007；不改变 D-002 本地优先边界。
+
+## 本机资料（2026-08-07）
+
+- **D-085**：左下角账号行使用与云登录无关的本机资料：可编辑显示名（默认「本机用户」/ Local user）与可选本地图片头像（JPEG/PNG/WebP，≤2MB，存于状态目录 `local-profile/`）。设置 → 通用提供「本机资料」卡片；账号菜单「编辑资料」打开设置。云关闭时不再显示「未登录」。对齐 D-002 / D-084。
+
+## 销售增长智能（2026-08-07）
+
+- **D-086**：ChemClaw 面向芯化和云的首要产品用途是**外贸拓客、内贸拓客、商机发现与销售转化**；化学、研究和报告能力用于增强产品识别、证据、合规与成交质量，不作为产品主轴。首条销售智能纵向链路确定为“具体产品/SKU + 目标国家 → 有主体和业务证据的候选客户 → 双评分 → 下一步动作”。
+- **D-087**：外贸拓客采用“深工作流 + 稳定能力模块”：一名 `export-sales-lobster` Agent、一个主 Skill `chem-export-prospecting`，以及 `chem-product-intelligence`、`chem-buyer-discovery`、`chem-company-qualification`、`chem-lead-ranking` 四个能力 Skill。V3.2 的同类薄 Skill 按规格合并，不为每个步骤或数据源创建用户可见 Skill。
+- **D-088**：搜索结果不是 Lead。Qualified Lead 必须经过主体归一、企业角色和业务相关性核验；专业分销商/贸易商是否保留由 ICP 决定，货代/物流等噪声单独识别。排序同时展示 `Lead Fit Score` 与 `Evidence Confidence`；评分由版本化确定性规则计算，未知不等同负面，所有强结论必须能追溯到 `EvidenceItem`。
+- **D-089**：外部 API 位于平台 Tool/Provider 层，不嵌进 Skill；`public-apis` 只作发现目录。首条链路只要求现有网页检索/读取、企业官网证据、PubChem 辅助与用户约束，GLEIF 可选；Comtrade、TED/SAM、SEC、USAspending、海关与化工社能力按业务阶段逐个审计接入。来源型 API 不自动变成 Skill。
+- **D-090**：V3.2 压缩包作为需求、风险规则和 Eval 种子，不作为可直接执行的总计划。本地化工社/K-Dense 科研 Skill 不批量内置；逐包完成价值、上游版本、许可证、脚本/网络、依赖、兼容性、中文化、权限、测试和回退审核。核心销售 Skill 首版不引入 RDKit、Datamol、TimesFM 等重型依赖。完整规格见 `docs/superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md`。
+- **D-091（2026-08-07）**：用户明确授权实现**首个外贸拓客内置能力包**（不等于批准内贸/商机/转化/Provider 全阶段）。交付范围：内置 Agent `export-sales-lobster`（「外贸拓客龙虾」）+ `chem-export-prospecting` / `chem-product-intelligence` / `chem-buyer-discovery` / `chem-company-qualification` / `chem-lead-ranking`；默认智能体仍为 `cowork`，新 Agent 默认禁用、用户可在「智能体」页启用；不接外部 API、不自动发邮件、不写真实 CRM；权限与审批不变（只读检索走现有工具权限，发送/外部写入须审批）；`Lead Fit` 与 `Evidence Confidence` 由版本化确定性脚本计算；`SessionManager` 经 `skill_dirs` 真实 `load_skill`；证据 locator 拒绝 `task-provided:` / `unknown:` / `placeholder:` 占位符。Pack Schema 的 Qualified 门禁弱于评分脚本，**以 `score_lead` 为权威**。`seed_bundled_skills` 对已存在同名目录不自动升级。
+- **D-092（2026-08-07）**：用户明确授权实现**内贸拓客纵向链路内置能力包**（不等于批准商机雷达/转化/国内 Provider）。交付：内置 Agent `domestic-sales-lobster`（「内贸拓客龙虾」）+ 主 Skill `chem-domestic-prospecting`；复用 `chem-product-intelligence` / `chem-buyer-discovery` / `chem-company-qualification` / `chem-lead-ranking`；默认仍为 `cowork`，新 Agent 默认禁用；国内规则（中文查询、园区/工商公开证据、统一社会信用代码优先、噪声排除、岗位级联系）写入主 Skill references；不挂 `chem-newbiz-lead`；不接国内工商/海关 API；不自动外发；权限与占位 locator 拒绝与 D-091 一致。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-domestic-sales-builtin-pack.md`。
+- **D-093（2026-08-07）**：用户明确授权实现**商机雷达内置能力包首包**（不等于批准 TED/SAM/Comtrade/海关 Provider 或销售转化）。交付：内置 Agent `opportunity-radar-lobster`（「商机雷达龙虾」）+ `chem-opportunity-radar` + `chem-opportunity-scoring`（`chem-opportunity-fit@1.0.0`，权重 25/20/25/15/15）；复用 `chem-product-intelligence` 与 `chem-company-qualification`；默认仍为 `cowork`，新 Agent 默认禁用；信号须可回溯来源，口述无来源保持 `NeedsReview`；不默认挂载 `chem-newbiz-lead` / `chem-inquiry-feed`；不接外部招标/询盘 API；不自动外发；占位 locator 拒绝与 D-091 一致。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-opportunity-radar-builtin-pack.md`。
+- **D-094（2026-08-07）**：用户明确授权实现**外贸销售转化内置能力包首包**（不等于批准报价数学、SMTP Provider、发送按钮或客户清单工作台）。交付：内置 Agent `export-engagement-lobster`（「外贸转化龙虾」）+ `chem-sales-engagement` + `chem-sales-quality-check`（`chem-sales-quality@1.0.0`）；复用 `chem-product-intelligence`；默认仍为 `cowork`，新 Agent 默认禁用；草稿 ≠ 发送；无可靠邮箱时只出岗位策略与补证；不接邮件 Provider；不自动外发/写 CRM；占位 locator 拒绝与 D-091 一致。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-export-engagement-builtin-pack.md`。
 
 ## 协作治理
 

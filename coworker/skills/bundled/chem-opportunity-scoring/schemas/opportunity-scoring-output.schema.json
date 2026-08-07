@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.opportunity-scoring.output.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rule_set", "opportunity_id", "opportunity_score", "evidence_confidence", "risks", "recommended_action"],
+  "properties": {
+    "schema_version": {"const": "chemclaw.opportunity-scoring.output.v1"},
+    "rule_set": {
+      "type": "object", "additionalProperties": false, "required": ["id", "version"],
+      "properties": {"id": {"const": "chem-opportunity-fit"}, "version": {"const": "1.0.0"}}
+    },
+    "opportunity_id": {"type": "string", "minLength": 1},
+    "opportunity_score": {
+      "type": "object", "additionalProperties": false,
+      "required": ["score", "band", "components", "unscored_weight", "negative_evidence"],
+      "properties": {
+        "score": {"type": "number"}, "band": {"enum": ["high", "medium", "low"]},
+        "components": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/component"}},
+        "unscored_weight": {"type": "integer", "minimum": 0},
+        "negative_evidence": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "evidence_confidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["score", "band", "factors", "missing_fields"],
+      "properties": {
+        "score": {"type": "number"}, "band": {"enum": ["high", "medium", "low"]},
+        "factors": {
+          "type": "object", "additionalProperties": false,
+          "required": ["source_quality", "independence", "entity_resolution", "key_field_coverage", "freshness", "conflict"],
+          "properties": {
+            "source_quality": {"type": "number"}, "independence": {"type": "number"},
+            "entity_resolution": {"type": "number"}, "key_field_coverage": {"type": "number"},
+            "freshness": {"type": "number"}, "conflict": {"type": "number"}
+          }
+        },
+        "missing_fields": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "risks": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "recommended_action": {"enum": ["outreach_now", "research_first", "watch", "exclude", "pause"]}
+  },
+  "$defs": {
+    "component": {
+      "type": "object", "additionalProperties": false,
+      "required": ["dimension", "weight", "points", "support_pct", "contradiction_pct", "state", "signal_ids"],
+      "properties": {
+        "dimension": {"type": "string", "minLength": 1}, "weight": {"type": "integer"},
+        "points": {"type": "number"}, "support_pct": {"type": "integer"}, "contradiction_pct": {"type": "integer"},
+        "state": {"enum": ["unknown", "supported", "contradicted", "mixed"]},
+        "signal_ids": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

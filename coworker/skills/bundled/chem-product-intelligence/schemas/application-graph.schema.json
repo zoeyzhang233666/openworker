@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.application-graph.v1",
+  "title": "ApplicationGraph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "sku_id", "nodes", "edges"],
+  "properties": {
+    "schema_version": {"const": "chemclaw.application-graph.v1"},
+    "sku_id": {"type": "string", "minLength": 1},
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/node"}
+    },
+    "edges": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/edge"}
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "type", "label"],
+      "properties": {
+        "node_id": {"type": "string", "minLength": 1},
+        "type": {"enum": ["sku", "function", "process", "downstream_product", "industry", "customer_role"]},
+        "label": {"type": "string", "minLength": 1}
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge_id", "from_id", "to_id", "relation", "support", "evidence_ids"],
+      "properties": {
+        "edge_id": {"type": "string", "minLength": 1},
+        "from_id": {"type": "string", "minLength": 1},
+        "to_id": {"type": "string", "minLength": 1},
+        "relation": {"enum": ["provides_function", "used_in_process", "used_in", "serves_industry", "purchased_by_role"]},
+        "support": {"enum": ["direct", "cross_supported", "inference", "unverified"]},
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

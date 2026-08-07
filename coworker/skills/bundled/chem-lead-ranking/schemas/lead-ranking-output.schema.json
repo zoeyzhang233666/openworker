@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.lead-ranking.output.v1",
+  "description": "Deterministic output derived from referenced evidence tiers and polarity; confidence is reported independently of commercial fit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rule_set", "lead_id", "lead_fit", "evidence_confidence", "risks", "recommended_action"],
+  "properties": {
+    "schema_version": {"const": "chemclaw.lead-ranking.output.v1"},
+    "rule_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"const": "chem-lead-fit"},
+        "version": {"const": "1.0.0"}
+      }
+    },
+    "lead_id": {"type": "string"},
+    "lead_fit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "band", "components", "unscored_weight", "negative_evidence"],
+      "properties": {
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "band": {"enum": ["high", "medium", "low"]},
+        "components": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {"$ref": "#/$defs/component"}
+        },
+        "unscored_weight": {"type": "integer", "minimum": 0, "maximum": 100},
+        "negative_evidence": {"type": "array", "items": {"enum": ["sku_application", "role_icp", "business_signal", "market_fit", "contactability", "signal_recency"]}}
+      }
+    },
+    "evidence_confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "band", "factors", "missing_fields"],
+      "properties": {
+        "score": {"type": "number", "minimum": 0, "maximum": 100},
+        "band": {"enum": ["high", "medium", "low"]},
+        "factors": {"$ref": "#/$defs/factors"},
+        "missing_fields": {"type": "array", "items": {"enum": ["entity", "sku_application", "role_icp", "business_signal", "market_fit", "contactability", "signal_recency"]}}
+      }
+    },
+    "risks": {"type": "array", "items": {"type": "string"}},
+    "recommended_action": {"enum": ["prioritize_contact", "research_first", "nurture", "deprioritize", "pause", "exclude"]}
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension", "weight", "points", "support_pct", "contradiction_pct", "state", "evidence_ids"],
+      "properties": {
+        "dimension": {"enum": ["sku_application", "role_icp", "business_signal", "market_fit", "contactability", "signal_recency"]},
+        "weight": {"enum": [10, 20, 30]},
+        "points": {"type": "number", "minimum": -30, "maximum": 30},
+        "support_pct": {"type": "integer", "minimum": 0, "maximum": 100},
+        "contradiction_pct": {"type": "integer", "minimum": 0, "maximum": 100},
+        "state": {"enum": ["supported", "unknown", "mixed", "contradicted"]},
+        "evidence_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "factors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_quality", "independence", "entity_resolution", "key_field_coverage", "freshness", "conflict"],
+      "properties": {
+        "source_quality": {"type": "number", "minimum": 0, "maximum": 100},
+        "independence": {"type": "number", "minimum": 0, "maximum": 100},
+        "entity_resolution": {"type": "number", "minimum": 0, "maximum": 100},
+        "key_field_coverage": {"type": "number", "minimum": 0, "maximum": 100},
+        "freshness": {"type": "number", "minimum": 0, "maximum": 100},
+        "conflict": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    }
+  }
+}

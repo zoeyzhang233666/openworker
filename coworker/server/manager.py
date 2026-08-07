@@ -474,6 +474,7 @@ class SessionManager:
             # Per-session skill menu, LIVE (SKILLS-SPEC §3): a callable so load_skill sees
             # disables/new skills immediately; the catalog snapshot is taken at build.
             skill_filter=lambda sid=session_id, w=ws: self.effective_skill_names(sid, w),
+            skill_dirs=self._skill_dirs(ws),
             default_skill_ids=[
                 sid
                 for sid in self.personas.skill_ids(agent_name)
@@ -1982,6 +1983,7 @@ class SessionManager:
             # Real on-disk secrets location, so the UI shows the OS-native path instead of a
             # hardcoded POSIX one (Windows -> %APPDATA%\coworker, macOS/Linux -> ~/.config).
             "secrets_path": str(self.secrets.path),
+            **self.local_profile_payload(),
             **self.pdf_settings(),
             **self.compaction_settings_payload(),
         }
@@ -2200,6 +2202,111 @@ class SessionManager:
         self._prefs["scratch_base"] = path
         self._save_prefs()
         return {"ok": True, **self.get_settings()}
+
+    # -- local profile (display name + optional avatar; independent of cloud) -----
+
+    LOCAL_DISPLAY_NAME_MAX = 40
+    LOCAL_AVATAR_MAX_BYTES = 2 * 1024 * 1024
+    LOCAL_AVATAR_TYPES = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+
+    def local_profile_dir(self) -> Path:
+        d = self._data_base / "local-profile"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _local_avatar_path(self) -> Path | None:
+        """Return the on-disk avatar file if present."""
+        if not self._prefs.get("local_avatar"):
+            return None
+        ext = str(self._prefs.get("local_avatar_ext") or "").strip().lower()
+        if ext not in {".jpg", ".png", ".webp"}:
+            # Recover by scanning the profile dir.
+            for candidate in self.local_profile_dir().glob("avatar.*"):
+                if candidate.suffix.lower() in {".jpg", ".png", ".webp"}:
+                    return candidate
+            return None
+        path = self.local_profile_dir() / f"avatar{ext}"
+        return path if path.is_file() else None
+
+    def local_profile_payload(self) -> dict[str, Any]:
+        name = str(self._prefs.get("local_display_name") or "").strip()
+        if len(name) > self.LOCAL_DISPLAY_NAME_MAX:
+            name = name[: self.LOCAL_DISPLAY_NAME_MAX]
+        has_avatar = bool(self._prefs.get("local_avatar") and self._local_avatar_path())
+        return {
+            "local_display_name": name,
+            "local_avatar": has_avatar,
+        }
+
+    def set_local_display_name(self, display_name: str) -> dict[str, Any]:
+        name = (display_name or "").strip()
+        if len(name) > self.LOCAL_DISPLAY_NAME_MAX:
+            return {
+                "ok": False,
+                "error": f"display name too long (max {self.LOCAL_DISPLAY_NAME_MAX})",
+            }
+        if name:
+            self._prefs["local_display_name"] = name
+        else:
+            self._prefs.pop("local_display_name", None)
+        self._save_prefs()
+        return {"ok": True, **self.local_profile_payload()}
+
+    def set_local_avatar(self, data: bytes, content_type: str) -> dict[str, Any]:
+        ctype = (content_type or "").split(";")[0].strip().lower()
+        ext = self.LOCAL_AVATAR_TYPES.get(ctype)
+        if ext is None:
+            return {
+                "ok": False,
+                "error": "unsupported image type (use jpeg, png, or webp)",
+            }
+        if not data:
+            return {"ok": False, "error": "empty image"}
+        if len(data) > self.LOCAL_AVATAR_MAX_BYTES:
+            return {"ok": False, "error": "image too large (max 2MB)"}
+        # Drop any previous avatar.* so only one file remains.
+        for old in self.local_profile_dir().glob("avatar.*"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        path = self.local_profile_dir() / f"avatar{ext}"
+        path.write_bytes(data)
+        self._prefs["local_avatar"] = True
+        self._prefs["local_avatar_ext"] = ext
+        self._save_prefs()
+        return {"ok": True, **self.local_profile_payload()}
+
+    def clear_local_avatar(self) -> dict[str, Any]:
+        for old in self.local_profile_dir().glob("avatar.*"):
+            try:
+                old.unlink()
+            except OSError:
+                pass
+        self._prefs.pop("local_avatar", None)
+        self._prefs.pop("local_avatar_ext", None)
+        self._save_prefs()
+        return {"ok": True, **self.local_profile_payload()}
+
+    def read_local_avatar(self) -> tuple[bytes, str] | None:
+        path = self._local_avatar_path()
+        if path is None:
+            return None
+        ext = path.suffix.lower()
+        ctype = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+        }.get(ext, "application/octet-stream")
+        try:
+            return path.read_bytes(), ctype
+        except OSError:
+            return None
 
     # -- gateway + connector allow-list (inbound messaging) ---------------------
     def allow_user(
@@ -2866,6 +2973,7 @@ class SessionManager:
             skill_filter=lambda sid=session_id, w=task.workspace: (
                 self.effective_skill_names(sid, w)
             ),
+            skill_dirs=self._skill_dirs(task.workspace),
             default_skill_ids=[
                 sid
                 for sid in self.personas.skill_ids(task.agent)
@@ -4061,15 +4169,18 @@ class SessionManager:
     ) -> set[str]:
         """The session's skill menu (§3): merged scopes − Settings disables − session mutes.
         The single resolver behind the engine catalog, the rail list, and the composer popup."""
-        dirs = [self.skill_store.global_dir]
-        if workspace:
-            dirs.append(self.skill_store.project_dir(workspace))
-        loader = SkillLoader(dirs)
+        loader = SkillLoader(self._skill_dirs(workspace))
         return effective_skills(
             names=set(loader.names()),
             disabled=self.skill_store.disabled_names(),
             session_overrides=self.session_skills.get(session_id),
         )
+
+    def _skill_dirs(self, workspace: Optional[str | Path] = None) -> list[Path]:
+        dirs = [self.skill_store.global_dir]
+        if workspace:
+            dirs.append(self.skill_store.project_dir(workspace))
+        return dirs
 
     def session_skills_view(
         self, session_id: str, workspace: Optional[str] = None

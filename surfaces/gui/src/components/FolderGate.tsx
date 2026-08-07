@@ -3,13 +3,12 @@ import { getRecentWorkspaces, openWorkspace, type RecentWorkspace } from "../api
 import { chooseFolder } from "../tauri";
 import { useI18n } from "../i18n";
 
-// The mandatory workspace picker for project-scoped personas. Deliberately no
-// "switch persona" escape hatch: if a persona needs a folder, the choice here is
-// pick one or cancel — offering Chat as an exit undermined the persona the user
-// just chose (owner call, 2026-07-03).
+// The workspace picker for project-scoped personas (D-082). New Code sessions show the empty
+// state first; this overlay opens on send / suggestion / explicit CTA. Always offer 关闭 so the
+// user is never trapped without a folder (owner: cancel must dismiss even when workspace is null).
 interface Props {
   onChoose: (path: string, branch?: string | null) => void;
-  onCancel?: () => void; // present when changing folder mid-session
+  onCancel?: () => void;
   create?: boolean; // "New project" mode: create the folder if missing
 }
 
@@ -83,7 +82,7 @@ export function FolderGate({ onChoose, onCancel, create }: Props) {
         {onCancel && (
           <div className="gate-foot">
             <button className="btn gate-cancel" onClick={onCancel}>
-              {t("Cancel")}
+              {t("gate.close")}
             </button>
           </div>
         )}

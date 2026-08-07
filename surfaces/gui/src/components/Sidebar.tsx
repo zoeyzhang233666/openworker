@@ -3,8 +3,10 @@ import {
   announceCloudChanged,
   AUTOMATIONS_CHANGED,
   CLOUD_CHANGED,
+  LOCAL_PROFILE_CHANGED,
   cloudLogin,
   cloudLogout,
+  fetchLocalAvatarObjectUrl,
   getAutomations,
   getCloudStatus,
   getPersonas,
@@ -28,7 +30,7 @@ import { SearchModal } from "./SearchModal";
 import { baseName } from "../paths";
 import { showPersonas } from "../flags";
 import { useI18n, type Locale, type MessageKey, type MessageValues } from "../i18n";
-import { CLOUD_CONNECTION_LABEL_EN, CLOUD_CONNECTION_LABEL_ZH, PRODUCT_NAME } from "../product";
+import { CLOUD_SIGNIN_ENABLED, PRODUCT_NAME } from "../product";
 
 // Session surfaces shown as accordions, in display order. The surfaced personas drive this list
 // (so third-party / Ops personas appear); the hardcoded set is the fallback before personas load.
@@ -216,20 +218,42 @@ export function Sidebar(props: Props) {
       : label;
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
-  // The account row (§26): cloud sign-in status drives the avatar/name/dot; refreshed on
-  // focus and whenever the menu opens (sign-in completes out-of-band in the browser).
+  // Account row: local profile (name + optional avatar) is the default identity.
+  // Cloud sign-in is optional and currently gated off for ChemClaw trial (D-084).
   const [cloud, setCloud] = useState<CloudStatus | null>(null);
+  const [localDisplayName, setLocalDisplayName] = useState("");
+  const [localHasAvatar, setLocalHasAvatar] = useState(false);
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
   // Inbox chip sticky unlock (§26): absent until the product first parks an item (or a
   // session first goes Unattended), then permanent. Per-device, like nav collapse.
   const [inboxUnlocked, setInboxUnlocked] = useState(
     () => localStorage.getItem("ocw:inbox-unlocked") === "1",
   );
   const refreshCloud = () => getCloudStatus().then(setCloud).catch(() => {});
+  const refreshLocalProfile = () =>
+    getSettings()
+      .then(async (s) => {
+        setLocalDisplayName(s.local_display_name || "");
+        const has = !!s.local_avatar;
+        setLocalHasAvatar(has);
+        setLocalAvatarUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
+        });
+        if (has) {
+          const url = await fetchLocalAvatarObjectUrl().catch(() => null);
+          if (url) setLocalAvatarUrl(url);
+        }
+      })
+      .catch(() => {});
   useEffect(() => {
     refreshCloud();
+    refreshLocalProfile();
     const onFocus = () => refreshCloud();
+    const onProfile = () => refreshLocalProfile();
     window.addEventListener("focus", onFocus);
     window.addEventListener(CLOUD_CHANGED, onFocus);
+    window.addEventListener(LOCAL_PROFILE_CHANGED, onProfile);
     const unlock = () => {
       localStorage.setItem("ocw:inbox-unlocked", "1");
       setInboxUnlocked(true);
@@ -238,7 +262,12 @@ export function Sidebar(props: Props) {
     return () => {
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(CLOUD_CHANGED, onFocus);
+      window.removeEventListener(LOCAL_PROFILE_CHANGED, onProfile);
       window.removeEventListener(INBOX_UNLOCK, unlock);
+      setLocalAvatarUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
     };
   }, []);
   // UX-023: automations feed the nav row's badge + the Scheduled band. The 15s poll
@@ -411,12 +440,12 @@ export function Sidebar(props: Props) {
     </button>
   );
 
-  // Display identity for the account row: the cloud profile only carries the email, so the
-  // row shows the capitalized local part ("rohit@…" → "Rohit"); the menu header shows it all.
+  // Display identity: prefer local profile. When cloud sign-in is enabled and the
+  // user is signed in, keep showing the cloud email local-part as a secondary label
+  // in the menu header only — the row itself stays local-profile-first.
   const accountEmail = cloud?.signed_in ? cloud.account : "";
-  const accountName = accountEmail
-    ? accountEmail.split("@")[0].replace(/^./, (c) => c.toUpperCase())
-    : "";
+  const rowName = (localDisplayName.trim() || t("sidebar.localUser")).trim();
+  const rowInitial = rowName.slice(0, 1).toUpperCase();
 
   // Roll the per-session attention/liveness up to the persona header and the footer Inbox: the
   // accent count bubbles (sum), the liveness dot aggregates (working wins over sleeping).
@@ -1209,14 +1238,17 @@ export function Sidebar(props: Props) {
                 data-testid="account-menu"
                 role="menu"
               >
-                {cloud?.signed_in ? (
-                  <div
-                    className="px-3 py-1.5 mb-1 text-[11px] text-faint truncate border-b border-line"
-                    title={`${accountEmail} · ${locale === "zh-CN" ? CLOUD_CONNECTION_LABEL_ZH : CLOUD_CONNECTION_LABEL_EN}`}
-                  >
-                    {accountEmail} · {locale === "zh-CN" ? CLOUD_CONNECTION_LABEL_ZH : CLOUD_CONNECTION_LABEL_EN}
-                  </div>
-                ) : (
+                <div
+                  className="px-3 py-1.5 mb-1 text-[11px] text-faint truncate border-b border-line"
+                  data-testid="account-local-header"
+                  title={rowName}
+                >
+                  {rowName}
+                  {CLOUD_SIGNIN_ENABLED && cloud?.signed_in && accountEmail
+                    ? ` · ${accountEmail}`
+                    : ""}
+                </div>
+                {CLOUD_SIGNIN_ENABLED && !cloud?.signed_in && (
                   <>
                     <div className="px-3 py-1.5 text-[11px] text-faint border-b border-line">
                       {t("sidebar.cloud.notice")}
@@ -1226,13 +1258,9 @@ export function Sidebar(props: Props) {
                       data-testid="account-sign-in"
                       onClick={async () => {
                         setAppMenuOpen(false);
-                        // Opens the system browser server-side; completion lands out-of-band,
-                        // so poll until it flips (refocusing the window also refetches).
                         await cloudLogin().catch(() => {});
                         waitForCloudSignIn((s) => {
                           if (s) setCloud(s);
-                          // Other always-mounted consumers (Settings' telemetry card,
-                          // connector panes) refetch on this.
                           if (s?.signed_in) announceCloudChanged();
                         });
                       }}
@@ -1241,6 +1269,18 @@ export function Sidebar(props: Props) {
                     </button>
                   </>
                 )}
+                {!CLOUD_SIGNIN_ENABLED && (
+                  <div
+                    className="px-3 py-1 text-[11px] text-faint"
+                    data-testid="account-cloud-coming-soon"
+                  >
+                    {t("sidebar.cloud.comingSoon")}
+                  </div>
+                )}
+                {appMenuItem("sliders", t("sidebar.editProfile"), () => {
+                  setAppMenuOpen(false);
+                  props.onManage();
+                })}
                 {appMenuItem(
                   "inbox",
                   t("Inbox"),
@@ -1259,7 +1299,7 @@ export function Sidebar(props: Props) {
                 )}
                 {appMenuItem("clock", t("Automations"), props.onOpenScheduled, props.scheduledActive)}
                 {appMenuItem("audit", t("Activity"), props.onOpenAudit, props.auditActive)}
-                {cloud?.signed_in && (
+                {CLOUD_SIGNIN_ENABLED && cloud?.signed_in && (
                   <>
                     <div className="h-px bg-line my-1 mx-2" />
                     {appMenuItem("signOut", t("Sign out"), async () => {
@@ -1279,28 +1319,36 @@ export function Sidebar(props: Props) {
             }
             data-testid="account-row"
             onClick={() => {
-              if (!appMenuOpen) refreshCloud();
+              if (!appMenuOpen) {
+                refreshCloud();
+                refreshLocalProfile();
+              }
               setAppMenuOpen((v) => !v);
             }}
             aria-haspopup="menu"
             aria-expanded={appMenuOpen}
-            aria-label={cloud?.signed_in ? t("Account: {email}", { email: accountEmail }) : t("Account: not signed in")}
+            aria-label={t("Account: {email}", { email: rowName })}
           >
-            <span
-              className={
-                "w-6 h-6 rounded-full grid place-items-center text-[10.5px] font-semibold shrink-0 " +
-                (cloud?.signed_in
-                  ? "bg-accentSoft text-accent"
-                  : "bg-paper text-faint border border-line")
-              }
-              aria-hidden
-            >
-              {cloud?.signed_in ? accountName.slice(0, 1).toUpperCase() : "?"}
+            {localHasAvatar && localAvatarUrl ? (
+              <img
+                src={localAvatarUrl}
+                alt=""
+                className="w-6 h-6 rounded-full object-cover shrink-0 border border-line"
+                data-testid="account-avatar-img"
+              />
+            ) : (
+              <span
+                className="w-6 h-6 rounded-full grid place-items-center text-[10.5px] font-semibold shrink-0 bg-accentSoft text-accent"
+                aria-hidden
+                data-testid="account-avatar-initial"
+              >
+                {rowInitial}
+              </span>
+            )}
+            <span className="truncate" data-testid="account-display-name">
+              {rowName}
             </span>
-            <span className={"truncate " + (cloud?.signed_in ? "" : "text-muted")}>
-              {cloud?.signed_in ? accountName : t("Not signed in")}
-            </span>
-            {cloud?.signed_in && (
+            {CLOUD_SIGNIN_ENABLED && cloud?.signed_in && (
               <span
                 className="w-[7px] h-[7px] rounded-full bg-ok shrink-0"
                 title={t("sidebar.cloud.signedIn")}

@@ -498,6 +498,8 @@ export interface CloudStatus {
   account: string;
   user_id: string;
   telemetry_enabled?: boolean; // Phase 5 opt-out; signed-out users send nothing regardless
+  /** False when ChemClaw trial keeps the upstream cloud broker dark. */
+  signin_available?: boolean;
 }
 
 /** Flip the product-telemetry preference (local; only meaningful when signed in). */
@@ -735,6 +737,57 @@ export interface ModelSettings {
   compaction_threshold_pct?: number; // default 0.95, 0.10–0.95
   compaction_cap_tokens?: number; // default 2000000
   compaction_model?: string;
+  /** Local account-row display name (independent of cloud sign-in). Empty → UI default. */
+  local_display_name?: string;
+  /** Whether a local avatar image is stored on disk. */
+  local_avatar?: boolean;
+}
+
+export const LOCAL_PROFILE_CHANGED = "coworker:local-profile-changed";
+
+export function announceLocalProfileChanged(): void {
+  window.dispatchEvent(new CustomEvent(LOCAL_PROFILE_CHANGED));
+}
+
+export async function setLocalDisplayName(
+  displayName: string,
+): Promise<{ ok: boolean; error?: string; local_display_name?: string; local_avatar?: boolean }> {
+  const res = await fetch(`${httpBase()}/v1/settings/local-profile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name: displayName }),
+  });
+  return res.json();
+}
+
+export async function setLocalAvatar(
+  dataB64: string,
+  contentType: string,
+): Promise<{ ok: boolean; error?: string; local_display_name?: string; local_avatar?: boolean }> {
+  const res = await fetch(`${httpBase()}/v1/settings/local-profile/avatar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data_b64: dataB64, content_type: contentType }),
+  });
+  return res.json();
+}
+
+export async function clearLocalAvatar(): Promise<{
+  ok: boolean;
+  error?: string;
+  local_display_name?: string;
+  local_avatar?: boolean;
+}> {
+  const res = await fetch(`${httpBase()}/v1/settings/local-profile/avatar`, { method: "DELETE" });
+  return res.json();
+}
+
+/** Fetch the local avatar as a blob URL (auth header applied). Caller should revokeObjectURL. */
+export async function fetchLocalAvatarObjectUrl(): Promise<string | null> {
+  const res = await fetch(`${httpBase()}/v1/settings/local-profile/avatar`);
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
 }
 
 export interface PdfSettings {

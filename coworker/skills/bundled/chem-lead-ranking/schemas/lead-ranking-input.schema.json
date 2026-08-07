@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.lead-ranking.input.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "as_of", "rule_set", "lead", "evidence"],
+  "properties": {
+    "schema_version": {"const": "chemclaw.lead-ranking.input.v1"},
+    "as_of": {"type": "string", "format": "date"},
+    "rule_set": {
+      "type": "object", "additionalProperties": false, "required": ["id", "version", "weights"],
+      "properties": {
+        "id": {"const": "chem-lead-fit"}, "version": {"const": "1.0.0"},
+        "weights": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sku_application", "role_icp", "business_signal", "market_fit", "contactability", "signal_recency"],
+          "properties": {
+            "sku_application": {"const": 30}, "role_icp": {"const": 20}, "business_signal": {"const": 20},
+            "market_fit": {"const": 10}, "contactability": {"const": 10}, "signal_recency": {"const": 10}
+          }
+        }
+      }
+    },
+    "lead": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "qualification_status", "entity_resolution", "features"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "qualification_status": {"enum": ["Qualified", "NeedsReview", "Rejected"]},
+        "entity_resolution": {"enum": ["resolved", "partial", "unresolved"]},
+        "features": {
+          "type": "object", "additionalProperties": false,
+          "required": ["sku_application", "role_icp", "business_signal", "market_fit", "contactability", "signal_recency"],
+          "properties": {
+            "sku_application": {"$ref": "#/$defs/feature"}, "role_icp": {"$ref": "#/$defs/feature"},
+            "business_signal": {"$ref": "#/$defs/feature"}, "market_fit": {"$ref": "#/$defs/feature"},
+            "contactability": {"$ref": "#/$defs/feature"}, "signal_recency": {"$ref": "#/$defs/feature"}
+          }
+        }
+      }
+    },
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
+  },
+  "$defs": {
+    "feature": {
+      "type": "object", "additionalProperties": false, "required": ["evidence_ids"],
+      "properties": {"evidence_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}}
+    },
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["type", "url", "file", "record_id"],
+      "properties": {
+        "type": {"enum": ["official_website", "government_registry", "trade_record", "industry_directory", "public_procurement", "b2b_directory", "search_result", "user_file", "other"]},
+        "url": {"$ref": "#/$defs/realLocator"},
+        "file": {"$ref": "#/$defs/realLocator"},
+        "record_id": {"$ref": "#/$defs/realLocator"}
+      },
+      "anyOf": [{"properties": {"url": {"type": "string", "minLength": 1}}}, {"properties": {"file": {"type": "string", "minLength": 1}}}, {"properties": {"record_id": {"type": "string", "minLength": 1}}}]
+    },
+    "realLocator": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "(?i)^(task-provided|unknown|placeholder):"
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "source", "title", "raw_fact", "supports_claim", "supports", "polarity", "tier", "independence_group", "event_date", "collected_at", "conflict"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1}, "source": {"$ref": "#/$defs/source"},
+        "title": {"type": "string", "minLength": 1}, "raw_fact": {"type": "string", "minLength": 1}, "supports_claim": {"type": "string", "minLength": 1},
+        "supports": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["entity", "sku_application", "role_icp", "business_signal", "market_fit", "contactability", "signal_recency"]}},
+        "polarity": {"enum": ["supports", "contradicts"]}, "tier": {"enum": ["A", "B", "C", "D"]},
+        "independence_group": {"type": "string", "minLength": 1},
+        "event_date": {"type": ["string", "null"], "format": "date"}, "collected_at": {"type": "string", "format": "date-time"},
+        "conflict": {"enum": ["none", "unresolved", "material"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"source": {"properties": {"type": {"enum": ["trade_record", "industry_directory", "public_procurement"]}}}}},
+          "then": {"properties": {"tier": {"enum": ["B", "C", "D"]}}}
+        },
+        {
+          "if": {"properties": {"source": {"properties": {"type": {"enum": ["b2b_directory", "search_result", "user_file"]}}}}},
+          "then": {"properties": {"tier": {"enum": ["C", "D"]}}}
+        },
+        {
+          "if": {"properties": {"source": {"properties": {"type": {"const": "other"}}}}},
+          "then": {"properties": {"tier": {"const": "D"}}}
+        }
+      ]
+    }
+  }
+}

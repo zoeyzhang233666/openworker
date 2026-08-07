@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.engagement-run.v1",
+  "title": "EngagementRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "created_at",
+    "updated_at",
+    "status",
+    "input",
+    "versions",
+    "stages",
+    "draft_ids",
+    "followup_plan_ids",
+    "quality_gate",
+    "warnings",
+    "unresolved_questions",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": {"const": "chemclaw.engagement-run.v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "created_at": {"type": "string", "minLength": 1, "format": "date-time"},
+    "updated_at": {"type": "string", "minLength": 1, "format": "date-time"},
+    "status": {
+      "enum": ["input", "strategy", "draft", "quality_gate", "complete", "blocked"]
+    },
+    "input": {"$ref": "#/$defs/input"},
+    "versions": {"$ref": "#/$defs/versions"},
+    "stages": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stage"}
+    },
+    "draft_ids": {"$ref": "#/$defs/idList"},
+    "followup_plan_ids": {"$ref": "#/$defs/idList"},
+    "quality_gate": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["verdict", "recommended_action", "rule_set"],
+      "properties": {
+        "verdict": {"enum": ["pass", "blocked", "pending"]},
+        "recommended_action": {
+          "enum": ["ready_for_human_send", "revise_draft", "await_evidence"]
+        },
+        "rule_set": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version"],
+          "properties": {
+            "id": {"const": "chem-sales-quality"},
+            "version": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "warnings": {"$ref": "#/$defs/textList"},
+    "unresolved_questions": {"$ref": "#/$defs/textList"},
+    "next_actions": {"$ref": "#/$defs/textList"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "complete"}}},
+      "then": {"properties": {"stages": {"minItems": 1}}}
+    },
+    {
+      "if": {"properties": {"status": {"const": "blocked"}}},
+      "then": {
+        "properties": {
+          "stages": {
+            "contains": {"properties": {"status": {"const": "blocked"}}}
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "idList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "textList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lead_or_opportunity_id",
+        "request_summary",
+        "target_market",
+        "preferred_channel",
+        "language"
+      ],
+      "properties": {
+        "lead_or_opportunity_id": {"type": "string", "minLength": 1},
+        "request_summary": {"type": "string", "minLength": 1},
+        "sku_id": {"type": ["string", "null"], "minLength": 1},
+        "target_market": {"type": "string", "minLength": 1},
+        "preferred_channel": {"enum": ["email", "linkedin", "other"]},
+        "language": {"type": "string", "minLength": 2},
+        "known_contact_email": {"type": ["string", "null"], "minLength": 1}
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orchestrator_version", "skill_versions", "rule_versions"],
+      "properties": {
+        "orchestrator_version": {"type": "string", "minLength": 1},
+        "skill_versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["skill_id", "version"],
+            "properties": {
+              "skill_id": {"type": "string", "minLength": 1},
+              "version": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "rule_versions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule_id", "version"],
+            "properties": {
+              "rule_id": {"type": "string", "minLength": 1},
+              "version": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage_id",
+        "name",
+        "status",
+        "skill_id",
+        "skill_version",
+        "started_at",
+        "updated_at",
+        "completed_at",
+        "failure"
+      ],
+      "properties": {
+        "stage_id": {"type": "string", "minLength": 1},
+        "name": {
+          "enum": ["input", "strategy", "draft", "quality_gate"]
+        },
+        "status": {"enum": ["pending", "running", "complete", "blocked"]},
+        "skill_id": {"type": "string", "minLength": 1},
+        "skill_version": {"type": "string", "minLength": 1},
+        "started_at": {"type": "string", "minLength": 1, "format": "date-time"},
+        "updated_at": {"type": "string", "minLength": 1, "format": "date-time"},
+        "completed_at": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "format": "date-time"
+        },
+        "failure": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": {"type": "string", "minLength": 1},
+            "message": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    }
+  }
+}

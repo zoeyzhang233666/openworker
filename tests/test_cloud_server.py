@@ -32,12 +32,32 @@ def test_cloud_status_signed_out(client):
         "account": "",
         "user_id": "",
         "telemetry_enabled": True,  # local default; nothing is sent while signed out
+        "signin_available": False,  # ChemClaw trial keeps upstream broker dark
     }
 
 
-def test_connect_managed_requires_sign_in(client):
+def test_cloud_login_disabled_does_not_open_browser(client, monkeypatch):
+    opened: list[str] = []
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url))
+    body = client.post("/v1/cloud/login").json()
+    assert not body["ok"]
+    assert body["code"] == "cloud_signin_disabled"
+    assert "即将上线" in body["error"]
+    assert opened == []
+
+
+def test_connect_managed_disabled_when_cloud_signin_off(client):
+    body = client.post("/v1/connectors/notion/connect-managed").json()
+    assert not body["ok"]
+    assert body["code"] == "cloud_signin_disabled"
+
+
+def test_connect_managed_requires_sign_in(client, monkeypatch):
+    from coworker import cloud
+
     # notion, not gmail: the Google trio is managed_paused (CASA pending) and its
     # guard fires before the sign-in check — see test_google_one_click_paused….
+    monkeypatch.setattr(cloud, "CLOUD_SIGNIN_ENABLED", True)
     body = client.post("/v1/connectors/notion/connect-managed").json()
     assert not body["ok"]
     assert "not signed in" in body["error"]
@@ -148,6 +168,7 @@ def _stub_gallery(monkeypatch, markdown=SALES_MANIFEST, *, hash_ok=True):
 
     from coworker import cloud
 
+    monkeypatch.setattr(cloud, "CLOUD_SIGNIN_ENABLED", True)
     digest = "sha256:" + hashlib.sha256(markdown.encode()).hexdigest()
     manifest = {
         "slug": "sales",
@@ -184,16 +205,24 @@ def test_gallery_install_rejects_hash_mismatch(client, monkeypatch):
 def test_gallery_install_requires_sign_in(client, monkeypatch):
     from coworker import cloud
 
+    monkeypatch.setattr(cloud, "CLOUD_SIGNIN_ENABLED", True)
     monkeypatch.setattr(cloud, "gallery_manifest", lambda s, c, slug: None)
     body = client.post("/v1/personas/install", json={"gallery_slug": "sales"}).json()
     assert not body["ok"]
     assert "sign-in" in body["error"]
 
 
+def test_gallery_install_blocked_when_cloud_signin_off(client):
+    body = client.post("/v1/personas/install", json={"gallery_slug": "sales"}).json()
+    assert not body["ok"]
+    assert body["code"] == "cloud_signin_disabled"
+
+
 def test_cloud_gallery_endpoint_signed_out(client):
     body = client.get("/v1/cloud/gallery").json()
     assert not body["ok"]
     assert body["personas"] == []
+    assert body.get("code") == "cloud_signin_disabled"
 
 
 def test_delete_persona_after_gallery_install(client, monkeypatch):

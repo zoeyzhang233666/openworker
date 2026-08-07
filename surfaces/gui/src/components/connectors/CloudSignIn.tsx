@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { announceCloudChanged, cloudLogin, waitForCloudSignIn } from "../../api";
 import { useI18n } from "../../i18n";
+import { CLOUD_SIGNIN_ENABLED } from "../../product";
 
 // The signed-out state of every one-click pane: a REAL sign-in button, not a
 // hint pointing at another page. Sign-in completes in the system browser; this
@@ -13,6 +14,20 @@ export function CloudSignInInline({ blurb }: { blurb?: string }) {
   const [waiting, setWaiting] = useState(false);
   const cancelRef = useRef<(() => void) | null>(null);
   useEffect(() => () => cancelRef.current?.(), []);
+
+  if (!CLOUD_SIGNIN_ENABLED) {
+    return (
+      <div className="space-y-1.5" data-testid="cloud-signin-disabled">
+        <div className="text-[12.5px] text-muted leading-snug">
+          {t("sidebar.cloud.comingSoon")}
+        </div>
+        <div className="text-[11.5px] text-faint">
+          {blurb || t("cloud.oneClickUnavailable")}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-1.5">
       <button

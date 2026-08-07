@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.product-language-map.v1",
+  "title": "ProductLanguageMap",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "sku_id",
+    "chemical_synonyms",
+    "commercial_synonyms",
+    "brands",
+    "specification_terms",
+    "applications",
+    "customer_roles",
+    "local_terms",
+    "exclusion_terms"
+  ],
+  "properties": {
+    "schema_version": {"const": "chemclaw.product-language-map.v1"},
+    "sku_id": {"type": "string", "minLength": 1},
+    "chemical_synonyms": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}},
+    "commercial_synonyms": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}},
+    "brands": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}},
+    "specification_terms": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}},
+    "applications": {"type": "array", "items": {"$ref": "#/$defs/applicationTerm"}},
+    "customer_roles": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}},
+    "local_terms": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}},
+    "exclusion_terms": {"type": "array", "items": {"$ref": "#/$defs/sourcedTerm"}}
+  },
+  "$defs": {
+    "sourcedTerm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["term", "language", "source_ids"],
+      "properties": {
+        "term": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "applicationTerm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["term", "language", "support", "evidence_ids"],
+      "properties": {
+        "term": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "support": {"enum": ["direct", "cross_supported", "inference", "unverified"]},
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

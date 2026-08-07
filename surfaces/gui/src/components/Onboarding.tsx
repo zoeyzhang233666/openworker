@@ -12,6 +12,7 @@ import { ConnectorBadge } from "../connectors/ConnectorIcon";
 import { ProviderCards, ProviderForm, useProviderSetup } from "../providers/ProviderSetup";
 import { Spinner } from "./AutomationQuickstart";
 import { useI18n } from "../i18n";
+import { CLOUD_SIGNIN_ENABLED } from "../product";
 
 // First-run onboarding (UX-DECISIONS §24 → §29 → §39): model → your tools → go.
 // §39 (owner design, 2026-07-18): step 1 is a PROVIDER GALLERY — 13 real brand
@@ -230,10 +231,20 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
               </div>
             </div>
 
-            {/* The band is PINNED outside the scroll area and its slot never moves: the ask
-                pre-sign-in, a green congrats after — zero layout shift at the moment the user
-                returns from the browser (§41). */}
-            {!cloud?.signed_in ? (
+            {/* Cloud sign-in band: hidden in ChemClaw trial until chem-cloud broker ships. */}
+            {!CLOUD_SIGNIN_ENABLED ? (
+              <div
+                className="mt-3.5 rounded-xl border border-line bg-paper px-4 py-3 shrink-0"
+                data-testid="ob-cloud-coming-soon"
+              >
+                <span className="block text-[13px] font-semibold text-ink mb-0.5">
+                  {t("sidebar.cloud.comingSoon")}
+                </span>
+                <span className="block text-[12.5px] text-muted">
+                  {t("cloud.oneClickUnavailable")}
+                </span>
+              </div>
+            ) : !cloud?.signed_in ? (
               <div className="mt-3.5 rounded-xl border border-line bg-paper px-4 py-3 flex items-center gap-3.5 shrink-0">
                 <span className="flex-1 text-[12.5px] text-muted leading-snug">
                   <span className="block text-[13px] font-semibold text-ink mb-0.5">
@@ -289,7 +300,7 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
 
             {/* One footer button, one slot: quiet skip pre-sign-in, black Next after. */}
             <div className="flex items-center mt-3.5">
-              {cloud?.signed_in ? (
+              {!CLOUD_SIGNIN_ENABLED || cloud?.signed_in ? (
                 <button
                   className="ml-auto px-6 py-2 rounded-full bg-ink text-panel text-[13px] shrink-0"
                   onClick={() => setStep(2)}

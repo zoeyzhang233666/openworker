@@ -1,0 +1,227 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.search-run.v1",
+  "title": "SearchRun",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "sku_id",
+    "target_market",
+    "queries",
+    "candidates",
+    "entity_relationships",
+    "deduplication",
+    "stop"
+  ],
+  "properties": {
+    "schema_version": {"const": "chemclaw.search-run.v1"},
+    "run_id": {"type": "string", "minLength": 1},
+    "sku_id": {"type": "string", "minLength": 1},
+    "target_market": {"$ref": "#/$defs/targetMarket"},
+    "queries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/queryRecord"}
+    },
+    "candidates": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/candidate"}
+    },
+    "entity_relationships": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entityRelationship"}
+    },
+    "deduplication": {"$ref": "#/$defs/deduplication"},
+    "stop": {"$ref": "#/$defs/stop"}
+  },
+  "$defs": {
+    "targetMarket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["countries", "languages", "customer_types", "exclusions"],
+      "properties": {
+        "countries": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "customer_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "exclusions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "queryRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "query_id",
+        "round",
+        "text",
+        "language",
+        "reason",
+        "provider",
+        "executed_at",
+        "result_count",
+        "new_candidate_count",
+        "learned_from_source_ids"
+      ],
+      "properties": {
+        "query_id": {"type": "string", "minLength": 1},
+        "round": {"type": "integer", "minimum": 1},
+        "text": {"type": "string", "minLength": 1},
+        "language": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "provider": {"type": "string", "minLength": 1},
+        "executed_at": {"type": "string", "minLength": 1, "format": "date-time"},
+        "result_count": {"type": "integer", "minimum": 0},
+        "new_candidate_count": {"type": "integer", "minimum": 0},
+        "learned_from_source_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "raw_name",
+        "country",
+        "candidate_domain",
+        "discovery_evidence_ids",
+        "query_ids",
+        "status"
+      ],
+      "properties": {
+        "candidate_id": {"type": "string", "minLength": 1},
+        "raw_name": {"type": "string", "minLength": 1},
+        "country": {"type": "string", "minLength": 1},
+        "candidate_domain": {"type": ["string", "null"], "minLength": 1, "format": "hostname"},
+        "discovery_evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "query_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "status": {"const": "Discovered"}
+      }
+    },
+    "entityRelationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_candidate_id", "target_candidate_id", "relation", "evidence_ids"],
+      "properties": {
+        "source_candidate_id": {"type": "string", "minLength": 1},
+        "target_candidate_id": {"type": "string", "minLength": 1},
+        "relation": {"enum": ["parent", "subsidiary", "site", "brand", "duplicate_of"]},
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "deduplication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical_candidate_ids", "duplicate_groups", "unresolved_pairs"],
+      "properties": {
+        "canonical_candidate_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "duplicate_groups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/duplicateGroup"}
+        },
+        "unresolved_pairs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/unresolvedPair"}
+        }
+      }
+    },
+    "duplicateGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical_candidate_id", "member_candidate_ids", "basis", "evidence_ids"],
+      "properties": {
+        "canonical_candidate_id": {"type": "string", "minLength": 1},
+        "member_candidate_ids": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "basis": {"enum": ["legal_identifier", "official_domain", "name_country_address", "verified_contact_domain"]},
+        "evidence_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "unresolvedPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_ids", "reason"],
+      "properties": {
+        "candidate_ids": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason",
+        "rounds_executed",
+        "total_results",
+        "total_new_candidates",
+        "consecutive_low_increment_rounds",
+        "details"
+      ],
+      "properties": {
+        "reason": {"enum": ["budget_reached", "low_increment", "user_stop", "provider_failure", "coverage_satisfied"]},
+        "rounds_executed": {"type": "integer", "minimum": 1},
+        "total_results": {"type": "integer", "minimum": 0},
+        "total_new_candidates": {"type": "integer", "minimum": 0},
+        "consecutive_low_increment_rounds": {"type": "integer", "minimum": 0},
+        "details": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

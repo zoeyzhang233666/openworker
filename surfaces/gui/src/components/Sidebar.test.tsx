@@ -262,4 +262,27 @@ describe("New-session split button", () => {
     expect(within(menu).getByText(/运维龙虾|Ops Lobster|^Ops$/)).toBeTruthy();
     expect(within(menu).queryByText(/管理智能体|Manage agents/i)).toBeNull();
   });
+
+  it("shows local profile name instead of not-signed-in on the account row", async () => {
+    stubFetch([
+      { match: "/v1/personas", method: "GET", json: PERSONAS },
+      { match: "/v1/settings", method: "GET", json: { nav_layout: "flat", local_display_name: "", local_avatar: false } },
+      {
+        match: "/v1/cloud/status",
+        method: "GET",
+        json: { signed_in: false, account: "", user_id: "", signin_available: false },
+      },
+    ]);
+    render(<Sidebar {...baseProps} />);
+    const row = await screen.findByTestId("account-row");
+    expect(within(row).getByTestId("account-display-name").textContent).toMatch(/本机用户|Local user/);
+    expect(within(row).queryByText(/未登录|Not signed in/)).toBeNull();
+    expect(within(row).getByTestId("account-avatar-initial")).toBeTruthy();
+
+    fireEvent.click(row);
+    const menu = await screen.findByTestId("account-menu");
+    expect(within(menu).getByTestId("account-local-header")).toBeTruthy();
+    expect(within(menu).getByText(/编辑资料|Edit profile/)).toBeTruthy();
+    expect(within(menu).queryByTestId("account-sign-in")).toBeNull();
+  });
 });

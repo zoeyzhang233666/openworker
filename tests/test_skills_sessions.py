@@ -20,6 +20,7 @@ from coworker.skills import (
     skill_catalog_text,
     skill_tools,
 )
+from coworker.skills.bootstrap import list_bundled_skill_names
 from coworker.server.manager import SessionManager
 
 
@@ -45,7 +46,13 @@ def _skill(base: Path, name: str, description: str = "", body: str = "do it") ->
 
 @pytest.fixture()
 def manager(tmp_path):
-    return SessionManager(workspace=tmp_path / "ws", provider=ScriptedProvider())
+    value = SessionManager(workspace=tmp_path / "ws", provider=ScriptedProvider())
+    # These tests isolate resolver state they create themselves. SessionManager intentionally
+    # seeds the product's bundled catalog, so park that baseline instead of assuming an empty
+    # fresh installation.
+    for name in list_bundled_skill_names():
+        value.skill_store.set_enabled(name, False)
+    return value
 
 
 # -- resolver ----------------------------------------------------------------------
@@ -156,6 +163,7 @@ def test_live_load_skill_semantics(manager):
         agent=get_agent("chat"),
         provider=ScriptedProvider(),
         skill_filter=lambda: manager.effective_skill_names("s1"),
+        skill_dirs=[manager.skill_store.global_dir],
     )
     # The menu lives in the per-turn context block, not the static system prompt.
     assert "early" in engine.context_provider()
@@ -206,6 +214,7 @@ def test_disable_countermand_for_loaded_skills(manager):
         agent=get_agent("chat"),
         provider=ScriptedProvider(),
         skill_filter=lambda: manager.effective_skill_names("s1"),
+        skill_dirs=[manager.skill_store.global_dir],
     )
     # Simulate a successful load earlier in this conversation (OpenAI message shape).
     engine.messages.append(

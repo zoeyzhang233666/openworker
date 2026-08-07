@@ -38,6 +38,10 @@ import type {
   WsEvent,
 } from "./types";
 import { isProjectScoped, shortPersonaName } from "./personaScope";
+import {
+  needsWorkspaceBeforeSend,
+  openFolderGateOnNewSession,
+} from "./folderGatePolicy";
 import { baseName } from "./paths";
 import { itemsFromMessages } from "./itemsFromMessages";
 import {
@@ -234,6 +238,12 @@ export function App() {
   // "Loading…" forever (owner-hit 2026-07-20). Nav re-entry should land on the list.
   const [scheduledOpenId, setScheduledOpenId] = useState<string | null>(null);
   const [gateCreate, setGateCreate] = useState(false);
+  // D-082: message held while FolderGate is open; flushed after folder + WS connect.
+  const pendingSendRef = useRef<{
+    text: string;
+    attachments?: Attachment[];
+    skill?: string;
+  } | null>(null);
   // Which Settings section the full-page Settings surface opens on (§ Settings-as-page).
   const [settingsTab, setSettingsTab] = useState<
     "appearance" | "models" | "skills" | "voice" | "personas"
@@ -362,6 +372,13 @@ export function App() {
     if (translated && translated !== key) return translated;
     return p?.name || shortPersonaName(undefined, agent) || agent;
   })();
+  // D-083: per-agent empty-state title (e.g. chat →「有什么想问的？」); else D-067「与 {name} 畅谈」.
+  const emptyStateGreeting = (() => {
+    const overrideKey = `experts.chatWith.${agent}` as MessageKey;
+    const override = t(overrideKey);
+    if (override && override !== overrideKey) return override;
+    return t("experts.chatWith", { name: agentDisplayName });
+  })();
 
   // Pending Inbox items for the ACTIVE session — surfaced inline above the composer so an
   // unattended session's blocking question/approval can be answered in context (resolving the
@@ -486,7 +503,7 @@ export function App() {
     } catch {
       /* fall through */
     }
-    setShowGate(gatesWorkspace(agent)); // only Code forces a first-run folder gate
+    setShowGate(false); // D-082: never force FolderGate on boot; Code opens it on send/CTA
   };
 
   useEffect(() => {
@@ -587,20 +604,13 @@ export function App() {
     return () => window.removeEventListener(PERSONAS_CHANGED, onPersonas);
   }, [refreshSessions]);
 
-  // If the active surface isn't visible (hidden in Settings, or a resumed session landed on a
-  // hidden surface), fall back to Cowork (always visible). Watches both agent and surfaces so it
-  // corrects regardless of which settled last.
-  useEffect(() => {
-    if ((agent === "chat" && !surfaces.chat) || (agent === "code" && !surfaces.code)) {
-      switchAgent("cowork");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agent, surfaces]);
+  // D-081: do NOT snap chat/code back to cowork when legacy prefs show_chat/show_code are
+  // false. Persona enabled/surfaced (智能体页) is the sole picker visibility source; the old
+  // surfaces gate conflicted with ▾ / PersonasTab and left empty-state stuck on ChemClaw.
 
   useEffect(() => {
     if (surface === "session") rememberLastSession(agent, sessionId, workspace);
   }, [surface, agent, sessionId, workspace]);
-
   // (re)connect when workspace, session, or agent changes
   useEffect(() => {
     if (booting) return; // wait until boot/resume settles the session before connecting
@@ -958,6 +968,13 @@ export function App() {
   }, [surface, sessionId, browserRefreshKey, markUnattended]);
 
   const send = (text: string, attachments?: Attachment[], skill?: string) => {
+    // D-082: project-scoped agents defer the folder picker until the user actually sends.
+    if (needsWorkspaceBeforeSend(gatesWorkspace(agent), workspace)) {
+      pendingSendRef.current = { text, attachments, skill };
+      setGateCreate(false);
+      setShowGate(true);
+      return;
+    }
     // Force-run shows exactly what the user typed: "/name rest". Must match the server's
     // `display` sidecar formula so the turn_start dedupe recognizes the local echo.
     const shown = skill ? `/${skill}${text ? ` ${text}` : ""}` : text;
@@ -1054,6 +1071,7 @@ export function App() {
     setStreaming("");
     setTodo([]);
     setRunning(false);
+    pendingSendRef.current = null;
     // Always bind so ▾ picks update the empty-state greeting immediately (D-067).
     setAgent(target);
     if (gatesWorkspace(target)) {
@@ -1061,9 +1079,9 @@ export function App() {
         // Never inherit another persona's folder — it may be a scratch dir.
         setWorkspace(null);
         setBranch(null);
-        setShowGate(true);
       }
-      // Same Code/Ops persona: keep the folder for the new session.
+      // D-082: show Code empty-state first; FolderGate opens on send / CTA / newProject.
+      setShowGate(openFolderGateOnNewSession());
     } else {
       setShowGate(false);
       // Knowledge family: orphan — clear so the server provisions a NEW scratch dir.
@@ -1185,9 +1203,8 @@ export function App() {
       } else if (!targetWorkspace) {
         setWorkspace(null); // orphan cowork: clear so the next `ready` adopts a fresh scratch
       }
-      if (!gatesWorkspace(name)) setShowGate(false);
-      else if (targetWorkspace) setShowGate(false);
-      else setShowGate(true);
+      // D-082: never force FolderGate when switching personas; send/CTA opens it.
+      setShowGate(false);
       setSessionId(target.sessionId);
       try {
         const messages = await getSessionMessages(target.sessionId);
@@ -1210,8 +1227,8 @@ export function App() {
     }
     setSessionId(id);
     rememberLastSession(name, id, fallback);
-    if (!gatesWorkspace(name)) setShowGate(false);
-    else setShowGate(!fallback);
+    // D-082: defer FolderGate; newProject still opens it immediately.
+    setShowGate(false);
   };
   const chooseWorkspace = (path: string, b?: string | null) => {
     setWorkspace(path);
@@ -1225,6 +1242,19 @@ export function App() {
     setSessionId(newId());
     getRecentWorkspaces().then(setProjects).catch(() => {});
   };
+  // Flush a send that was blocked by FolderGate once the folder is bound and the WS is up.
+  useEffect(() => {
+    if (!workspace || showGate || !connected) return;
+    const pending = pendingSendRef.current;
+    if (!pending) return;
+    pendingSendRef.current = null;
+    const { text, attachments, skill } = pending;
+    const shown = skill ? `/${skill}${text ? ` ${text}` : ""}` : text;
+    setRunning(true);
+    setItems((p) => [...p, { kind: "user", text: shown, attachments, ts: Date.now() / 1000 }]);
+    sessionRef.current?.userMessage(text, attachments, model, skill);
+    followLatest();
+  }, [workspace, showGate, connected, sessionId, model]);
   // "New project" lives under a project-scoped persona's accordion. Switch to that persona, start a
   // fresh session with no folder yet, and open the gate in create mode — so the gate's
   // surface==="session" && gatesWorkspace(agent) guard passes even if the active session was Chat/Cowork.
@@ -1666,12 +1696,18 @@ export function App() {
                 <div className="hero">
                   <h1 className="greeting" data-testid="chat-with-agent">
                     <span className="mark">✦</span>
-                    {t("experts.chatWith", { name: agentDisplayName })}
+                    {emptyStateGreeting}
                   </h1>
-                  {agent === "cowork" || agent === "chain-lobster" ? (
+                  {agent === "cowork" || agent === "chain-lobster" || agent === "chat" ? (
                     <SessionIntro
                       hideGreeting
-                      variant={agent === "chain-lobster" ? "chain-lobster" : "cowork"}
+                      variant={
+                        agent === "chain-lobster"
+                          ? "chain-lobster"
+                          : agent === "chat"
+                            ? "chat"
+                            : "cowork"
+                      }
                       sessionId={sessionId}
                       onOpenSessionSettings={openAccess}
                       onPrefill={prefillComposer}
@@ -1679,9 +1715,29 @@ export function App() {
                   ) : (
                     needsWorkspace(agent) && (
                       <div className="suggestions">
+                        {gatesWorkspace(agent) && !workspace && (
+                          <div className="suggest-head flex items-center justify-between gap-2 flex-wrap">
+                            <span>{t("intro.code.hint")}</span>
+                            <button
+                              type="button"
+                              className="btn"
+                              data-testid="intro-code-pick-folder"
+                              onClick={() => {
+                                setGateCreate(false);
+                                setShowGate(true);
+                              }}
+                            >
+                              {t("intro.code.pickFolder")}
+                            </button>
+                          </div>
+                        )}
                         <div className="suggest-head">{t("Try a task")}</div>
                         {SUGGESTIONS.map((s, i) => (
-                          <div className="suggest" key={i} onClick={() => workspace && send(s.text)}>
+                          <div
+                            className="suggest"
+                            key={i}
+                            onClick={() => send(s.text)}
+                          >
                             <span className="ico">{s.ico}</span>
                             {t(s.text as MessageKey)}
                           </div>
@@ -1863,14 +1919,15 @@ export function App() {
         <FolderGate
           create={gateCreate}
           onChoose={chooseWorkspace}
-          onCancel={
-            workspace
-              ? () => {
-                  setShowGate(false);
-                  setGateCreate(false);
-                }
-              : undefined
-          }
+          onCancel={() => {
+            setShowGate(false);
+            setGateCreate(false);
+            const pending = pendingSendRef.current;
+            if (pending) {
+              pendingSendRef.current = null;
+              if (pending.text) prefillComposer(pending.text, pending.attachments);
+            }
+          }}
         />
       )}
       {workspaceTrustRequest && (

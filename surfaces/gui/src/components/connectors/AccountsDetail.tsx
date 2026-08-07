@@ -11,6 +11,7 @@ import type { DetailProps } from "./ConnectorsSection";
 import { ToolsDisclosure } from "./ToolsDisclosure";
 import { FOOT, GRP, GRP_H, PILL_ACCENT, ROW, TAG_ACCENT, XBTN } from "./ui";
 import { useI18n } from "../../i18n";
+import { CLOUD_SIGNIN_ENABLED } from "../../product";
 
 // The generic detail page for multi-account connectors on the accounts layer
 // (Notion, Attio, PostHog, Mixpanel, Amplitude, Apollo, Hunter — batch 2).
@@ -24,7 +25,7 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
   const [busy, setBusy] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const accounts = (c.accounts ?? []) as AccountRow[];
-  const canOneClick = c.managed && !!cloud?.signed_in;
+  const canOneClick = CLOUD_SIGNIN_ENABLED && c.managed && !!cloud?.signed_in;
 
   const addManaged = async () => {
     setBusy(true);
@@ -59,7 +60,9 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
           onClick={() => (canOneClick ? addManaged() : setShowManual((v) => !v))}
           disabled={busy}
           title={
-            c.managed && !cloud?.signed_in
+            !CLOUD_SIGNIN_ENABLED && c.managed
+              ? t("cloud.oneClickUnavailable")
+              : c.managed && !cloud?.signed_in
               ? t("Sign in to ChemClaw Cloud for one-click — or add a token below")
               : ""
           }

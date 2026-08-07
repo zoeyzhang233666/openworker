@@ -14,6 +14,7 @@ import { ConnectorBadge } from "../connectors/ConnectorIcon";
 import { ChannelPicker } from "./SubscriptionsChip";
 import { SelectMenu } from "./SelectMenu";
 import { useI18n, type MessageKey } from "../i18n";
+import { CLOUD_SIGNIN_ENABLED } from "../product";
 
 // The Automations quickstart (UX-DECISIONS §29): ONE template system. The former onboarding
 // recipe step (§24's role recipes) merged into the page's "Start from a template" grid — every
@@ -430,7 +431,7 @@ export function AutomationQuickstart({
             );
           })}
 
-          {pendingConn && !cloud?.signed_in && (
+          {CLOUD_SIGNIN_ENABLED && pendingConn && !cloud?.signed_in && (
             <div
               className="bg-accentSoft/50 rounded-xl px-4 py-3 mt-3 text-[12.5px] text-muted"
               data-testid="ob-cloudpane"
@@ -469,6 +470,17 @@ export function AutomationQuickstart({
                   </button>
                 )}
               </div>
+            </div>
+          )}
+          {!CLOUD_SIGNIN_ENABLED && pendingConn && (
+            <div
+              className="bg-paper rounded-xl px-4 py-3 mt-3 text-[12.5px] text-muted"
+              data-testid="ob-cloud-coming-soon"
+            >
+              <span className="block text-[13px] text-ink font-medium mb-0.5">
+                {t("sidebar.cloud.comingSoon")}
+              </span>
+              {t("cloud.oneClickUnavailable")}
             </div>
           )}
 

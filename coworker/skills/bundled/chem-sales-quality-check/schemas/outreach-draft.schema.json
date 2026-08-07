@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.outreach-draft.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "draft_id",
+    "language",
+    "channel",
+    "recipient_role",
+    "recipient_email",
+    "recipient_name",
+    "subject",
+    "body",
+    "lead_or_opportunity_id",
+    "evidence_ids",
+    "price_evidence_ids",
+    "has_price_claim",
+    "has_delivery_claim"
+  ],
+  "properties": {
+    "schema_version": {"const": "chemclaw.outreach-draft.v1"},
+    "draft_id": {"type": "string", "minLength": 1},
+    "language": {"type": "string", "minLength": 2},
+    "channel": {"enum": ["email", "linkedin", "other"]},
+    "recipient_role": {"type": "string", "minLength": 1},
+    "recipient_email": {"type": ["string", "null"], "minLength": 1},
+    "recipient_name": {"type": ["string", "null"], "minLength": 1},
+    "subject": {"type": "string", "minLength": 1},
+    "body": {"type": "string", "minLength": 1},
+    "lead_or_opportunity_id": {"type": "string", "minLength": 1},
+    "evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "price_evidence_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "has_price_claim": {"type": "boolean"},
+    "has_delivery_claim": {"type": "boolean"}
+  }
+}

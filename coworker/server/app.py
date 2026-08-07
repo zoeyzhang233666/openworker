@@ -471,6 +471,12 @@ def create_app(manager: SessionManager) -> FastAPI:
                 from .. import cloud
                 from ..config import load_config
 
+                if not cloud.CLOUD_SIGNIN_ENABLED:
+                    return {
+                        "ok": False,
+                        "error": cloud.CLOUD_SIGNIN_DISABLED_ERROR,
+                        "code": "cloud_signin_disabled",
+                    }
                 slug = str(body["gallery_slug"]).strip()
                 manifest = cloud.gallery_manifest(manager.secrets, load_config(), slug)
                 if manifest is None:
@@ -505,6 +511,12 @@ def create_app(manager: SessionManager) -> FastAPI:
         from .. import cloud
         from ..config import load_config
 
+        if not cloud.CLOUD_SIGNIN_ENABLED:
+            return {
+                "ok": False,
+                "error": cloud.CLOUD_SIGNIN_DISABLED_ERROR,
+                "code": "cloud_signin_disabled",
+            }
         body = cloud.gallery_detail(manager.secrets, load_config(), slug)
         if body is None:
             return {"ok": False, "error": "gallery requires cloud sign-in"}
@@ -517,6 +529,13 @@ def create_app(manager: SessionManager) -> FastAPI:
         from .. import cloud
         from ..config import load_config
 
+        if not cloud.CLOUD_SIGNIN_ENABLED:
+            return {
+                "ok": False,
+                "error": cloud.CLOUD_SIGNIN_DISABLED_ERROR,
+                "code": "cloud_signin_disabled",
+                "personas": [],
+            }
         body = cloud.gallery_list(manager.secrets, load_config())
         if body is None:
             return {
@@ -1060,6 +1079,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         return {
             **cloud.status(manager.secrets),
             "telemetry_enabled": cloud.telemetry_enabled(manager.secrets),
+            "signin_available": bool(cloud.CLOUD_SIGNIN_ENABLED),
         }
 
     @app.post("/v1/cloud/telemetry")
@@ -1081,6 +1101,12 @@ def create_app(manager: SessionManager) -> FastAPI:
         from .. import cloud
         from ..config import load_config
 
+        if not cloud.CLOUD_SIGNIN_ENABLED:
+            return {
+                "ok": False,
+                "error": cloud.CLOUD_SIGNIN_DISABLED_ERROR,
+                "code": "cloud_signin_disabled",
+            }
         out = cloud.begin_login(load_config())
         webbrowser.open(out["authorize_url"])
         return {"ok": True, "authorize_url": out["authorize_url"]}
@@ -1160,6 +1186,12 @@ def create_app(manager: SessionManager) -> FastAPI:
         from ..connectors.descriptors import get_descriptor
 
         d = get_descriptor(name)
+        if not cloud.CLOUD_SIGNIN_ENABLED:
+            return {
+                "ok": False,
+                "error": cloud.CLOUD_SIGNIN_DISABLED_ERROR,
+                "code": "cloud_signin_disabled",
+            }
         if d is not None and d.managed_paused:
             # GUI shows the Coming-soon state; this guard covers stale GUIs/API callers.
             return {
@@ -1462,6 +1494,41 @@ def create_app(manager: SessionManager) -> FastAPI:
     @app.post("/v1/settings/scratch-base")
     def settings_set_scratch_base(body: dict) -> dict[str, Any]:
         return manager.set_scratch_base(str((body or {}).get("path", "")))
+
+    @app.post("/v1/settings/local-profile")
+    def settings_set_local_profile(body: dict) -> dict[str, Any]:
+        """Local display name for the account row — independent of cloud sign-in."""
+        return manager.set_local_display_name(str((body or {}).get("display_name", "")))
+
+    @app.post("/v1/settings/local-profile/avatar")
+    def settings_set_local_avatar(body: dict) -> dict[str, Any]:
+        """Upload a local avatar (base64). Replaces any previous image."""
+        import base64
+
+        b = body or {}
+        raw_b64 = str(b.get("data_b64") or "")
+        # Allow data-URL prefix from FileReader.
+        if "," in raw_b64 and raw_b64.strip().startswith("data:"):
+            raw_b64 = raw_b64.split(",", 1)[1]
+        try:
+            data = base64.b64decode(raw_b64, validate=False)
+        except Exception:
+            return {"ok": False, "error": "invalid base64"}
+        return manager.set_local_avatar(data, str(b.get("content_type") or ""))
+
+    @app.delete("/v1/settings/local-profile/avatar")
+    def settings_clear_local_avatar() -> dict[str, Any]:
+        return manager.clear_local_avatar()
+
+    @app.get("/v1/settings/local-profile/avatar")
+    def settings_get_local_avatar() -> Any:
+        from fastapi.responses import Response
+
+        out = manager.read_local_avatar()
+        if out is None:
+            return Response(status_code=404)
+        data, ctype = out
+        return Response(content=data, media_type=ctype)
 
     @app.post("/v1/settings/nav-layout")
     def settings_set_nav_layout(body: dict) -> dict[str, Any]:

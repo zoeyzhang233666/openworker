@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getSettings,
   getTrustedWorkspaces,
@@ -9,6 +9,11 @@ import {
   setScratchBase,
   setSessionsPeek,
   setWorkspaceTrusted,
+  setLocalDisplayName,
+  setLocalAvatar,
+  clearLocalAvatar,
+  fetchLocalAvatarObjectUrl,
+  announceLocalProfileChanged,
   type CompactionSettings,
   type ModelSettings,
   type PdfSettings,
@@ -44,7 +49,7 @@ import { PersonasTab } from "./PersonasTab";
 import { SkillsTab } from "./SkillsTab";
 import { showPersonas } from "../flags";
 import { useI18n, type MessageKey } from "../i18n";
-import { UPDATES_ENABLED } from "../product";
+import { UPDATES_ENABLED, CLOUD_SIGNIN_ENABLED } from "../product";
 
 // Settings, restructured (Option 2) into a full-page surface that mirrors IntegrationsView's shell:
 // a left sub-nav (Appearance · Files · Models · Personas) + centered panel, replacing the old
@@ -383,27 +388,229 @@ function PersonasSection({ onOpenPersona }: { onOpenPersona?: (id: string) => vo
         sub={t("Which coworkers are enabled and shown in the picker, plus installing new persona bundles.")}
       />
       <PersonasTab key={galleryBump} onOpenPersona={onOpenPersona} />
-      <button
-        className="mt-6 w-full rounded-xl2 border border-line bg-panel px-4 py-3.5 flex items-center gap-3 text-left hover:border-lineStrong"
-        data-testid="gallery-link"
-        onClick={() => setGalleryOpen(true)}
-      >
-        <Icon name="sparkle" size={16} className="text-accent shrink-0" />
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13.5px] font-medium">{t("Browse the Persona Gallery")}</span>
-          <span className="block text-[12px] text-muted">
-            {t("settings.gallery")}
+      {CLOUD_SIGNIN_ENABLED && (
+        <button
+          className="mt-6 w-full rounded-xl2 border border-line bg-panel px-4 py-3.5 flex items-center gap-3 text-left hover:border-lineStrong"
+          data-testid="gallery-link"
+          onClick={() => setGalleryOpen(true)}
+        >
+          <Icon name="sparkle" size={16} className="text-accent shrink-0" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[13.5px] font-medium">{t("Browse the Persona Gallery")}</span>
+            <span className="block text-[12px] text-muted">
+              {t("settings.gallery")}
+            </span>
           </span>
-        </span>
-        <span className="text-[12.5px] text-accent shrink-0">{t("Open →")}</span>
-      </button>
-      {galleryOpen && (
+          <span className="text-[12.5px] text-accent shrink-0">{t("Open →")}</span>
+        </button>
+      )}
+      {CLOUD_SIGNIN_ENABLED && galleryOpen && (
         <GalleryModal
           onClose={() => setGalleryOpen(false)}
           onInstalled={() => setGalleryBump((b) => b + 1)}
         />
       )}
     </section>
+  );
+}
+
+// -- Local profile (display name + optional avatar; independent of cloud) ------
+function LocalProfileCard() {
+  const { t } = useI18n();
+  const [name, setName] = useState("");
+  const [hasAvatar, setHasAvatar] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const refreshPreview = async (avatarOn: boolean) => {
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    if (!avatarOn) return;
+    const url = await fetchLocalAvatarObjectUrl().catch(() => null);
+    if (url) setPreviewUrl(url);
+  };
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        setName(s.local_display_name || "");
+        setHasAvatar(!!s.local_avatar);
+        return refreshPreview(!!s.local_avatar);
+      })
+      .catch(() => {});
+    return () => {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, []);
+
+  const saveName = async () => {
+    setBusy(true);
+    setStatus("idle");
+    const out = await setLocalDisplayName(name).catch(() => ({ ok: false as const, error: "network" }));
+    setBusy(false);
+    if (!out.ok) {
+      setStatus("error");
+      setErrorMsg(out.error || t("settings.localProfile.error"));
+      return;
+    }
+    setName(out.local_display_name || "");
+    setStatus("saved");
+    announceLocalProfileChanged();
+  };
+
+  const onPickFile = async (file: File | null) => {
+    if (!file) return;
+    setBusy(true);
+    setStatus("idle");
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    }).catch(() => "");
+    if (!dataUrl) {
+      setBusy(false);
+      setStatus("error");
+      setErrorMsg(t("settings.localProfile.error"));
+      return;
+    }
+    const out = await setLocalAvatar(dataUrl, file.type || "image/png").catch(() => ({
+      ok: false as const,
+      error: "network",
+    }));
+    setBusy(false);
+    if (!out.ok) {
+      setStatus("error");
+      setErrorMsg(out.error || t("settings.localProfile.error"));
+      return;
+    }
+    setHasAvatar(!!out.local_avatar);
+    await refreshPreview(!!out.local_avatar);
+    setStatus("saved");
+    announceLocalProfileChanged();
+  };
+
+  const clearAvatar = async () => {
+    setBusy(true);
+    setStatus("idle");
+    const out = await clearLocalAvatar().catch(() => ({ ok: false as const, error: "network" }));
+    setBusy(false);
+    if (!out.ok) {
+      setStatus("error");
+      setErrorMsg(out.error || t("settings.localProfile.error"));
+      return;
+    }
+    setHasAvatar(false);
+    await refreshPreview(false);
+    setStatus("saved");
+    announceLocalProfileChanged();
+  };
+
+  const initial = (name.trim() || t("sidebar.localUser")).slice(0, 1).toUpperCase();
+
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="local-profile-card">
+      <div className={FIELD_LABEL}>{t("settings.localProfile.title")}</div>
+      <div className={FIELD_HELP}>{t("settings.localProfile.sub")}</div>
+
+      <div className="flex items-center gap-3 mt-3.5">
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt=""
+            className="w-12 h-12 rounded-full object-cover border border-line shrink-0"
+            data-testid="local-profile-avatar-preview"
+          />
+        ) : (
+          <span
+            className="w-12 h-12 rounded-full grid place-items-center text-[16px] font-semibold bg-accentSoft text-accent shrink-0"
+            aria-hidden
+          >
+            {initial}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className={FIELD_LABEL}>{t("settings.localProfile.avatar")}</div>
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            <button
+              type="button"
+              className={BTN_BORDERED}
+              disabled={busy}
+              data-testid="local-profile-choose-avatar"
+              onClick={() => fileRef.current?.click()}
+            >
+              {t("settings.localProfile.choose")}
+            </button>
+            {hasAvatar && (
+              <button
+                type="button"
+                className={BTN_BORDERED}
+                disabled={busy}
+                data-testid="local-profile-clear-avatar"
+                onClick={clearAvatar}
+              >
+                {t("settings.localProfile.clear")}
+              </button>
+            )}
+          </div>
+          <div className={FIELD_HELP}>{t("settings.localProfile.avatarHelp")}</div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              e.target.value = "";
+              void onPickFile(f);
+            }}
+          />
+        </div>
+      </div>
+
+      <label className={FIELD_LABEL + " block mt-4"} htmlFor="local-display-name">
+        {t("settings.localProfile.name")}
+      </label>
+      <div className="flex items-center gap-2 mt-1.5">
+        <input
+          id="local-display-name"
+          className={INPUT}
+          value={name}
+          maxLength={40}
+          data-testid="local-profile-name"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void saveName()}
+        />
+        <button
+          type="button"
+          className={BTN_ACCENT}
+          disabled={busy}
+          data-testid="local-profile-save-name"
+          onClick={saveName}
+        >
+          {t("settings.localProfile.saveName")}
+        </button>
+      </div>
+      <div className={FIELD_HELP}>{t("settings.localProfile.nameHelp")}</div>
+      {status === "saved" && (
+        <div className="text-[12px] text-ok mt-1.5" data-testid="local-profile-saved">
+          {t("settings.localProfile.saved")}
+        </div>
+      )}
+      {status === "error" && (
+        <div className="text-[12px] text-warn mt-1.5" data-testid="local-profile-error">
+          {errorMsg || t("settings.localProfile.error")}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -432,6 +639,8 @@ function AppearanceSection() {
   return (
     <section>
       <PanelHead title={t("settings.general")} sub={t("How ChemClaw looks and behaves on this machine.")} />
+
+      <LocalProfileCard />
 
       <div className={CARD + " p-4 mb-4"}>
         <label className={FIELD_LABEL + " block"} htmlFor="chemclaw-language">{t("settings.language")}</label>

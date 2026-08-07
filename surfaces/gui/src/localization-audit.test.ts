@@ -10,7 +10,7 @@ const remainingVisibleEnglish: Array<[file: string, text: string]> = [
   ["App.tsx", "New session"],
   ["components/SessionIntro.tsx", "What should we produce?"],
   ["components/Composer.tsx", "No model connected"],
-  ["components/Sidebar.tsx", "Not signed in"],
+  ["components/Sidebar.tsx", "sidebar.localUser"],
   ["components/RightRail.tsx", "No previewable files yet."],
   ["components/SearchModal.tsx", "Search chats"],
   ["components/ScheduledView.tsx", "Recurring tasks ChemClaw runs on a schedule."],

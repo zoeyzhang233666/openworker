@@ -228,6 +228,8 @@ def build_engine(
     connector_filter: Optional[set[str]] = None,
     # A set (static snapshot) or a zero-arg callable (live, re-evaluated per load_skill).
     skill_filter: Optional[set[str] | Callable[[], set[str]]] = None,
+    # SessionManager owns its SkillStore location; direct callers keep the state-dir default.
+    skill_dirs: Optional[list[str | Path]] = None,
     # Persona frontmatter `skills:` (D-068) — remind the model to load_skill these first.
     default_skill_ids: Optional[list[str]] = None,
 ) -> TurnEngine:
@@ -367,7 +369,7 @@ def build_engine(
         if block:
             instructions = f"{instructions}\n\n{block}"
 
-    skill_loader = SkillLoader(_skill_dirs(ws))
+    skill_loader = SkillLoader(skill_dirs if skill_dirs is not None else _skill_dirs(ws))
     # Per-session effective menu (SKILLS-SPEC §3). The manager passes a CALLABLE so
     # load_skill consults the LIVE state per call (a Settings disable applies to running
     # sessions; a skill created after this build is still loadable). The catalog itself

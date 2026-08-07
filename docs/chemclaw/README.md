@@ -4,6 +4,7 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
+- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091 / D-092 / D-093 / D-094）**：外贸拓客龙虾 + 五 Skill；内贸拓客龙虾 + `chem-domestic-prospecting`；商机雷达龙虾 + `chem-opportunity-radar` / `chem-opportunity-scoring`；外贸转化龙虾 + `chem-sales-engagement` / `chem-sales-quality-check`（复用产品情报）。默认仍为 ChemClaw/`cowork`，新 Agent 默认禁用；无外部 API/Provider、SMTP、CRM 或专属工作台；草稿 ≠ 发送。收口回归（2026-08-07）：销售相关 `pytest` **105 passed**；GUI i18n/audit **23 passed**。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
 - 当前分支：`chemclaw-clean`（与本机 worktree 目录同名；GitHub 上选此分支即可，无需并入 `main`）
@@ -42,8 +43,20 @@
 - ✅ （2026-08-05 D-073）长程任务不再因上下文过大阻塞：压缩失败不弹阻塞式 QUESTION；出站工具大回包统一裁剪到 40,000 字符并溢出落盘；压缩后续跑依赖 `<compacted-history>`（**2026-08-06 已撤销** `task-progress.md` 落盘与「查看任务进度」入口）
 - ✅ （2026-08-06 D-075）Agent Runtime 提速与体验 A–C：产物错误中文化；禁止本地 browser 自检；只读 MCP 并行 + 30s 默认超时（慢查询可用 `CHEMCLAW_MCP_TOOL_TIMEOUT=120` 覆盖后重启 sidecar）；MCP 结构化摘要；Trim 中文硬裁；**已撤销**任务进度 md / MCP 批次落盘；规格/计划见 `2026-08-06-chemclaw-agent-runtime-ux-*`（里程碑 D 待做）
 - ✅ （2026-08-06 D-076）首包空窗 UX：live Thinking 首包阶段默认展开；无 reasoning 时龙虾等待文案按前→后池约每 3s 轮播（中英）；不再长期「正在等待 Agent…」；规格/计划见 `2026-08-06-chemclaw-first-token-wait-ux-*`
-- ✅ （2026-08-07 D-079）对齐后续跑空窗：答完 ask_user / 发送后乐观 running；锚点含 resolved question；「收到反馈」文案池与首发「挠头」池分流
+  - ✅ （2026-08-07 D-079）对齐后续跑空窗：答完 ask_user / 发送后乐观 running；锚点含 resolved question；「收到反馈」文案池与首发「挠头」池分流
   - ✅ 回归：`npm test -- --run src/firstTokenWaitCopy.test.ts src/FirstTokenWaitLabel.test.tsx src/i18n.test.tsx src/localization-audit.test.ts`：33 passed
+  - ✅ （2026-08-07 D-080）默认智能体 ChemClaw/`cowork` 空态：去掉 HubSpot / GitHub+Slack 门控卡；三条改为研究备忘录 / 价格走势 / 本地文件夹提炼；lede 化工向；标题「与 {name} 畅谈」不变；chain-lobster 空态保持；prefill 中英 i18n
+  - ✅ 回归：`npm test -- --run src/i18n.test.tsx src/localization-audit.test.ts`：22 passed；e2e `session-intro.spec.ts` 已同步为 memo/price/folder
+  - ✅ （2026-08-07 D-081）拆除遗留 `surfaces.chat/code` 强制回弹 cowork：▾ 选代码/问答后空态不再被打回 ChemClaw；可见性只认智能体页 enabled/surfaced
+  - ✅ 回归：`npm test -- --run src/surfacesAgentGate.test.ts src/i18n.test.tsx src/localization-audit.test.ts src/components/Sidebar.test.tsx`：31 passed
+  - ✅ （2026-08-07 D-082）代码工作区门禁推迟弹出 + 可关闭：新建代码会话先空态；发送/推荐/CTA 再选文件夹；FolderGate 始终「关闭」
+  - ✅ 回归：`npm test -- --run src/folderGatePolicy.test.ts src/components/FolderGate.test.tsx src/surfacesAgentGate.test.ts src/i18n.test.tsx src/localization-audit.test.ts`：28 passed
+  - ✅ （2026-08-07 D-083）问答空态：标题改为「有什么想问的？」；三条轻量推荐（解释/对比/追问清单）；无工作区
+  - ✅ 回归：`npm test -- --run src/components/SessionIntro.chat.test.tsx src/i18n.test.tsx src/localization-audit.test.ts`：23 passed
+- ✅ （2026-08-07 D-084）试用禁用上游云登录：`CLOUD_SIGNIN_ENABLED=false`；隐藏登录与 Gallery；login/managed/gallery API 硬闸；Manual + ApiHub 不变
+  - ✅ 回归：`pytest tests/test_cloud_server.py`：18 passed；`npm test -- --run src/cloudSignInGate.test.tsx src/components/Sidebar.test.tsx src/i18n.test.tsx src/localization-audit.test.ts`：32 passed
+- ✅ （2026-08-07 D-085）本机资料：显示名 + 可选本地头像；侧栏不再「未登录」；设置→通用可编辑
+  - ✅ 回归：`pytest tests/test_local_profile.py`：6 passed；`npm test -- --run src/components/Sidebar.test.tsx src/i18n.test.tsx src/localization-audit.test.ts src/cloudSignInGate.test.tsx`：32 passed
 - ✅ （2026-08-06 D-077）报告网页版曾落地自动后台烹饪；**（2026-08-07 修订）** 因失败率过高废止固定流水线：文档版为主阅读；网页版改为可选、先对齐再对话内生成；白话问 +「做网页版」按钮注入意图；拆除设置/入队/三态文案/再下厨 API；保留右侧 HTML 预览沙箱；规格见 `2026-08-06-chemclaw-report-webpage-cook-design.md`（已修订）
   - ✅ （2026-08-07）拆除回归：`pytest tests/test_webpage_optional_prompts.py tests/test_skills.py::test_build_engine_chat tests/test_settings.py`：11 passed；`npm test`（requestWebpage/Markdown/sessionResume/i18n/localization-audit/htmlPreviewSandbox）：49 passed
 - ✅ （2026-08-07 D-078）短气泡恢复 + 价格表/交互行情图 + 预览沙箱放宽：有最终 MD 时气泡仅结论/要点/链接；龙虾默认 `chem-price-daily`（MD 价格表、网页可悬停走势图可用 CDN）；沙箱允许外链 script + 只读 GET，禁 POST 外泄
@@ -127,10 +140,15 @@
 1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
+4. 外贸/内贸拓客与商机雷达内置能力包已收口；下一小任务：外贸销售转化或 Provider 接入（独立计划）；不批量内置化工社 Skills，不自动外发。
 
 ## 文档索引
 
 - [完整产品设计](../superpowers/specs/2026-07-29-chemclaw-product-design.md)
+- [销售增长智能设计（D-086—D-093）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
+- [外贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-export-sales-builtin-pack.md)
+- [内贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-domestic-sales-builtin-pack.md)
+- [商机雷达内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-opportunity-radar-builtin-pack.md)
 - [已批准决策](DECISIONS.md)
 - [领域术语](DOMAIN.md)
 - [测试、开发环境与源码预览](TESTING.md)

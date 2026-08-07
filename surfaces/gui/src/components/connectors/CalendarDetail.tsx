@@ -10,6 +10,7 @@ import type { DetailProps } from "./ConnectorsSection";
 import { ToolsDisclosure } from "./ToolsDisclosure";
 import { FOOT, GRP, GRP_H, PILL_ACCENT, ROW, TAG_ACCENT, TAG_WARN, XBTN } from "./ui";
 import { useI18n } from "../../i18n";
+import { CLOUD_SIGNIN_ENABLED } from "../../product";
 
 // The Google Calendar detail page: connected accounts (multi-account, Default
 // badge, per-account disconnect) — Gmail's page minus the privacy filters.
@@ -51,9 +52,11 @@ export function CalendarDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
           className={PILL_ACCENT + (c.managed_paused ? " opacity-50" : "")}
           data-testid="add-account-btn"
           onClick={addAccount}
-          disabled={busy || !cloud?.signed_in || c.managed_paused}
+          disabled={busy || !CLOUD_SIGNIN_ENABLED || !cloud?.signed_in || c.managed_paused}
           title={
-            c.managed_paused
+            !CLOUD_SIGNIN_ENABLED
+              ? t("cloud.oneClickUnavailable")
+              : c.managed_paused
               ? t("One-click Google sign-in is coming soon")
               : cloud?.signed_in
                 ? ""
@@ -68,7 +71,11 @@ export function CalendarDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
         <div className={GRP}>
           <div className={ROW + " text-[12.5px] text-muted"}>
             {t("Sign in with Google — each account stays separate, agents say which one they use.")}
-            {cloud?.signed_in ? "" : t(" Requires cloud sign-in.")}
+            {!CLOUD_SIGNIN_ENABLED
+              ? ` ${t("cloud.oneClickUnavailable")}`
+              : cloud?.signed_in
+                ? ""
+                : t(" Requires cloud sign-in.")}
           </div>
         </div>
       )}

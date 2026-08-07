@@ -290,6 +290,9 @@ export const interfaceMessagesZh = {
   "Waiting for sign-in…": "正在等待登录…",
   "Finish signing in in your browser — this page updates by itself.": "请在浏览器中完成登录；此页面会自动更新。",
   "Sign in to ChemClaw Cloud": "登录 ChemClaw 云服务",
+  "ChemClaw cloud connection is coming soon": "ChemClaw 云连接即将上线",
+  "One-click connect is unavailable — add a token manually":
+    "一键连接暂不可用，请使用手动添加 Token",
   "Repository": "仓库",
   "Post to channel": "发送到频道",
   "The bot must be a member of the channel — invite @OpenWorker in Slack if it isn't.":
