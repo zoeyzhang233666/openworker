@@ -1350,8 +1350,11 @@ html[data-theme="dark"] :not(.connector-badge) > .connector-icon[data-dark-mark]
 .turn-narr p:last-child { margin-bottom: 0; }
 
 /* §34 (UX-016): [Title](artifact:path) renders as a chip that opens the artifact viewer */
+.art-chip-wrap {
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; max-width: 100%;
+}
 .art-chip {
-  display: inline-flex; align-items: center; gap: 9px; margin: 6px 0 2px;
+  display: inline-flex; align-items: center; gap: 9px;
   padding: 6px 12px 6px 9px; border: 1px solid var(--line); border-radius: 10px;
   background: var(--paper); cursor: pointer; font: inherit; font-size: 13px; color: var(--ink);
   text-align: left; max-width: 100%;
@@ -1365,6 +1368,12 @@ html[data-theme="dark"] :not(.connector-badge) > .connector-icon[data-dark-mark]
 .art-chip-meta b { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .art-chip-meta span { font-size: 11px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .art-chip-open { margin-left: 8px; flex: none; font-size: 11.5px; color: var(--accent); font-weight: 500; }
+.art-chip-webpage {
+  flex: none; font: inherit; font-size: 11.5px; font-weight: 500; color: var(--accent);
+  background: var(--accent-soft); border: 1px solid transparent; border-radius: 8px;
+  padding: 5px 10px; cursor: pointer;
+}
+.art-chip-webpage:hover { border-color: var(--accent); }
 
 /* ---- UX-027: Slack post-connect "how mentions reach you" card ----
    Split-scene carousel: the Slack window is PINNED to modern light-Slack (aubergine

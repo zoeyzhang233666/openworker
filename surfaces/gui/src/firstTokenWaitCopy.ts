@@ -1,4 +1,4 @@
-/** First-token wait copy pools (D-076). English keys = en-US display; zh via interfaceMessages. */
+/** First-token / post-align wait copy pools (D-076 / D-079). English keys = en-US; zh via interfaceMessages. */
 
 /** Interval between rotated lobster wait lines. */
 export const FIRST_TOKEN_WAIT_ROTATE_MS = 3000;
@@ -18,13 +18,23 @@ export const FIRST_TOKEN_WAIT_LATE_KEYS = [
   "Slow-cooking a good answer…",
 ] as const;
 
-/** Early pool then late pool; FirstTokenWaitLabel rotates through this in order. */
+/** Early pool then late pool; used after a fresh user send (not post-align). */
 export const FIRST_TOKEN_WAIT_ROTATION_KEYS = [
   ...FIRST_TOKEN_WAIT_EARLY_KEYS,
   ...FIRST_TOKEN_WAIT_LATE_KEYS,
 ] as const;
 
+/** After the user picks ask_user options or sends a follow-up right after aligning (D-079 套1). */
+export const FEEDBACK_WAIT_ROTATION_KEYS = [
+  "Got it — Lobster's continuing with your pick…",
+  "Folding your notes into the plan…",
+  "Aligning — next step soon…",
+  "Lobster noted that — carrying on~",
+] as const;
+
 export type FirstTokenWaitKey = (typeof FIRST_TOKEN_WAIT_ROTATION_KEYS)[number];
+export type FeedbackWaitKey = (typeof FEEDBACK_WAIT_ROTATION_KEYS)[number];
+export type WaitCopyPool = "first" | "feedback";
 
 export function nextFirstTokenWaitIndex(index: number, length = FIRST_TOKEN_WAIT_ROTATION_KEYS.length): number {
   if (length <= 0) return 0;
@@ -36,22 +46,56 @@ export function advanceFirstTokenWaitIndex(index: number, length = FIRST_TOKEN_W
   return (nextFirstTokenWaitIndex(index, length) + 1) % length;
 }
 
-type WaitItem = { kind: string };
+export type WaitItem = { kind: string; resolved?: string };
 
-/** True when transcript has tool/approval/assistant (etc.) after the latest user message. */
-export function hasPostUserTurnActivity(items: WaitItem[]): boolean {
+/** Index of the latest user message or resolved ask_user question (whichever is later). */
+export function waitAnchorIndex(items: WaitItem[]): number {
   let lastUser = -1;
+  let lastResolvedQ = -1;
   for (let i = 0; i < items.length; i++) {
-    if (items[i].kind === "user") lastUser = i;
+    const it = items[i];
+    if (it.kind === "user") lastUser = i;
+    if (it.kind === "question" && it.resolved) lastResolvedQ = i;
   }
-  for (let i = lastUser + 1; i < items.length; i++) {
+  return Math.max(lastUser, lastResolvedQ);
+}
+
+/** True when there is visible turn progress after the wait anchor. */
+export function hasPostAnchorActivity(items: WaitItem[]): boolean {
+  const anchor = waitAnchorIndex(items);
+  for (let i = anchor + 1; i < items.length; i++) {
     if (items[i].kind === "notice") continue;
     return true;
   }
   return false;
 }
 
-/** Lobster wait: running, no compact/reasoning/stream, nothing after last user yet. */
+/** @deprecated Prefer hasPostAnchorActivity (D-079). */
+export function hasPostUserTurnActivity(items: WaitItem[]): boolean {
+  return hasPostAnchorActivity(items);
+}
+
+/** Which lobster copy pool to rotate for the current empty window. */
+export function waitCopyPool(items: WaitItem[]): WaitCopyPool {
+  const anchor = waitAnchorIndex(items);
+  if (anchor < 0) return "first";
+  const at = items[anchor];
+  if (at.kind === "question" && at.resolved) return "feedback";
+  if (at.kind === "user") {
+    for (let i = anchor - 1; i >= 0; i--) {
+      if (items[i].kind === "notice") continue;
+      if (items[i].kind === "question" && items[i].resolved) return "feedback";
+      break;
+    }
+  }
+  return "first";
+}
+
+export function waitRotationKeys(pool: WaitCopyPool): readonly string[] {
+  return pool === "feedback" ? FEEDBACK_WAIT_ROTATION_KEYS : FIRST_TOKEN_WAIT_ROTATION_KEYS;
+}
+
+/** Lobster wait: running, no compact/reasoning/stream, nothing after wait anchor yet. */
 export function isFirstTokenEmptyWindow(
   items: WaitItem[],
   opts: {
@@ -63,10 +107,10 @@ export function isFirstTokenEmptyWindow(
 ): boolean {
   if (!opts.running || opts.compacting) return false;
   if (opts.reasoningStream || opts.streaming) return false;
-  return !hasPostUserTurnActivity(items);
+  return !hasPostAnchorActivity(items);
 }
 
 /** Live ThinkingBlock defaultOpen: still before tools/answer bubbles (reasoning allowed). */
 export function isFirstTokenThinkingOpen(items: WaitItem[]): boolean {
-  return !hasPostUserTurnActivity(items);
+  return !hasPostAnchorActivity(items);
 }

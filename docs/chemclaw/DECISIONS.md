@@ -120,7 +120,7 @@
 
 ## 产业链龙虾与过程 Skill（2026-08-05）
 
-- **D-072**：内置智能体 `chain-lobster` 显示名「产业链龙虾」（无 Serenity 副标题）；化工产业链为锚，股票/宏观为同对话延伸。默认 Skill：七个中文投研 + `pdf`/`chart-image`/`file-search`/`multi-search-engine` + `market-analysis`/`stock-analysis`。新建对话默认仍为 ChemClaw/`cowork`（Def1）。空态三条推荐通俗、无固定品名、用「稀缺」表述。Mermaid **M4**：全局安全+边标签+美观工具箱+反模板；「产业链层级测绘」补化工类型样式。过程库 **B1**：superpowers + mattpocock-skills-zh-CN 全量 bundled，不写入各智能体默认 `skills:`。澄清 **G4**：全局一句指针指向 `load_skill(grilling|grill-me|…)`，不另写先对齐长流程；默认 Markdown，可白话问是否要更美观的网页。上传 zip 合成的 `serenity` 与内置龙虾并存（I1）。
+- **D-072**：内置智能体 `chain-lobster` 显示名「产业链龙虾」（无 Serenity 副标题）；化工产业链为锚，股票/宏观为同对话延伸。默认 Skill：七个中文投研 + `pdf`/`chart-image`/`file-search`/`multi-search-engine` + `market-analysis`/`stock-analysis` + `chem-price-daily`（D-078）。新建对话默认仍为 ChemClaw/`cowork`（Def1）。空态三条推荐通俗、无固定品名、用「稀缺」表述。Mermaid **M4**：全局安全+边标签+美观工具箱+反模板；「产业链层级测绘」补化工类型样式。过程库 **B1**：superpowers + mattpocock-skills-zh-CN 全量 bundled，不写入各智能体默认 `skills:`。澄清 **G4**：全局一句指针指向 `load_skill(grilling|grill-me|…)`，不另写先对齐长流程；默认交付文档版（Markdown）；可白话问是否要网页版。**（2026-08-07 修订）** 废止「D-077 自动后台烹饪」；网页版改为可选、先对齐再生成；**D-078** 恢复有 MD 时短气泡，并默认挂载 `chem-price-daily`。上传 zip 合成的 `serenity` 与内置龙虾并存（I1）。
 
 ## 长程任务上下文韧性（2026-08-05）
 
@@ -146,9 +146,30 @@
   - **（2026-08-06 修订）** 撤销任务进度 md 与 MCP 批次追加落盘；压缩记忆仅靠 `<compacted-history>` 等既有通道。
   - 里程碑 D（压缩态可见 / Plan-then-Act 时间线）见规格 `2026-08-06-chemclaw-agent-runtime-ux-design.md`，另案实施。
 
-## 首包空窗 UX（2026-08-06）
+## 首包空窗 UX（2026-08-06；2026-08-07 修订）
 
 - **D-076**：发送后至首条可见进展前，不得长期只显示「正在等待 Agent…」。有 `reasoning_delta` 时 live ThinkingBlock 在首包思考阶段默认展开（手动点击粘性覆盖）；无 reasoning 时用全局龙虾文案按前池→后池顺序约每 3s 轮播（中英对等；新等待从第 1 句重启）。压缩态仍用「正在压缩上下文…」。不纳入压缩细化 / 工具间隙 / Plan-then-Act（仍属里程碑 D）。规格/计划：`2026-08-06-chemclaw-first-token-wait-ux-*`。
+- **D-079**：扩展 D-076 空窗至「用户答完 ask_user / 对齐补充之后」：`send` 与 `answerQuestion` 乐观 `running`；空窗锚点为最后一条 user 或已 resolve 的 question；答完选项后使用「收到反馈」文案池（收到啦… / 写进方案… / 对齐中… / 记下了继续~），首发仍用原「挠头」池。
+
+## 报告网页版（2026-08-06；2026-08-07 修订）
+
+- **D-077（已修订）**：废止「最终 md 交付后自动后台烹饪网页版」固定流水线（实测一锅出交互 HTML 失败率过高，不适合作为默认模块）。改为：
+  - **主阅读**：文档版（Markdown）为默认主阅读面与存档。
+  - **网页版为可选项**：交付 md 后可用白话询问是否要网页；文档旁可有「做网页版」按钮（仅注入用户意图，进入正常对话 turn）。默认不生成。
+  - **流程**：先 grill 式一次一问对齐细节，用户确认后再在对话内生成 HTML；可反复修改。交互重量由对齐决定，默认偏简单精装；强控件仅在用户要求时做。
+  - **形态**：只改提示词引导（不做独立 Skill 包）；拆除 turn 后入队、设置开关、`webpage_cook` WS 三态文案与「再下厨」API。
+  - **预览沙箱**：**（D-078 修订）** 允许外链脚本与只读 GET；禁 POST 外泄（见 D-078）。
+  - **短气泡**：**（D-078 修订）** 有最终 MD 交付时恢复强制短气泡（见 D-078）。
+  - **非目标**：不做对话区内嵌大板 Artifact；不恢复硬同源校验器；不把网页当第二研究代理。
+  - 修订 D-072 G4；原规格 `2026-08-06-chemclaw-report-webpage-cook-*` 标为已废止自动烹饪。
+
+## 短气泡、价格与 HTML 预览沙箱（2026-08-07）
+
+- **D-078**：在 D-077 可选网页版之上：
+  - **短气泡**：助手回复含最终 `[标题](artifact:….md)` 时，气泡仅结论若干句 + 要点列表 + 文档链接；全文以右侧文档版为准。
+  - **价格**：产业链龙虾默认挂载 `chem-price-daily`；化工品研究可取价时用 MCP（如 `get_price_trend`）取数，**MD 写价格表**；用户要网页版时用同一序列画**可悬停交互走势图**（可用 CDN 图库）；无数据则注明，禁止编造。
+  - **预览沙箱**：允许外链 `<script src=https>` 与 CSP `script-src https:`（Chart.js 等）；`fetch`/`XHR` 仍仅 GET/HEAD；禁止把本地报告 POST 外泄。深度研究仍走对话 MCP/技能，网页负责展示与轻量只读刷新。
+  - 修订 D-072 默认 Skill 列表与 D-077 沙箱/短气泡表述。
 
 ## 协作治理
 

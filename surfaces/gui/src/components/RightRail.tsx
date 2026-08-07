@@ -13,6 +13,7 @@ import { useI18n } from "../i18n";
 import { AccessSection } from "./AccessSection";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
+import { prepareHtmlPreview } from "../htmlPreviewSandbox";
 
 type Panel = "progress" | "artifacts";
 
@@ -421,7 +422,8 @@ function ArtifactViewer({
             key={`${artifact.path}-${reloadKey}`}
             sandbox="allow-scripts allow-same-origin"
             className="artifact-frame"
-            srcDoc={content.content || ""}
+            title={artifact.name || artifact.path}
+            srcDoc={prepareHtmlPreview(content.content || "")}
           />
         ) : content.kind === "markdown" ? (
           <div className="artifact-md">

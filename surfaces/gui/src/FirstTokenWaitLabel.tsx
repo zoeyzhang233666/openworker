@@ -2,16 +2,23 @@ import { useEffect, useState } from "react";
 import { useI18n, type MessageKey } from "./i18n";
 import {
   FIRST_TOKEN_WAIT_ROTATE_MS,
-  FIRST_TOKEN_WAIT_ROTATION_KEYS,
   advanceFirstTokenWaitIndex,
-  type FirstTokenWaitKey,
+  waitRotationKeys,
+  type WaitCopyPool,
 } from "./firstTokenWaitCopy";
 
-/** Lobster rotating wait label for the first-token empty window (D-076). */
-export function FirstTokenWaitLabel({ active }: { active: boolean }) {
+/** Lobster rotating wait label for empty windows (D-076 / D-079). */
+export function FirstTokenWaitLabel({
+  active,
+  pool = "first",
+}: {
+  active: boolean;
+  pool?: WaitCopyPool;
+}) {
   const { t } = useI18n();
   const [index, setIndex] = useState(0);
   const [show, setShow] = useState(false);
+  const keys = waitRotationKeys(pool);
 
   useEffect(() => {
     if (!active) {
@@ -22,29 +29,23 @@ export function FirstTokenWaitLabel({ active }: { active: boolean }) {
     setIndex(0);
     setShow(true);
     const timer = window.setInterval(() => {
-      setIndex((i) => advanceFirstTokenWaitIndex(i));
+      setIndex((i) => advanceFirstTokenWaitIndex(i, keys.length));
     }, FIRST_TOKEN_WAIT_ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [active]);
+  }, [active, pool, keys.length]);
 
   if (!active || !show) return null;
 
-  const labelKey = FIRST_TOKEN_WAIT_ROTATION_KEYS[
-    nextSafeIndex(index)
-  ] as FirstTokenWaitKey;
+  const len = keys.length;
+  const safe = len <= 0 ? 0 : ((index % len) + len) % len;
+  const labelKey = keys[safe] || keys[0];
 
   return (
-    <div className="waiting-transcript" data-testid="first-token-wait">
+    <div className="waiting-transcript" data-testid="first-token-wait" data-pool={pool}>
       <div className="waiting-row" aria-live="polite">
         <span className="waiting-spinner" />
         <span>{t(labelKey as MessageKey)}</span>
       </div>
     </div>
   );
-}
-
-function nextSafeIndex(index: number): number {
-  const len = FIRST_TOKEN_WAIT_ROTATION_KEYS.length;
-  if (len <= 0) return 0;
-  return ((index % len) + len) % len;
 }

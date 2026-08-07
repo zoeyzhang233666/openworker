@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
 import { MermaidBlock, type MermaidRepairContext } from "./MermaidBlock";
+import { REQUEST_WEBPAGE_EVENT } from "../requestWebpage";
 
 // §34 (UX-016): the agent ends a deliverable turn with plain markdown —
 // [Title](artifact:relative/path) — and the renderer turns it into a chip that opens the
@@ -81,27 +82,55 @@ export function isArtifactHref(href: string | undefined): boolean {
   return ARTIFACT_SUFFIXES.has(base.slice(dot).toLowerCase());
 }
 
+function isMarkdownDeliverable(path: string): boolean {
+  const base = path.split("/").pop() || path;
+  const lower = base.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
 function ArtifactChip({ path, title }: { path: string; title: string }) {
   const { t } = useI18n();
   const file = path.split("/").pop() || path;
+  const showWebpage = isMarkdownDeliverable(path);
   return (
-    <button
-      className="art-chip"
-      data-testid="artifact-chip"
-      title={path}
-      onClick={() =>
-        window.dispatchEvent(new CustomEvent(OPEN_ARTIFACT_EVENT, { detail: { path } }))
-      }
-    >
-      <span className="art-chip-ico">
-        <Icon name="file" size={14} />
-      </span>
-      <span className="art-chip-meta">
-        <b>{title || file}</b>
-        {title && title !== file && <span>{file}</span>}
-      </span>
-      <span className="art-chip-open">{t("Open")} ›</span>
-    </button>
+    <span className="art-chip-wrap" data-testid="artifact-chip-wrap">
+      <button
+        className="art-chip"
+        data-testid="artifact-chip"
+        title={path}
+        onClick={() =>
+          window.dispatchEvent(new CustomEvent(OPEN_ARTIFACT_EVENT, { detail: { path } }))
+        }
+      >
+        <span className="art-chip-ico">
+          <Icon name="file" size={14} />
+        </span>
+        <span className="art-chip-meta">
+          <b>{title || file}</b>
+          {title && title !== file && <span>{file}</span>}
+        </span>
+        <span className="art-chip-open">{t("Open")} ›</span>
+      </button>
+      {showWebpage && (
+        <button
+          type="button"
+          className="art-chip-webpage"
+          data-testid="artifact-make-webpage"
+          title={t("Make webpage edition")}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            window.dispatchEvent(
+              new CustomEvent(REQUEST_WEBPAGE_EVENT, {
+                detail: { title: title || file, path },
+              }),
+            );
+          }}
+        >
+          {t("Make webpage edition")}
+        </button>
+      )}
+    </span>
   );
 }
 

@@ -93,7 +93,9 @@ def test_build_engine_chat(tmp_path):
     sys_msg = engine.messages[0]["content"]
     assert "every edge MUST have a semantic label" in sys_msg
     assert "load_skill" in sys_msg and "grilling" in sys_msg
-    assert "nicer-looking webpage" in sys_msg or "美观" in sys_msg
+    assert "nicer webpage" in sys_msg or "美观" in sys_msg or "网页" in sys_msg
+    assert "align" in sys_msg.lower() or "对齐" in sys_msg
+    assert "keep the chat bubble SHORT" in sys_msg
     assert 'A -->|"采购"| B' in sys_msg
 
 

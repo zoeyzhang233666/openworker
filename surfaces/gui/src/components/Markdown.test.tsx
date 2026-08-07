@@ -59,6 +59,28 @@ describe("Markdown artifact links", () => {
     window.removeEventListener(OPEN_ARTIFACT_EVENT, listener);
   });
 
+  it("shows Make webpage edition next to Markdown deliverables and dispatches request event", () => {
+    const seen: Array<{ title: string; path: string }> = [];
+    const listener = (e: Event) =>
+      seen.push((e as CustomEvent<{ title: string; path: string }>).detail);
+    window.addEventListener("ocw-request-webpage", listener);
+
+    render(<Markdown text="[丙烯产业链研究报告](artifact:丙烯产业链研究报告.md)" />);
+    const btn = screen.getByTestId("artifact-make-webpage");
+    expect(btn.textContent).toMatch(/做网页版|Make webpage/);
+    fireEvent.click(btn);
+    expect(seen).toEqual([
+      { title: "丙烯产业链研究报告", path: "丙烯产业链研究报告.md" },
+    ]);
+
+    window.removeEventListener("ocw-request-webpage", listener);
+  });
+
+  it("does not show Make webpage edition for non-Markdown artifacts", () => {
+    render(<Markdown text="Done — [dashboard](artifact:reports/semi.html)" />);
+    expect(screen.queryByTestId("artifact-make-webpage")).toBeNull();
+  });
+
   it("renders relative workspace .md links as chips (not blue external anchors)", () => {
     const seen: string[] = [];
     const listener = (e: Event) => seen.push((e as CustomEvent).detail.path);

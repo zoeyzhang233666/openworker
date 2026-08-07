@@ -42,6 +42,12 @@
 - ✅ （2026-08-05 D-073）长程任务不再因上下文过大阻塞：压缩失败不弹阻塞式 QUESTION；出站工具大回包统一裁剪到 40,000 字符并溢出落盘；压缩后续跑依赖 `<compacted-history>`（**2026-08-06 已撤销** `task-progress.md` 落盘与「查看任务进度」入口）
 - ✅ （2026-08-06 D-075）Agent Runtime 提速与体验 A–C：产物错误中文化；禁止本地 browser 自检；只读 MCP 并行 + 30s 默认超时（慢查询可用 `CHEMCLAW_MCP_TOOL_TIMEOUT=120` 覆盖后重启 sidecar）；MCP 结构化摘要；Trim 中文硬裁；**已撤销**任务进度 md / MCP 批次落盘；规格/计划见 `2026-08-06-chemclaw-agent-runtime-ux-*`（里程碑 D 待做）
 - ✅ （2026-08-06 D-076）首包空窗 UX：live Thinking 首包阶段默认展开；无 reasoning 时龙虾等待文案按前→后池约每 3s 轮播（中英）；不再长期「正在等待 Agent…」；规格/计划见 `2026-08-06-chemclaw-first-token-wait-ux-*`
+- ✅ （2026-08-07 D-079）对齐后续跑空窗：答完 ask_user / 发送后乐观 running；锚点含 resolved question；「收到反馈」文案池与首发「挠头」池分流
+  - ✅ 回归：`npm test -- --run src/firstTokenWaitCopy.test.ts src/FirstTokenWaitLabel.test.tsx src/i18n.test.tsx src/localization-audit.test.ts`：33 passed
+- ✅ （2026-08-06 D-077）报告网页版曾落地自动后台烹饪；**（2026-08-07 修订）** 因失败率过高废止固定流水线：文档版为主阅读；网页版改为可选、先对齐再对话内生成；白话问 +「做网页版」按钮注入意图；拆除设置/入队/三态文案/再下厨 API；保留右侧 HTML 预览沙箱；规格见 `2026-08-06-chemclaw-report-webpage-cook-design.md`（已修订）
+  - ✅ （2026-08-07）拆除回归：`pytest tests/test_webpage_optional_prompts.py tests/test_skills.py::test_build_engine_chat tests/test_settings.py`：11 passed；`npm test`（requestWebpage/Markdown/sessionResume/i18n/localization-audit/htmlPreviewSandbox）：49 passed
+- ✅ （2026-08-07 D-078）短气泡恢复 + 价格表/交互行情图 + 预览沙箱放宽：有最终 MD 时气泡仅结论/要点/链接；龙虾默认 `chem-price-daily`（MD 价格表、网页可悬停走势图可用 CDN）；沙箱允许外链 script + 只读 GET，禁 POST 外泄
+  - ✅ 回归：`pytest tests/test_webpage_optional_prompts.py tests/test_skills.py::test_build_engine_chat`：4 passed；`npm test -- --run src/htmlPreviewSandbox.test.ts`：6 passed
   - ✅ 设置页上下文用量条（原 Composer 卡片）已汉化：标题「输入框」、开关与说明走 `t()` + `interfaceMessagesZh`
   - ✅ 后台对话继续与回切追齐：离开设置/其他对话不杀 turn；同会话重选不误清 streaming；`ready.running` + `turn_done` REST 追齐最终回答（D-061）
   - ✅ 跨会话并行回答（D-062）：`stream()` 每路独立 OpenAI SDK 客户端，避免切新对话把后台 turn 打成 Connection error；WS 事件按绑定 session 过滤防 Interrupted 串台；不做全局对话数软上限（后台 turn 也占 running）

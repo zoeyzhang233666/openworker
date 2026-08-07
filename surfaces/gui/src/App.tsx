@@ -57,8 +57,13 @@ import { Sidebar } from "./components/Sidebar";
 import { ThinkingBlock, Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { Markdown } from "./components/Markdown";
+import {
+  REQUEST_WEBPAGE_EVENT,
+  webpageAlignIntentMessage,
+  type RequestWebpageDetail,
+} from "./requestWebpage";
 import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
-import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen } from "./firstTokenWaitCopy";
+import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen, waitCopyPool } from "./firstTokenWaitCopy";
 import { SearchModal } from "./components/SearchModal";
 import { SessionIntro } from "./components/SessionIntro";
 import { FolderGate } from "./components/FolderGate";
@@ -956,11 +961,23 @@ export function App() {
     // Force-run shows exactly what the user typed: "/name rest". Must match the server's
     // `display` sidecar formula so the turn_start dedupe recognizes the local echo.
     const shown = skill ? `/${skill}${text ? ` ${text}` : ""}` : text;
+    setRunning(true); // D-079: optimistic so wait UI appears before turn_start
     setItems((p) => [...p, { kind: "user", text: shown, attachments, ts: Date.now() / 1000 }]);
     // The visible model rides along with the message (single source of truth per turn).
     sessionRef.current?.userMessage(text, attachments, model, skill);
     followLatest(); // sending always re-engages stream-following, wherever the user had scrolled
   };
+  // MD chip «做网页版»: inject align-then-generate intent (D-077 revised; no auto-cook).
+  useEffect(() => {
+    const onRequest = (ev: Event) => {
+      if (running) return;
+      const detail = (ev as CustomEvent<RequestWebpageDetail>).detail;
+      if (!detail?.path) return;
+      send(webpageAlignIntentMessage(detail.title || "", detail.path));
+    };
+    window.addEventListener(REQUEST_WEBPAGE_EVENT, onRequest);
+    return () => window.removeEventListener(REQUEST_WEBPAGE_EVENT, onRequest);
+  });
   // Resolving a LIVE prompt also resolves its parked Inbox mirror server-side, but the polled
   // `sessionInbox` copy stays "pending" for up to a poll cycle — long enough for the docked
   // answer-in-context card to flash the SAME request again right after the user answered it
@@ -1005,6 +1022,7 @@ export function App() {
     sessionRef.current?.respondDirectory(granted, path, writable);
   };
   const answerQuestion = (answer: string) => {
+    setRunning(true); // D-079: resume empty window after ask_user pick
     setItems((p) => resolveLastQuestion(p, answer));
     dropSessionInbox("question");
     sessionRef.current?.respondQuestion(answer);
@@ -1700,7 +1718,7 @@ export function App() {
                   {/* Compaction runs between provider turns (nothing streams during it), so
                       the transient takes over the waiting slot with a specific label. */}
                   {running && compacting && <WaitingForAgent label={t("Compacting context…")} />}
-                  {/* D-076: first-token empty window uses lobster copy; not mid-turn tool gaps. */}
+                  {/* D-076/D-079: empty window uses lobster copy (first vs feedback pool). */}
                   <FirstTokenWaitLabel
                     active={isFirstTokenEmptyWindow(items, {
                       running,
@@ -1708,6 +1726,7 @@ export function App() {
                       reasoningStream,
                       streaming,
                     })}
+                    pool={waitCopyPool(items)}
                   />
                   {streaming && streamMode(streaming, items, running) === "answer" && (
                     <div className="transcript">

@@ -4,6 +4,7 @@ import { LocaleProvider } from "./i18n";
 import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
 import { interfaceMessagesZh } from "./interfaceMessages";
 import {
+  FEEDBACK_WAIT_ROTATION_KEYS,
   FIRST_TOKEN_WAIT_ROTATE_MS,
   FIRST_TOKEN_WAIT_ROTATION_KEYS,
 } from "./firstTokenWaitCopy";
@@ -80,5 +81,19 @@ describe("FirstTokenWaitLabel", () => {
       </LocaleProvider>,
     );
     expect(screen.getByText(zh(FIRST_TOKEN_WAIT_ROTATION_KEYS[0]))).toBeTruthy();
+  });
+
+  it("rotates the feedback pool after ask_user picks (D-079)", () => {
+    render(
+      <LocaleProvider>
+        <FirstTokenWaitLabel active pool="feedback" />
+      </LocaleProvider>,
+    );
+    expect(screen.getByTestId("first-token-wait").getAttribute("data-pool")).toBe("feedback");
+    expect(screen.getByText(zh(FEEDBACK_WAIT_ROTATION_KEYS[0]))).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(FIRST_TOKEN_WAIT_ROTATE_MS);
+    });
+    expect(screen.getByText(zh(FEEDBACK_WAIT_ROTATION_KEYS[1]))).toBeTruthy();
   });
 });

@@ -81,18 +81,30 @@ you're doing and why (e.g. "Checking what merged since yesterday's digest."). It
 to the user as live progress. Don't narrate trivial single-call follow-ups, don't repeat \
 the previous line, and never let narration replace your final answer."""
 
-# ChemClaw long-turn hard guidance (D-073): resume via compacted-history + deliverables.
+# ChemClaw long-turn hard guidance (D-073 / D-077–D-078): resume + short bubble + optional webpage.
 _LONG_TASK_GUIDANCE = """\
 Long-turn research:
 - After context compaction/Trim, resume from the injected `<compacted-history>` block \
 (summary, working_state, user messages, recent turns). Re-read workspace deliverables or \
 re-run tools when needed — do NOT call write_file/create_artifact solely to checkpoint \
 scratch memory (that would trigger a write-approval card).
-- When delivering the user-facing final report, write a normal deliverable artifact \
+- When delivering the user-facing final report, write a normal Markdown deliverable \
 (outside `._chemclaw/`) and keep updating the same report file across phases. End the \
 reply with a markdown link `[标题](artifact:相对路径.md)` using the exact workspace-relative \
 path you wrote — never a bare filename without the link, never `file://`, never an absolute \
-OS path. After writing, the chip must open the right-rail preview.
+OS path. After writing, the link must open the right-rail preview. Markdown is the default \
+primary reading surface — do not assume a background system will auto-build a webpage.
+- When that final Markdown report is linked, keep the chat bubble SHORT: a few sentences of \
+conclusions, a bullet list of key points, plus the document link. Do NOT paste the full \
+report body into the bubble (the right-rail Markdown preview is the full text).
+- Webpage edition is OPTIONAL. After a Markdown report is delivered, you MAY ask in plain \
+language whether they also want a nicer webpage. If they want one (or click «做网页版»), \
+align details first — one question at a time (style, length, simple polish vs interactive \
+controls). Default to simple polished layout; add sliders/calculators only if they ask. \
+Only write HTML after they confirm; deliver with `[标题](artifact:相对路径.html)`. You may \
+iterate if they want changes. CDN chart libraries and read-only GET to public APIs are OK \
+in the webpage; do NOT POST/exfiltrate report content; deep research stays in the chat via \
+MCP/skills — the page is for display, not a second research agent.
 - Do NOT use browser tools (`browser_open_url`, `browser_read_url`, etc.) to verify local \
 HTML/Markdown deliverables. `file://` and `localhost`/`127.0.0.1` are blocked by design. \
 Validate local pages with static checks (tag balance, script syntax) or rely on the in-app \
@@ -118,12 +130,16 @@ style over neon/glow.
 - Prefer `graph LR` for value-chain style flows when it fits; do not force a fixed subgraph \
 checklist."""
 
-# ChemClaw D-072 (G4): one-line pointer to real process skills — not a parallel "clarify" protocol.
+# ChemClaw D-072 G4 / D-078: process-skill pointer + optional webpage align + short bubble.
 _CLARIFY_POINTER = """\
 Clarification: when the user's goal, scope, or deliverable shape is unclear, call `load_skill` \
 for a thin process skill such as `grilling` or `grill-me` (one question at a time) instead of \
-guessing. Default deliverable format is Markdown. If a polished page might help, ask in plain \
-language whether they also want a nicer-looking webpage — do not assume they know what HTML is."""
+guessing. Default user-facing final report is Markdown with `[标题](artifact:相对路径.md)`. \
+When a final Markdown report is linked, keep the chat bubble short (conclusions + key-point \
+bullets + the link). After delivering Markdown, you may ask in plain language whether they \
+also want a webpage edition — do not assume they know HTML. If they want a webpage, align \
+first (one question at a time), then generate; default to simple polish unless they ask for \
+interactive controls."""
 
 
 

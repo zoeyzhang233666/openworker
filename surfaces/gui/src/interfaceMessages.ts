@@ -162,6 +162,10 @@ export const interfaceMessagesZh = {
   "Thinking long — not napping…": "龙虾思考有点长，别以为它睡着了…",
   "Still chewing on it — bubbles soon…": "龙虾还在啃这道题，马上吐泡…",
   "Slow-cooking a good answer…": "龙虾在慢慢熬一锅好回答…",
+  "Got it — Lobster's continuing with your pick…": "收到啦，龙虾按你的选择继续…",
+  "Folding your notes into the plan…": "正在把你的要求写进方案…",
+  "Aligning — next step soon…": "对齐中，下一步马上出来…",
+  "Lobster noted that — carrying on~": "龙虾记下了，继续往下做~",
   "Pick a task to start — I'll do the work and save the result. Or just type what you need below.":
     "选择一个任务开始——我会完成工作并保存结果。你也可以直接在下方输入需求。",
   "Analyze the files in a directory": "分析文件夹中的文件",
@@ -394,6 +398,7 @@ export const interfaceMessagesZh = {
   "Show the context window bar": "显示上下文窗口用量条",
   "A small meter showing how full the model's context window is. Turn it off to show this session's token total instead; either way the full breakdown is one click away.":
     "用小型进度条显示模型上下文窗口已占用多少。关闭后改为显示本会话 Token 总量；无论哪种方式，完整明细都只需点一下即可查看。",
+  "Make webpage edition": "做网页版",
   "Sidebar": "侧栏",
   "Conversations shown per coworker": "每位助手显示的对话数",
   "Longer lists collapse behind “Show more”. Applies per coworker and per project.":
