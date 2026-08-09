@@ -70,6 +70,11 @@ import {
   REQUEST_SEND_APPROVAL_EVENT,
   sendApprovalIntentMessage,
 } from "./requestSendApproval";
+import {
+  REQUEST_LEAD_FOLLOWUP_EVENT,
+  leadFollowupIntentMessage,
+  type RequestLeadFollowupDetail,
+} from "./requestLeadFollowup";
 import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
 import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen, waitCopyPool } from "./firstTokenWaitCopy";
 import { SearchModal } from "./components/SearchModal";
@@ -1017,6 +1022,18 @@ export function App() {
     };
     window.addEventListener(REQUEST_SEND_APPROVAL_EVENT, onSendApproval);
     return () => window.removeEventListener(REQUEST_SEND_APPROVAL_EVENT, onSendApproval);
+  });
+  // D-102: lead-list «继续补查» / «重评» — inject chat intent only (no auto-run / send / CRM).
+  useEffect(() => {
+    const onLeadFollowup = (ev: Event) => {
+      if (running) return;
+      const detail = (ev as CustomEvent<RequestLeadFollowupDetail>).detail;
+      if (!detail?.kind) return;
+      send(leadFollowupIntentMessage(detail));
+      setSurface("session");
+    };
+    window.addEventListener(REQUEST_LEAD_FOLLOWUP_EVENT, onLeadFollowup);
+    return () => window.removeEventListener(REQUEST_LEAD_FOLLOWUP_EVENT, onLeadFollowup);
   });
   // Resolving a LIVE prompt also resolves its parked Inbox mirror server-side, but the polled
   // `sessionInbox` copy stays "pending" for up to a poll cycle — long enough for the docked

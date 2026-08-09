@@ -1,5 +1,9 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import {
+  REQUEST_LEAD_FOLLOWUP_EVENT,
+  type RequestLeadFollowupDetail,
+} from "../requestLeadFollowup";
 
 export type LeadRow = {
   company: string;
@@ -7,17 +11,26 @@ export type LeadRow = {
   fit_score?: number | string | null;
   evidence_confidence?: number | string | null;
   match_reason?: string;
+  key_evidence?: string;
   next_action?: string;
   sales_status: string;
   notes?: string;
   exclude_reason?: string;
 };
 
-type LeadListDoc = {
+export type LeadListDoc = {
   list_id?: string;
   title?: string;
   sku_summary?: string;
   market_summary?: string;
+  run_id?: string;
+  stage?: string;
+  budget?: string | number;
+  prospecting_run?: {
+    run_id?: string;
+    stage?: string;
+    budget?: string | number;
+  };
   leads: LeadRow[];
 };
 
@@ -42,6 +55,7 @@ function toCsv(leads: LeadRow[]): string {
     "fit_score",
     "evidence_confidence",
     "match_reason",
+    "key_evidence",
     "next_action",
     "sales_status",
     "notes",
@@ -58,6 +72,25 @@ function toCsv(leads: LeadRow[]): string {
   return lines.join("\n") + "\n";
 }
 
+function runSummary(doc: LeadListDoc): { run_id?: string; stage?: string; budget?: string } | null {
+  const nested = doc.prospecting_run;
+  const run_id = (doc.run_id || nested?.run_id || "").trim();
+  const stage = (doc.stage || nested?.stage || "").trim();
+  const budgetRaw = doc.budget ?? nested?.budget;
+  const budget =
+    budgetRaw === undefined || budgetRaw === null || budgetRaw === ""
+      ? ""
+      : String(budgetRaw);
+  if (!run_id && !stage && !budget) return null;
+  return { run_id: run_id || undefined, stage: stage || undefined, budget: budget || undefined };
+}
+
+function dispatchLeadFollowup(detail: RequestLeadFollowupDetail) {
+  window.dispatchEvent(
+    new CustomEvent(REQUEST_LEAD_FOLLOWUP_EVENT, { detail }),
+  );
+}
+
 export function LeadsWorkbench() {
   const { t } = useI18n();
   const [doc, setDoc] = useState<LeadListDoc>(() => loadStored());
@@ -65,6 +98,7 @@ export function LeadsWorkbench() {
   const [filter, setFilter] = useState<"all" | "contactable" | "needs_review" | "excluded">(
     "all",
   );
+  const [expanded, setExpanded] = useState<Record<number, boolean>>({});
 
   const counts = useMemo(() => {
     let contactable = 0;
@@ -97,6 +131,8 @@ export function LeadsWorkbench() {
     });
   }, [doc.leads, filter]);
 
+  const checkpoint = useMemo(() => runSummary(doc), [doc]);
+
   const persist = (next: LeadListDoc) => {
     setDoc(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -106,7 +142,7 @@ export function LeadsWorkbench() {
     setImportError(null);
     try {
       const text = await file.text();
-      const parsed = JSON.parse(text) as LeadListDoc;
+      const parsed = JSON.parse(text) as LeadListDoc & Record<string, unknown>;
       if (!parsed || !Array.isArray(parsed.leads)) {
         setImportError(t("leads.importInvalid"));
         return;
@@ -117,13 +153,22 @@ export function LeadsWorkbench() {
           return;
         }
       }
+      const nested =
+        parsed.prospecting_run && typeof parsed.prospecting_run === "object"
+          ? parsed.prospecting_run
+          : undefined;
       persist({
         list_id: parsed.list_id || "imported",
         title: parsed.title || t("leads.title"),
         sku_summary: parsed.sku_summary || "",
         market_summary: parsed.market_summary || "",
+        run_id: typeof parsed.run_id === "string" ? parsed.run_id : nested?.run_id,
+        stage: typeof parsed.stage === "string" ? parsed.stage : nested?.stage,
+        budget: parsed.budget ?? nested?.budget,
+        prospecting_run: nested,
         leads: parsed.leads,
       });
+      setExpanded({});
     } catch {
       setImportError(t("leads.importInvalid"));
     }
@@ -160,6 +205,10 @@ export function LeadsWorkbench() {
     persist({ ...doc, leads });
   };
 
+  const toggleExpand = (index: number) => {
+    setExpanded((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
   return (
     <div className="flex-1 min-h-0 overflow-auto p-6">
       <div className="max-w-6xl mx-auto">
@@ -188,6 +237,22 @@ export function LeadsWorkbench() {
           >
             {t("leads.exportCsv")}
           </button>
+          <button
+            type="button"
+            className="text-[12.5px] px-3 py-2 rounded-lg border border-line disabled:opacity-40"
+            data-testid="leads-rescore"
+            disabled={doc.leads.length === 0}
+            title={t("leads.rescoreHint")}
+            onClick={() =>
+              dispatchLeadFollowup({
+                kind: "rescore",
+                skuSummary: doc.sku_summary,
+                marketSummary: doc.market_summary,
+              })
+            }
+          >
+            {t("leads.rescore")}
+          </button>
           <span className="text-[12px] text-inkMuted">
             {t("leads.counts", {
               contactable: counts.contactable,
@@ -197,6 +262,19 @@ export function LeadsWorkbench() {
             })}
           </span>
         </div>
+
+        {checkpoint ? (
+          <div
+            className="text-[12px] text-inkMuted border border-line rounded-lg px-3 py-2 mb-3 bg-paper/60"
+            data-testid="leads-run-summary"
+          >
+            {t("leads.runSummary", {
+              runId: checkpoint.run_id || "—",
+              stage: checkpoint.stage || "—",
+              budget: checkpoint.budget || "—",
+            })}
+          </div>
+        ) : null}
 
         {importError ? (
           <div className="text-[12.5px] text-red-700 mb-3">{importError}</div>
@@ -246,47 +324,119 @@ export function LeadsWorkbench() {
               <tbody>
                 {visible.map((lead) => {
                   const index = doc.leads.indexOf(lead);
+                  const open = !!expanded[index];
                   return (
-                    <tr key={`${lead.company}-${index}`} className="border-b border-line/70">
-                      <td className="p-2 align-top">{lead.company}</td>
-                      <td className="p-2 align-top">{lead.customer_type || "—"}</td>
-                      <td className="p-2 align-top">{lead.fit_score ?? "—"}</td>
-                      <td className="p-2 align-top">{lead.evidence_confidence ?? "—"}</td>
-                      <td className="p-2 align-top max-w-[14rem]">{lead.next_action || "—"}</td>
-                      <td className="p-2 align-top">{lead.sales_status}</td>
-                      <td className="p-2 align-top">
-                        <input
-                          className="w-full min-w-[8rem] border border-line rounded px-1.5 py-1 bg-transparent"
-                          value={lead.notes || ""}
-                          onChange={(e) => setNote(index, e.target.value)}
-                          aria-label={t("leads.col.notes")}
-                        />
-                      </td>
-                      <td className="p-2 align-top whitespace-nowrap">
-                        <button
-                          type="button"
-                          className="text-accent mr-2 disabled:opacity-40"
-                          disabled={lead.sales_status === "contactable"}
-                          onClick={() => setStatus(index, "contactable")}
+                    <Fragment key={`${lead.company}-${index}`}>
+                      <tr className="border-b border-line/70">
+                        <td className="p-2 align-top">
+                          <button
+                            type="button"
+                            className="text-left text-accent hover:underline"
+                            data-testid={`leads-expand-${index}`}
+                            onClick={() => toggleExpand(index)}
+                          >
+                            {lead.company}
+                          </button>
+                        </td>
+                        <td className="p-2 align-top">{lead.customer_type || "—"}</td>
+                        <td className="p-2 align-top">{lead.fit_score ?? "—"}</td>
+                        <td className="p-2 align-top">{lead.evidence_confidence ?? "—"}</td>
+                        <td className="p-2 align-top max-w-[14rem]">{lead.next_action || "—"}</td>
+                        <td className="p-2 align-top">{lead.sales_status}</td>
+                        <td className="p-2 align-top">
+                          <input
+                            className="w-full min-w-[8rem] border border-line rounded px-1.5 py-1 bg-transparent"
+                            value={lead.notes || ""}
+                            onChange={(e) => setNote(index, e.target.value)}
+                            aria-label={t("leads.col.notes")}
+                          />
+                        </td>
+                        <td className="p-2 align-top whitespace-nowrap">
+                          <button
+                            type="button"
+                            className="text-accent mr-2"
+                            data-testid={`leads-detail-${index}`}
+                            onClick={() => toggleExpand(index)}
+                          >
+                            {open ? t("leads.hideDetail") : t("leads.showDetail")}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-accent mr-2"
+                            data-testid={`leads-research-${index}`}
+                            title={t("leads.researchHint")}
+                            onClick={() =>
+                              dispatchLeadFollowup({
+                                kind: "research",
+                                company: lead.company,
+                                nextAction: lead.next_action,
+                                matchReason: lead.match_reason,
+                              })
+                            }
+                          >
+                            {t("leads.continueResearch")}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-accent mr-2 disabled:opacity-40"
+                            disabled={lead.sales_status === "contactable"}
+                            onClick={() => setStatus(index, "contactable")}
+                          >
+                            {t("leads.markContactable")}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-inkMuted mr-2"
+                            onClick={() => setStatus(index, "needs_review")}
+                          >
+                            {t("leads.markNeedsReview")}
+                          </button>
+                          <button
+                            type="button"
+                            className="text-red-700"
+                            onClick={() => setStatus(index, "excluded")}
+                          >
+                            {t("leads.markExcluded")}
+                          </button>
+                        </td>
+                      </tr>
+                      {open ? (
+                        <tr
+                          className="border-b border-line/70 bg-paper/40"
+                          data-testid={`leads-detail-row-${index}`}
                         >
-                          {t("leads.markContactable")}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-inkMuted mr-2"
-                          onClick={() => setStatus(index, "needs_review")}
-                        >
-                          {t("leads.markNeedsReview")}
-                        </button>
-                        <button
-                          type="button"
-                          className="text-red-700"
-                          onClick={() => setStatus(index, "excluded")}
-                        >
-                          {t("leads.markExcluded")}
-                        </button>
-                      </td>
-                    </tr>
+                          <td className="p-3 text-[12px] text-inkMuted" colSpan={8}>
+                            <div className="grid gap-1.5">
+                              <div>
+                                <span className="font-medium text-ink">{t("leads.detail.match")}</span>
+                                {" "}
+                                {lead.match_reason || "—"}
+                              </div>
+                              <div>
+                                <span className="font-medium text-ink">{t("leads.detail.evidence")}</span>
+                                {" "}
+                                {lead.key_evidence || "—"}
+                              </div>
+                              <div>
+                                <span className="font-medium text-ink">{t("leads.detail.next")}</span>
+                                {" "}
+                                {lead.next_action || "—"}
+                              </div>
+                              <div>
+                                <span className="font-medium text-ink">{t("leads.detail.exclude")}</span>
+                                {" "}
+                                {lead.exclude_reason || "—"}
+                              </div>
+                              <div>
+                                <span className="font-medium text-ink">{t("leads.col.notes")}</span>
+                                {" "}
+                                {lead.notes || "—"}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
               </tbody>

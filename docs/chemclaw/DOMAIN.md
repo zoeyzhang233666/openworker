@@ -168,7 +168,7 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 ### `LeadList`
 
-可经营的客户清单制品：分桶为可联系 / 待补查 / 已排除，含企业、双评分、下一步与销售状态。由平台 Tool `format_lead_list` 生成 Markdown/CSV；GUI「客户清单」可导入 JSON、导出 CSV 并本地标记状态。清单不等于已发送邮件，也不等于 CRM 写入。
+可经营的客户清单制品：分桶为可联系 / 待补查 / 已排除，含企业、双评分、下一步与销售状态。由平台 Tool `format_lead_list` 生成 Markdown/CSV；GUI「客户清单」可导入 JSON、导出 CSV、展开证据、注入补查/重评对话意图，并本地标记状态。清单不等于已发送邮件，也不等于 CRM 写入；工作台不静默改分。
 
 ### `Lead Fit Score`
 

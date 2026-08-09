@@ -35,5 +35,6 @@
 | D-100 国内登记 + 路由 Fixture | `pytest` cn_registry/legal_entity **24 passed** |
 | 本机点检前复验（TED 前） | 四龙虾 + 既有 Tool 注册 **通过**（2026-08-09） |
 | D-101 `search_tenders` Fixture + 接线 | `pytest` TED **9 passed** |
+| D-102 清单进阶 UX | `npm` requestLeadFollowup + LeadsWorkbench + i18n/audit |
 
 未在本机启动 GUI 点击；以上为接线验收，不替代人工点检。请重启 sidecar 后按「用户侧验收」点检。
