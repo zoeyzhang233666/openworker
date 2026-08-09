@@ -1,0 +1,28 @@
+{
+  "data": [
+    {
+      "type": "lei-records",
+      "id": "5493001KJTIIGC8Y1R12",
+      "attributes": {
+        "lei": "5493001KJTIIGC8Y1R12",
+        "entity": {
+          "legalName": {"name": "Example Chemie GmbH"},
+          "headquartersAddress": {"country": "DE"}
+        },
+        "registration": {"status": "ISSUED"}
+      }
+    },
+    {
+      "type": "lei-records",
+      "id": "549300ABCDEFGHIJKLMN",
+      "attributes": {
+        "lei": "549300ABCDEFGHIJKLMN",
+        "entity": {
+          "legalName": {"name": "Example Chemie Holdings AG"},
+          "headquartersAddress": {"country": "CH"}
+        },
+        "registration": {"status": "ISSUED"}
+      }
+    }
+  ]
+}

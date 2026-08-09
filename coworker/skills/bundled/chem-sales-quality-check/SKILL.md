@@ -13,4 +13,4 @@ description: "Use when 需要在发送前对化工外贸开发信/跟进草稿�
 python "$resources_path/scripts/check_outreach.py" draft.json --output gate.json
 ```
 
-规则集 `chem-sales-quality@1.0.0`。通过才输出 `ready_for_human_send`；否则 `blocked` 并列出违规项。详见 `references/quality-rules.md`。
+规则集 `chem-sales-quality@1.0.0`。通过才输出 `ready_for_human_send`；否则 `blocked` 并列出违规项。`ready_for_human_send` 仅表示可提交人工发送审批，**不等于**已调用 `email_send` 或已外发。详见 `references/quality-rules.md`。

@@ -9,9 +9,9 @@ description: "Use when 外贸拓客需要核验化工商业 SKU、应用证据�
 
 ## 身份门禁
 
-先从用户资料或已配置的化学身份 Provider 收集名称、CAS、结构、等级、纯度、粒径、包装和交付形态。先调用 `load_skill` 加载本 Skill，读取返回的 `resources_path`；只用 `resources_path/scripts/cas.py` 的绝对路径执行 CAS 格式与校验位检查，不得假设当前工作目录，也不能把格式有效误称为身份已确认。
+先从用户资料或平台化学身份 Tool 收集名称、CAS、结构、等级、纯度、粒径、包装和交付形态。可用只读 Tool `lookup_chemical_identity`（默认 PubChem）辅助查询 CID/标准名/同义词/CAS；结果是外部证据，不是采购意图。先调用 `load_skill` 加载本 Skill，读取返回的 `resources_path`；只用 `resources_path/scripts/cas.py` 的绝对路径执行 CAS 格式与校验位检查，不得假设当前工作目录，也不能把格式有效或 Provider 命中误称为商业身份已确认。
 
-CAS、名称、结构或规格相互冲突时不得静默选择：输出冲突字段、每一方来源与需要用户确认的问题，状态为未解决。身份未解决时不得生成客户名单。
+CAS、名称、结构或规格相互冲突时不得静默选择：输出冲突字段、每一方来源与需要用户确认的问题，状态为未解决。`lookup_chemical_identity` 返回 `ambiguous`/`not_found`/`error` 时保持 `unresolved` 并请求补证，不得编造 CID/CAS。身份未解决时不得生成客户名单。网络请求只通过平台 Provider/Tool，不在本 Skill 内直接访问 PubChem。
 
 ## 应用与语言地图
 

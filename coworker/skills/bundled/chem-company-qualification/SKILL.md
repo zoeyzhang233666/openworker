@@ -7,6 +7,10 @@ description: "Use when 外贸拓客候选企业成为 Lead 前需要核验主体
 
 将 `CompanyCandidate` 变成证据台账 `CompanyEvidencePack`，并只输出 `Qualified`、`NeedsReview` 或 `Rejected`。核验的是主体、官网、经营状态、企业角色、产品/应用相关性、冲突与风险，不是猜采购量。
 
+## 主体解析
+
+可用只读平台 Tool `lookup_legal_entity`（默认 GLEIF）按 LEI 或法律名称辅助主体核验。命中时将 LEI/来源 URL 写入证据：`source.type=government_registry`，locator 使用 Provider 返回的 `source.url` 或 `source.record_id`（LEI），不得编造 LEI。返回 `ambiguous` / `not_found` / `error` 时保持主体未决或 `NeedsReview`，不得静默挑一条写成 resolved。网络请求只通过平台 Provider/Tool，不在本 Skill 内直接访问 GLEIF。不推断产品需求，不冒充法律或制裁结论。
+
 ## 最低门槛
 
 `Qualified` 必须同时具备：已解析主体与非空规范名；主体和 ICP 角色有无冲突的正向证据；一条 A 级强证据或两条独立 B 级证据支持产品/相邻产品/下游应用关系；没有已确认的排除事实。达不到门槛而仍有合理线索则为 `NeedsReview`，明确不符、重复或失效才为 `Rejected`。Schema 强制 Qualified 至少一条证据；跨证据的 A/双 B 门禁按本规则检查后才能进入排名。

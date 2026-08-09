@@ -1,6 +1,8 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）、内贸（D-092）、商机雷达（D-093）与外贸转化首包（D-094）已获用户授权并实现**；报价数学、SMTP Provider、客户清单工作台与外部 Provider 接入仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）、内贸（D-092）、商机雷达（D-093）、外贸转化（D-094）、PubChem（D-095）、GLEIF（D-096）、询盘转报价（D-097）、客户清单工作台（D-098）与 SMTP 发送审批（D-099）已获用户授权并实现**；TED/Comtrade、国内登记增强仍须单独批准  
+
+
 > 批准日期：2026-08-07  
 > 产品主体：芯化和云 ChemClaw  
 > 首条纵向链路：外贸拓客；内贸拓客与商机雷达首包已交付
@@ -307,6 +309,10 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 首条外贸链路只要求现有网页搜索与读取、企业官网证据、PubChem 产品辅助和用户约束；GLEIF 为可选增强。Comtrade、TED、SAM.gov、SEC、USAspending 和海关数据按后续阶段逐个接入。
 
+**（2026-08-09 D-095）已交付首包**：平台 Tool `lookup_chemical_identity` + `PubChemProvider`（`coworker/chem/`）；Fixture 契约测试；Skill 不内嵌 API 客户端。
+
+**（2026-08-09 D-096）已交付首包**：平台 Tool `lookup_legal_entity` + `GleifProvider`（`coworker/entity/`）；Fixture 契约测试；`chem-company-qualification` 文档接线。**尚未**接入国家登记 / 关系树 / TED / Comtrade。
+
 化工社反应数据不参与客户搜索和 Lead 评分主流程，只能作为特殊产品的化学证据补充。
 
 ## 10. 销售工作台与交付
@@ -323,6 +329,8 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 名单分为：可联系、待补查和已排除。排除项保留原因，防止重复搜索。
 
+**（2026-08-09 D-098）已交付首包**：平台 Tool `format_lead_list` + Skill `chem-lead-list`（挂外贸/内贸拓客龙虾）+ GUI「客户清单」页（导入 JSON / 导出 CSV / 本地状态与备注）；**不**显示发送邮件或 CRM 按钮。
+
 ### 10.3 企业详情
 
 显示主体信息、匹配原因、证据台账、采购/业务信号、联系人策略、风险和下一步动作。没有可靠联系人时只建议岗位角色，不生成个人姓名或邮箱。
@@ -331,7 +339,9 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 只有实现并验证后才显示：查看来源、继续补查、调整 ICP 并重新评分、标记状态、添加备注、排除/恢复、导出客户清单和断点续跑。
 
-发送邮件、添加好友、CRM 写入、购买联系人、自动报价未实现前不显示按钮。
+**D-098 已实现**：标记可联系/待补查/排除、备注、导入 JSON、导出 CSV。尚未实现：查看来源详情、继续补查、调整 ICP 重评、断点续跑 UI。
+
+**D-099 已实现（对话内）**：助手文本含 `ready_for_human_send` 时显示「提交发送审批」；复用连接器 `email_send` + 审批卡；客户清单页仍无发送按钮。添加好友、CRM 写入、购买联系人未实现前不显示按钮；报价为对话内草稿（D-097），不等于发送。
 
 ### 10.5 销售状态
 
@@ -551,7 +561,7 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 4. `chem-lead-ranking`
 5. `chem-export-prospecting`
 6. `export-sales-lobster`
-7. 客户清单、证据详情和导出
+7. 客户清单、证据详情和导出 — **（2026-08-09 D-098）清单格式化 + GUI 工作台首包已交付**；证据详情/断点续跑 UI 仍后续
 
 每项单独写计划、测试和验收，不一次性实现全部。
 
@@ -559,7 +569,11 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 联系策略、邮件草稿、多轮跟进、询盘解析、确定性报价、质量门禁和发送审批。
 
-**（2026-08-07 D-094）已交付首包**：`export-engagement-lobster` + `chem-sales-engagement` + `chem-sales-quality-check`；复用 `chem-product-intelligence`；草稿 ≠ 发送；**尚未**实现报价数学、`chem-inquiry-to-quote`、SMTP Provider 或发送按钮。
+**（2026-08-07 D-094）已交付首包**：`export-engagement-lobster` + `chem-sales-engagement` + `chem-sales-quality-check`；复用 `chem-product-intelligence`；草稿 ≠ 发送。
+
+**（2026-08-09 D-097）已交付询盘转报价首包**：平台 Tool `calculate_quote` + Skill `chem-inquiry-to-quote`，挂到 `export-engagement-lobster`；缺价/缺量 `NeedsReview`；不接询盘 MCP 薄壳。
+
+**（2026-08-09 D-099）已交付 SMTP 发送审批首包**：复用 Email 连接器 `email_send`（非新建 mail Provider）+ 中文错误 + 对话「提交发送审批」CTA；门禁 `ready_for_human_send` 且用户明确触发后才可调用；仍须审批卡；无自动外发。
 
 ### 17.5 阶段 4：内贸拓客
 
@@ -579,6 +593,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：外贸拓客（D-091）、内贸拓客（D-092）、商机雷达首包（D-093）与外贸销售转化首包（D-094；计划 `docs/superpowers/plans/2026-08-07-chemclaw-export-engagement-builtin-pack.md`）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：外贸拓客（D-091）、内贸拓客（D-092）、商机雷达首包（D-093）、外贸销售转化首包（D-094）、PubChem（D-095）、GLEIF（D-096）、询盘转报价首包（D-097）、客户清单工作台首包（D-098）与 SMTP 发送审批首包（D-099；计划 `docs/superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md`）。
 
-尚未自动批准：报价数学 / 询盘转报价、SMTP 发送 Provider、客户清单工作台、以及任何外部数据 Provider/API 接入。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：TED / Comtrade 等其他数据 Provider、国家登记增强。队列计划已落盘：`2026-08-09-chemclaw-next-providers-queue.md`。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

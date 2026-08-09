@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.quote-draft.v1",
+  "title": "QuoteDraft",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "draft_id",
+    "inquiry_id",
+    "currency",
+    "incoterm",
+    "lines",
+    "subtotal",
+    "freight",
+    "tax",
+    "grand_total",
+    "calculator_version",
+    "recommended_action",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {"const": "chemclaw.quote-draft.v1"},
+    "draft_id": {"type": "string", "minLength": 1},
+    "inquiry_id": {"type": "string", "minLength": 1},
+    "currency": {"type": "string", "minLength": 1},
+    "incoterm": {"type": ["string", "null"], "minLength": 1},
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["line_id", "sku_id", "quantity", "unit", "unit_price", "line_total"],
+        "properties": {
+          "line_id": {"type": "string", "minLength": 1},
+          "sku_id": {"type": "string", "minLength": 1},
+          "quantity": {"type": "string", "minLength": 1},
+          "unit": {"type": "string", "minLength": 1},
+          "unit_price": {"type": "string", "minLength": 1},
+          "line_total": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "subtotal": {"type": "string", "minLength": 1},
+    "freight": {"type": "string", "minLength": 1},
+    "tax": {"type": "string", "minLength": 1},
+    "grand_total": {"type": "string", "minLength": 1},
+    "calculator_version": {"type": "string", "minLength": 1},
+    "recommended_action": {
+      "enum": ["ready_for_human_review", "await_inputs"]
+    },
+    "status": {"enum": ["draft", "NeedsReview"]}
+  }
+}

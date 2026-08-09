@@ -4,7 +4,9 @@
 
 - 产出主题/正文/跟进计划后，推荐动作最多到 `ready_for_human_send`。
 - 不得暗示已发送、已成交、已寄样，或要求绕过审批。
-- 本包无 SMTP Provider、无自动发送按钮。
+- **禁止自动外发**。不得在未获用户明确发送指令时调用 `email_send`。
+- 用户明确要求发送（含「提交发送审批」CTA）且门禁为 `ready_for_human_send`、收件邮箱可靠时：调用连接器 `email_send`（SMTP 在 Email 连接器，非新建 mail Provider）；仍须审批卡通过后才算发送成功。
+- 邮件未连接时如实披露中文错误，引导用户在「连接」中配置 Email（IMAP/SMTP）。
 
 ## 岗位策略优先
 

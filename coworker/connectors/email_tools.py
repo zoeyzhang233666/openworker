@@ -75,8 +75,7 @@ def resolve_servers(profile: dict[str, Any]) -> tuple[Optional[EmailServers], st
     )
     if not imap_host or not smtp_host:
         return None, (
-            f"no server preset for '{domain or address}' — fill in the IMAP and SMTP "
-            "host fields in the connector settings"
+            f"域名「{domain or address}」无服务器预设 — 请在连接设置中填写 IMAP 与 SMTP 主机"
         )
     return (
         EmailServers(
@@ -96,10 +95,13 @@ def _is_gmail(servers: EmailServers) -> bool:
 def _auth_hint(servers: EmailServers) -> str:
     if _is_gmail(servers):
         return (
-            " For Gmail, check that 2-Step Verification is on and that this is an app "
-            "password from myaccount.google.com/apppasswords — not your account password."
+            " Gmail 请确认已开启两步验证，且使用的是应用专用密码"
+            "（myaccount.google.com/apppasswords），不是账号登录密码。"
         )
-    return " Check the address and app password in the connector settings."
+    return " 请在连接设置中核对邮箱地址与应用专用密码。"
+
+
+_EMAIL_NOT_CONNECTED = "邮件未连接；请在「连接」中添加 Email（IMAP/SMTP）账号"
 
 
 # -- connections ----------------------------------------------------------------
@@ -367,7 +369,7 @@ def make_email_tools(
                 None,
                 None,
                 None,
-                {"error": "email is not connected; add it in Manage → Integrations"},
+                {"error": _EMAIL_NOT_CONNECTED},
             )
         servers, err = resolve_servers(profile)
         if servers is None:
@@ -581,7 +583,7 @@ def make_email_tools(
     ) -> dict[str, Any]:
         profile = secrets.get("email:default") or {}
         if not profile.get("address") or not profile.get("app_password"):
-            return {"error": "email is not connected; add it in Manage → Integrations"}
+            return {"error": _EMAIL_NOT_CONNECTED}
         servers, res_err = resolve_servers(profile)
         if servers is None:
             return {"error": res_err}
@@ -660,11 +662,11 @@ def make_email_tools(
         try:
             smtp = _smtp_login(profile, servers, smtp_factory)
         except Exception as exc:
-            return {"error": f"SMTP login failed: {exc}.{_auth_hint(servers)}"}
+            return {"error": f"SMTP 登录失败：{exc}.{_auth_hint(servers)}"}
         try:
             smtp.send_message(msg)
         except Exception as exc:
-            return {"error": f"send failed: {exc}"}
+            return {"error": f"发送失败：{exc}"}
         finally:
             try:
                 smtp.quit()

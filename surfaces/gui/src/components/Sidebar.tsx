@@ -170,6 +170,7 @@ interface Props {
   onOpenInbox: () => void;
   onOpenSkills?: () => void;
   onOpenExperts?: () => void;
+  onOpenLeads?: () => void;
   onOpenSession?: () => void;
   onOpenSettings?: () => void;
   scheduledActive: boolean;
@@ -179,6 +180,7 @@ interface Props {
   sessionActive?: boolean;
   skillsActive?: boolean;
   expertsActive?: boolean;
+  leadsActive?: boolean;
   settingsActive?: boolean;
   // Collapse controls (⌘B / hover-peek). `onCollapse` docks/undocks; `onPeekLeave` hides the
   // floating peek when the pointer leaves the panel.
@@ -1107,6 +1109,13 @@ export function Sidebar(props: Props) {
           () => props.onOpenExperts?.(),
           !!props.expertsActive,
           "nav-experts",
+        )}
+        {primaryNavItem(
+          "book",
+          t("nav.leads"),
+          () => props.onOpenLeads?.(),
+          !!props.leadsActive,
+          "nav-leads",
         )}
         {primaryNavItem(
           "clock",

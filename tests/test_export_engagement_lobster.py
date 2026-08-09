@@ -13,6 +13,7 @@ from coworker.server.manager import SessionManager
 
 SKILLS = [
     "chem-sales-engagement",
+    "chem-inquiry-to-quote",
     "chem-product-intelligence",
     "chem-sales-quality-check",
 ]
@@ -39,11 +40,15 @@ def test_export_engagement_lobster_manifest_contract():
     prompt = manifest.system_prompt
     for required in (
         "EngagementRun",
+        "QuoteRun",
+        "calculate_quote",
+        "绝不编造单价",
         "草稿 ≠ 发送",
         "岗位策略",
         "审批",
         "task-provided:",
         "chem-sales-quality-check",
+        "chem-inquiry-to-quote",
     ):
         assert required in prompt
 
@@ -74,7 +79,7 @@ def test_export_engagement_lobster_interactive_approvals(tmp_path):
         ("write_file", {"path": "draft.json"}, None),
         ("run_shell", {"command": "python check_outreach.py"}, None),
         (
-            "send_email",
+            "email_send",
             {"to": "buyer@example.com"},
             SimpleNamespace(requires_approval=True, category="connector"),
         ),

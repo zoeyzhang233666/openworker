@@ -66,6 +66,10 @@ import {
   webpageAlignIntentMessage,
   type RequestWebpageDetail,
 } from "./requestWebpage";
+import {
+  REQUEST_SEND_APPROVAL_EVENT,
+  sendApprovalIntentMessage,
+} from "./requestSendApproval";
 import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
 import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen, waitCopyPool } from "./firstTokenWaitCopy";
 import { SearchModal } from "./components/SearchModal";
@@ -79,6 +83,7 @@ import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { ChemClawSkillsView } from "./components/ChemClawSkillsView";
 import { ChemClawExpertsView } from "./components/ChemClawExpertsView";
+import { LeadsWorkbench } from "./components/LeadsWorkbench";
 import { PersonaView } from "./components/PersonaView";
 import { AuditView } from "./components/AuditView";
 import { InboxView } from "./components/InboxView";
@@ -259,7 +264,16 @@ export function App() {
   // load; corrected by loadSettings.
   const [modelReady, setModelReady] = useState(true);
   const [surface, setSurface] = useState<
-    "session" | "scheduled" | "integrations" | "audit" | "inbox" | "persona" | "settings" | "skills" | "experts"
+    | "session"
+    | "scheduled"
+    | "integrations"
+    | "audit"
+    | "inbox"
+    | "persona"
+    | "settings"
+    | "skills"
+    | "experts"
+    | "leads"
   >("session");
   // A remembered Scheduled-detail target must not outlive the surface (see the
   // scheduledOpenId comment above): nav re-entry lands on the list, never a
@@ -995,6 +1009,15 @@ export function App() {
     window.addEventListener(REQUEST_WEBPAGE_EVENT, onRequest);
     return () => window.removeEventListener(REQUEST_WEBPAGE_EVENT, onRequest);
   });
+  // D-099: «提交发送审批» after ready_for_human_send — inject intent; email_send still gated.
+  useEffect(() => {
+    const onSendApproval = () => {
+      if (running) return;
+      send(sendApprovalIntentMessage());
+    };
+    window.addEventListener(REQUEST_SEND_APPROVAL_EVENT, onSendApproval);
+    return () => window.removeEventListener(REQUEST_SEND_APPROVAL_EVENT, onSendApproval);
+  });
   // Resolving a LIVE prompt also resolves its parked Inbox mirror server-side, but the polled
   // `sessionInbox` copy stays "pending" for up to a poll cycle — long enough for the docked
   // answer-in-context card to flash the SAME request again right after the user answered it
@@ -1523,6 +1546,7 @@ export function App() {
         onOpenInbox={() => setSurface("inbox")}
         onOpenSkills={() => setSurface("skills")}
         onOpenExperts={() => setSurface("experts")}
+        onOpenLeads={() => setSurface("leads")}
         onOpenSession={() => setSurface("session")}
         onOpenSettings={() => openSettings("appearance")}
         scheduledActive={surface === "scheduled"}
@@ -1532,6 +1556,7 @@ export function App() {
         sessionActive={surface === "session"}
         skillsActive={surface === "skills"}
         expertsActive={surface === "experts"}
+        leadsActive={surface === "leads"}
         settingsActive={surface === "settings"}
         collapsed={navCollapsed}
         onCollapse={toggleNav}
@@ -1549,6 +1574,8 @@ export function App() {
         <ChemClawSkillsView onCreateSkill={startSkillConversation} />
       ) : surface === "experts" ? (
         <ChemClawExpertsView onOpenPersona={(id) => openPersona(id, "experts")} />
+      ) : surface === "leads" ? (
+        <LeadsWorkbench />
       ) : surface === "settings" ? (
         <SettingsView
           key={settingsTab}

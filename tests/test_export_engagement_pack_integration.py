@@ -15,6 +15,7 @@ from coworker.skills.store import SkillStore
 
 EXPECTED_SKILLS = (
     "chem-sales-engagement",
+    "chem-inquiry-to-quote",
     "chem-product-intelligence",
     "chem-sales-quality-check",
 )

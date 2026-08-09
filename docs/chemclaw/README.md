@@ -4,7 +4,7 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
-- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091 / D-092 / D-093 / D-094）**：外贸拓客龙虾 + 五 Skill；内贸拓客龙虾 + `chem-domestic-prospecting`；商机雷达龙虾 + `chem-opportunity-radar` / `chem-opportunity-scoring`；外贸转化龙虾 + `chem-sales-engagement` / `chem-sales-quality-check`（复用产品情报）。默认仍为 ChemClaw/`cowork`，新 Agent 默认禁用；无外部 API/Provider、SMTP、CRM 或专属工作台；草稿 ≠ 发送。收口回归（2026-08-07）：销售相关 `pytest` **105 passed**；GUI i18n/audit **23 passed**。
+- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-099）**：四龙虾包；PubChem/GLEIF；询盘转报价；客户清单工作台；SMTP 发送审批（复用 `email_send` + 对话「提交发送审批」CTA，无自动外发）。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用；无 TED/CRM；客户清单页仍无发送按钮；草稿 ≠ 发送。收口回归（2026-08-09 D-099）：`pytest` email_tools + engagement **36 passed**；`npm test`（requestSendApproval + Transcript + i18n + localization-audit）**47 passed**。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
 - 当前分支：`chemclaw-clean`（与本机 worktree 目录同名；GitHub 上选此分支即可，无需并入 `main`）
@@ -13,7 +13,7 @@
 - 业务代码（本 Worktree）：
   - ✅ 基于 upstream/main（OpenWorker Skills 官方实现）
   - ✅ ChemClaw 品牌 + 全界面汉化（cherry-pick 自旧分支）
-  - ✅ D-006 主导航：对话 / 技能 / 智能体 / 定时任务 / 连接 / 设置
+  - ✅ D-006 主导航：对话 / 技能 / 智能体 / 客户清单 / 定时任务 / 连接 / 设置（D-098 增「客户清单」）
   - ✅ D-066 智能体拆包联装：`package_scan` / `package_install`；`POST /v1/personas/install` 支持 `zip_b64`/`data_b64`/`package_dir` + 逐项 `decisions`；`skill_ids` + `persona_detail` 暴露 prompt/skills/路径
   - ✅ D-069 OpenClaw 工作区合成 + 冲突批量/汉化：无 ChemClaw persona 且有 IDENTITY/SOUL 时，将 IDENTITY/SOUL/AGENTS/USER/TOOLS/MEMORY 等合成进一个智能体提示词（不当作多个智能体）；`memory/` 不整树导入；预览「全部覆盖/全部跳过」+ i18n
   - ✅ 技能页使用上游 `SkillsTab`，已汉化；不再使用自研 `SkillsView` / `capabilities`
@@ -140,15 +140,22 @@
 1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
-4. 外贸/内贸拓客与商机雷达内置能力包已收口；下一小任务：外贸销售转化或 Provider 接入（独立计划）；不批量内置化工社 Skills，不自动外发。
+4. 销售主线 D-091—D-099 已收口（含 SMTP 发送审批）。**下一小任务（须点名批准后实现）**：国内登记 / TED / Comtrade 中单点 Provider；计划见 `2026-08-09-chemclaw-next-providers-queue.md`。不批量内置化工社 Skills，不自动外发。
 
 ## 文档索引
 
 - [完整产品设计](../superpowers/specs/2026-07-29-chemclaw-product-design.md)
-- [销售增长智能设计（D-086—D-093）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
+- [销售增长智能设计（D-086—D-099）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
 - [外贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-export-sales-builtin-pack.md)
 - [内贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-domestic-sales-builtin-pack.md)
 - [商机雷达内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-opportunity-radar-builtin-pack.md)
+- [外贸转化内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-export-engagement-builtin-pack.md)
+- [PubChem 化学身份 Provider 计划](../superpowers/plans/2026-08-07-chemclaw-pubchem-identity-provider.md)
+- [GLEIF 法定主体 Provider 计划](../superpowers/plans/2026-08-09-chemclaw-gleif-legal-entity-provider.md)
+- [询盘转报价内置首包计划](../superpowers/plans/2026-08-09-chemclaw-inquiry-to-quote-builtin-pack.md)
+- [客户清单工作台计划（D-098）](../superpowers/plans/2026-08-09-chemclaw-lead-list-workbench.md)
+- [SMTP 发送审批计划（D-099）](../superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md)
+- [国内登记 / TED·Comtrade 队列（待批准）](../superpowers/plans/2026-08-09-chemclaw-next-providers-queue.md)
 - [已批准决策](DECISIONS.md)
 - [领域术语](DOMAIN.md)
 - [测试、开发环境与源码预览](TESTING.md)

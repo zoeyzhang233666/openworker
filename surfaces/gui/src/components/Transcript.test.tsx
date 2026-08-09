@@ -222,6 +222,52 @@ describe("live turns (§33 flicker fix)", () => {
   });
 });
 
+describe("submit send approval CTA (D-099)", () => {
+  it("shows the button only when ready_for_human_send is present and session is idle", () => {
+    const ready: Item[] = [
+      { kind: "user", text: "draft outreach" },
+      {
+        kind: "assistant",
+        text: "Gate passed. recommended_action: ready_for_human_send",
+      },
+    ];
+    const { rerender } = render(<Transcript items={ready} onApprove={vi.fn()} />);
+    expect(screen.getByTestId("submit-send-approval").textContent).toMatch(
+      /提交发送审批|Submit send for approval/,
+    );
+
+    rerender(<Transcript items={ready} onApprove={vi.fn()} running />);
+    expect(screen.queryByTestId("submit-send-approval")).toBeNull();
+
+    rerender(
+      <Transcript
+        items={[{ kind: "assistant", text: "draft only, revise_draft" }]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("submit-send-approval")).toBeNull();
+  });
+
+  it("dispatches the send-approval event on click", () => {
+    const spy = vi.fn();
+    window.addEventListener("ocw-request-send-approval", spy);
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text: "ready_for_human_send",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("submit-send-approval"));
+    expect(spy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("ocw-request-send-approval", spy);
+  });
+});
+
 describe("bubble hover affordances (FB-005)", () => {
   const TS = 1752969720; // unix seconds, as the server stamps them
   const ITEMS: Item[] = [

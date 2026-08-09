@@ -4,4 +4,4 @@ CAS 是优先键，但不是自动合并许可。可销售规格变化会改变�
 
 每个身份、动态术语和应用关系记录原子来源或证据 ID：URL/文件标识、原始事实摘要、采集日期和证据等级。来源只支持产品性质时，不得推导采购意图；来源只支持相邻产品时，关系为 `inference` 或 `unverified`。`ApplicationGraph` 的边必须链接证据，节点 ID 必须在同一图内唯一，边的两端必须能解析到节点。
 
-语言地图的排除词和目标语言也属于运行输入，不能从一国市场外推到全部市场。执行 CAS 工具时先通过 `load_skill` 获取 `resources_path`，再调用其中 `scripts/cas.py` 的绝对路径。
+语言地图的排除词和目标语言也属于运行输入，不能从一国市场外推到全部市场。执行 CAS 工具时先通过 `load_skill` 获取 `resources_path`，再调用其中 `scripts/cas.py` 的绝对路径。化学身份外呼使用平台 Tool `lookup_chemical_identity`（PubChem）；格式校验与 Provider 查询分工，失败或歧义不得伪造身份字段。

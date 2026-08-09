@@ -166,6 +166,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 经过主体、企业角色和业务相关性核验，适合销售继续处理的企业。搜索结果或目录条目本身不是 Lead。
 
+### `LeadList`
+
+可经营的客户清单制品：分桶为可联系 / 待补查 / 已排除，含企业、双评分、下一步与销售状态。由平台 Tool `format_lead_list` 生成 Markdown/CSV；GUI「客户清单」可导入 JSON、导出 CSV 并本地标记状态。清单不等于已发送邮件，也不等于 CRM 写入。
+
 ### `Lead Fit Score`
 
 由版本化确定性规则计算的商业匹配分，表达 SKU/应用、企业角色、商业信号、市场适配、可接触性和时效。它不等于成交概率。
@@ -198,17 +202,49 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 一封待人工审阅的开发信/消息草稿：渠道、语言、收件岗位（个人邮箱可空）、主题正文、关联 Lead/Opportunity 与证据 ID，以及是否含价格/交期声明。草稿不等于已发送。
 
+### `ready_for_human_send`
+
+质量门禁通过后的推荐动作：草稿可提交**人工发送审批**。不等于已调用 `email_send`，也不等于邮件已发出。
+
+### 发送审批（`email_send`）
+
+通过 Email（IMAP/SMTP）连接器外发：凭据在 SecretStore；Tool `requires_approval=True`，须审批卡允许后才 SMTP 发送。须用户明确触发（对话或「提交发送审批」CTA）；无连接时返回中文错误。草稿就绪 ≠ 已发送。
+
 ### `FollowupPlan`
 
 多轮跟进节拍：日偏移、目的、草稿要点、停止条件与人工确认点；不得假设邮件已发出。
 
 ### `EngagementRun`
 
-一次可恢复的销售转化任务，状态 `input → strategy → draft → quality_gate → complete|blocked`，记录草稿/计划 ID、质量门禁结果与下一步。
+一次可恢复的销售转化任务，状态 `input → strategy → draft → quality_gate → complete|blocked`，记录草稿/计划 ID、质量门禁结果与下一步；可选在人工确认后进入发送审批。
 
 ### Provider
 
 对外部数据源的可替换适配边界，负责认证、请求、限流、响应规范化、来源和失败语义。API 客户端位于 Provider/Tool 层，不写进 Skill；Skill 负责业务流程和判断规则。
+
+### 化学身份查询（`lookup_chemical_identity`）
+
+平台只读 Tool：按 CAS 或品名查询化学身份（首包实现为 PubChem）。返回 `resolved` / `not_found` / `ambiguous` / `error` 与来源 URL；不推断商业应用或采购意图。格式与校验位仍由 Skill 本地 `cas.py` 负责。
+
+### 法定主体查询（`lookup_legal_entity`）
+
+平台只读 Tool：按 LEI 或法律名称查询法定主体（首包实现为 GLEIF）。返回 `resolved` / `not_found` / `ambiguous` / `error`、登记状态、法域与来源 URL/LEI；不推断产品需求，不冒充法律或制裁结论。LEI 经证据 locator 进入企业核验台账。
+
+### `Inquiry`
+
+一次客户询盘的结构化表示：来源摘要、币种、Incoterm、行项目（SKU/数量/单位/单价可空）与未决字段。缺价或缺量不得静默补全。
+
+### `QuoteDraft`
+
+待人工审阅的报价草稿：分项、运费、税金、合计与计算器版本；推荐动作最多到 `ready_for_human_review`。草稿不等于已发送报价。
+
+### `QuoteRun`
+
+一次可恢复的询盘转报价任务，状态 `input → parse → calculate → draft → complete|blocked`。
+
+### 报价合计（`calculate_quote`）
+
+平台确定性 Tool：仅用显式数量与单价计算行合计与总计；缺失字段返回 `needs_review`，不编造价格。
 
 ## 知识与图谱
 

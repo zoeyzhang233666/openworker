@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.inquiry.v1",
+  "title": "Inquiry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "inquiry_id",
+    "source_summary",
+    "currency",
+    "incoterm",
+    "lines",
+    "unresolved_fields",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {"const": "chemclaw.inquiry.v1"},
+    "inquiry_id": {"type": "string", "minLength": 1},
+    "source_summary": {"type": "string", "minLength": 1},
+    "buyer_name": {"type": ["string", "null"], "minLength": 1},
+    "currency": {"type": ["string", "null"], "minLength": 1},
+    "incoterm": {"type": ["string", "null"], "minLength": 1},
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["line_id", "sku_id", "quantity", "unit", "unit_price"],
+        "properties": {
+          "line_id": {"type": "string", "minLength": 1},
+          "sku_id": {"type": ["string", "null"], "minLength": 1},
+          "product_name": {"type": ["string", "null"], "minLength": 1},
+          "quantity": {"type": ["number", "string", "null"]},
+          "unit": {"type": ["string", "null"], "minLength": 1},
+          "unit_price": {"type": ["number", "string", "null"]}
+        }
+      }
+    },
+    "unresolved_fields": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "status": {"enum": ["parsed", "NeedsReview", "ready_to_calculate"]}
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.lead-list.v1",
+  "title": "LeadList",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "list_id", "title", "leads"],
+  "properties": {
+    "schema_version": {"const": "chemclaw.lead-list.v1"},
+    "list_id": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "sku_summary": {"type": "string"},
+    "market_summary": {"type": "string"},
+    "rule_version": {"type": "string"},
+    "leads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["company", "sales_status"],
+        "properties": {
+          "company": {"type": "string", "minLength": 1},
+          "customer_type": {"type": "string"},
+          "fit_score": {"type": ["number", "string", "null"]},
+          "evidence_confidence": {"type": ["number", "string", "null"]},
+          "match_reason": {"type": "string"},
+          "key_evidence": {"type": "string"},
+          "latest_signal": {"type": "string"},
+          "risks_gaps": {"type": "string"},
+          "next_action": {"type": "string"},
+          "sales_status": {
+            "enum": [
+              "new",
+              "needs_review",
+              "contactable",
+              "contacted",
+              "replied",
+              "opportunity",
+              "excluded"
+            ]
+          },
+          "notes": {"type": "string"},
+          "exclude_reason": {"type": "string"}
+        }
+      }
+    }
+  }
+}

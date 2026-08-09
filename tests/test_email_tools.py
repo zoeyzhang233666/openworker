@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import smtplib
 from email.message import EmailMessage
 
 import pytest
@@ -152,7 +153,8 @@ def test_resolve_servers_advanced_fields_override_preset():
 def test_resolve_servers_unknown_domain_needs_hosts():
     servers, err = resolve_servers({"address": "x@unknown.example"})
     assert servers is None
-    assert "IMAP and SMTP host" in err
+    assert "无服务器预设" in err
+    assert "IMAP" in err and "SMTP" in err
 
 
 # -- search criteria ----------------------------------------------------------------
@@ -211,9 +213,34 @@ def test_extract_text_body_html_fallback_and_truncation():
 # -- tools -------------------------------------------------------------------------
 def test_tools_error_when_not_connected(tmp_path):
     tools = _tools(SecretStore(tmp_path / "secrets.json"))
-    for name in ("email_list_folders", "email_search", "email_read"):
-        result = tools[name](**({"uid": "1"} if name == "email_read" else {}))
-        assert "not connected" in result["error"]
+    for name in ("email_list_folders", "email_search", "email_read", "email_send"):
+        kwargs = {"uid": "1"} if name == "email_read" else {}
+        if name == "email_send":
+            kwargs = {"to": "a@b.c", "subject": "s", "body": "b"}
+        result = tools[name](**kwargs)
+        assert "未连接" in result["error"]
+        assert "连接" in result["error"]
+
+
+def test_send_smtp_login_failure_is_chinese(tmp_path):
+    class FailLoginSMTP(FakeSMTP):
+        def login(self, user, password):
+            raise smtplib.SMTPAuthenticationError(535, b"bad")
+
+    tools = _tools(_connected_secrets(tmp_path), smtp=FailLoginSMTP())
+    result = tools["email_send"](to="ana@example.com", subject="Hi", body="Hello")
+    assert "SMTP 登录失败" in result["error"]
+    assert "应用专用密码" in result["error"]
+
+
+def test_send_failure_is_chinese(tmp_path):
+    class FailSendSMTP(FakeSMTP):
+        def send_message(self, msg):
+            raise smtplib.SMTPException("boom")
+
+    tools = _tools(_connected_secrets(tmp_path), smtp=FailSendSMTP())
+    result = tools["email_send"](to="ana@example.com", subject="Hi", body="Hello")
+    assert "发送失败" in result["error"]
 
 
 def test_list_folders_skips_noselect(tmp_path):

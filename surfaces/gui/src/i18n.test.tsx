@@ -88,7 +88,7 @@ describe("LocaleProvider", () => {
     );
     expect(screen.getByTestId("export-engagement-name").textContent).toBe("外贸转化龙虾");
     expect(screen.getByTestId("export-engagement-tagline").textContent).toBe(
-      "化工外贸转化 · 草稿跟进 · 质量门禁与人工发送",
+      "化工外贸转化 · 草稿跟进 · 询盘报价与人工发送",
     );
     expect(document.documentElement.lang).toBe("zh-CN");
 
@@ -122,7 +122,7 @@ describe("LocaleProvider", () => {
       "Export Engagement Lobster",
     );
     expect(screen.getByTestId("export-engagement-tagline").textContent).toBe(
-      "Export conversion · drafts and follow-ups · quality gate before human send",
+      "Export conversion · drafts, inquiry quotes · human send after review",
     );
     expect(localStorage.getItem("chemclaw.locale")).toBe("en-US");
     expect(document.documentElement.lang).toBe("en-US");

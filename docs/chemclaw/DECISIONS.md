@@ -9,7 +9,7 @@
 - **D-003**：ChemClaw 是唯一对外品牌。正常界面、安装程序和快捷方式不出现 OpenWorker；MIT 署名只保留在关于和法律通知中。
 - **D-004**：UI Demo 只作为视觉和信息架构参考；所有假数据、假按钮和概念交互都不能直接当成完成的功能。
 - **D-005**：“数据底座”页面永久排除。未来相应区域改为 SAG 检索、2D/3D 图谱、探索模式和化工产业链知识。
-- **D-006**：V1 一级导航为对话、技能、智能体、定时任务、连接和设置；审批、审计与历史为二级页面。（2026-08-05：品类名由「专家龙虾」改为「智能体」；角色显示名仍可含「龙虾」。）
+- **D-006**：V1 一级导航为对话、技能、智能体、定时任务、连接和设置；审批、审计与历史为二级页面。（2026-08-05：品类名由「专家龙虾」改为「智能体」；角色显示名仍可含「龙虾」。）（2026-08-09：**D-098** 在智能体与定时任务之间增加「客户清单」。）
 - **D-007**：所有可见按钮必须接入真实功能，未实现的功能不提前显示。
 
 ## 语言与展示
@@ -206,6 +206,11 @@
 - **D-092（2026-08-07）**：用户明确授权实现**内贸拓客纵向链路内置能力包**（不等于批准商机雷达/转化/国内 Provider）。交付：内置 Agent `domestic-sales-lobster`（「内贸拓客龙虾」）+ 主 Skill `chem-domestic-prospecting`；复用 `chem-product-intelligence` / `chem-buyer-discovery` / `chem-company-qualification` / `chem-lead-ranking`；默认仍为 `cowork`，新 Agent 默认禁用；国内规则（中文查询、园区/工商公开证据、统一社会信用代码优先、噪声排除、岗位级联系）写入主 Skill references；不挂 `chem-newbiz-lead`；不接国内工商/海关 API；不自动外发；权限与占位 locator 拒绝与 D-091 一致。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-domestic-sales-builtin-pack.md`。
 - **D-093（2026-08-07）**：用户明确授权实现**商机雷达内置能力包首包**（不等于批准 TED/SAM/Comtrade/海关 Provider 或销售转化）。交付：内置 Agent `opportunity-radar-lobster`（「商机雷达龙虾」）+ `chem-opportunity-radar` + `chem-opportunity-scoring`（`chem-opportunity-fit@1.0.0`，权重 25/20/25/15/15）；复用 `chem-product-intelligence` 与 `chem-company-qualification`；默认仍为 `cowork`，新 Agent 默认禁用；信号须可回溯来源，口述无来源保持 `NeedsReview`；不默认挂载 `chem-newbiz-lead` / `chem-inquiry-feed`；不接外部招标/询盘 API；不自动外发；占位 locator 拒绝与 D-091 一致。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-opportunity-radar-builtin-pack.md`。
 - **D-094（2026-08-07）**：用户明确授权实现**外贸销售转化内置能力包首包**（不等于批准报价数学、SMTP Provider、发送按钮或客户清单工作台）。交付：内置 Agent `export-engagement-lobster`（「外贸转化龙虾」）+ `chem-sales-engagement` + `chem-sales-quality-check`（`chem-sales-quality@1.0.0`）；复用 `chem-product-intelligence`；默认仍为 `cowork`，新 Agent 默认禁用；草稿 ≠ 发送；无可靠邮箱时只出岗位策略与补证；不接邮件 Provider；不自动外发/写 CRM；占位 locator 拒绝与 D-091 一致。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-export-engagement-builtin-pack.md`。
+- **D-095（2026-08-09）**：用户明确授权实现**首个领域数据 Provider 首包**：PubChem 化学身份（`ChemicalIdentityProvider` / Tool `lookup_chemical_identity`），平台层 `coworker/chem/`，对齐 `coworker/web/` 模式；免密钥、只读；Fixture 契约测试为主，CI 不依赖外网；`chem-product-intelligence` 仍用本地 `cas.py` 做格式/校验位，冲突/歧义保持 unresolved；**不**推断商业应用或采购意图。本决策**不等于**批准 GLEIF、TED/SAM、Comtrade、SMTP、报价数学或数据源 GUI。计划见 `docs/superpowers/plans/2026-08-07-chemclaw-pubchem-identity-provider.md`。
+- **D-096（2026-08-09）**：用户明确授权实现**GLEIF 法定主体 Provider 首包**（`LegalEntityProvider` / Tool `lookup_legal_entity`），平台层 `coworker/entity/`，镜像 PubChem 模式；免密钥、只读；Fixture 契约测试为主，CI 不依赖外网；`chem-company-qualification` 用 evidence locator 承载 LEI（`government_registry`），不强制改 entity Schema；歧义/未命中/失败保持 `NeedsReview`/未决，不得编造 LEI；**不**接国家登记、关系树、制裁产品化、TED/Comtrade/SMTP/报价或数据源 GUI。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-gleif-legal-entity-provider.md`。
+- **D-097（2026-08-09）**：用户明确授权实现**询盘转报价内置首包**：平台确定性 Tool `calculate_quote`（`coworker/quote/`）+ Skill `chem-inquiry-to-quote`（Inquiry / QuoteDraft / QuoteRun）；挂到现有 `export-engagement-lobster`（不新建龙虾）；缺量/缺价 → `NeedsReview`，不编造单价；草稿 ≠ 发送；**不**接 `chem-inquiry-feed`/`chem-quote-monitor` MCP、SMTP、发送按钮或 CRM。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-inquiry-to-quote-builtin-pack.md`。
+- **D-098（2026-08-09）**：用户批准销售主线队列后实现**客户清单工作台首包**：平台 Tool `format_lead_list`（`coworker/leads/`）+ Skill `chem-lead-list`；挂外贸/内贸拓客龙虾；GUI 主导航增加「客户清单」（修订 D-006），支持导入 LeadList JSON、导出 CSV、本地标记可联系/待补查/排除与备注；**不**显示发送/CRM 按钮。SMTP 与 TED/Comtrade/国内登记仅落盘后续计划，不在本决策内实现。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-lead-list-workbench.md`。
+- **D-099（2026-08-09）**：用户点名实现**SMTP 发送审批闭环首包**：**不**新建 `coworker/mail/`；复用 Email 连接器 `email_send` + SecretStore `email:default` + 现有审批卡；发送相关错误中文化；外贸转化龙虾/`chem-sales-engagement` 仅在 `ready_for_human_send` 且用户明确要求发送时可调用 `email_send`；对话 Transcript 在助手文本含 `ready_for_human_send` 时显示「提交发送审批」CTA；**禁止**自动外发；客户清单页仍无发送按钮；不接 CRM/TED/国内登记。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md`。
 
 ## 协作治理
 

@@ -1,0 +1,25 @@
+{
+  "data": [
+    {
+      "type": "lei-records",
+      "id": "5493001KJTIIGC8Y1R12",
+      "attributes": {
+        "lei": "5493001KJTIIGC8Y1R12",
+        "entity": {
+          "legalName": {
+            "name": "Example Chemie GmbH",
+            "language": "de"
+          },
+          "headquartersAddress": {
+            "city": "Frankfurt am Main",
+            "country": "DE"
+          },
+          "jurisdiction": "DE"
+        },
+        "registration": {
+          "status": "ISSUED"
+        }
+      }
+    }
+  ]
+}

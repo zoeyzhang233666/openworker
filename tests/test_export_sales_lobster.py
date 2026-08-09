@@ -17,6 +17,7 @@ SKILLS = [
     "chem-buyer-discovery",
     "chem-company-qualification",
     "chem-lead-ranking",
+    "chem-lead-list",
 ]
 
 
