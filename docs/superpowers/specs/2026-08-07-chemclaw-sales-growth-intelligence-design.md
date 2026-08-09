@@ -1,6 +1,6 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—TED（D-101）与客户清单进阶 UX（D-102）已获用户授权并实现**；Comtrade、CRM 仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）与客户清单进阶 UX（D-102）已获用户授权并实现**；CRM 仍须单独批准  
 
 
 
@@ -316,7 +316,9 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 **（2026-08-09 D-096）已交付首包**：平台 Tool `lookup_legal_entity` + `GleifProvider`（`coworker/entity/`）；Fixture 契约测试；`chem-company-qualification` 文档接线。
 
-**（2026-08-09 D-100）已交付国内登记首包**：`CnRegistryProvider` + 路由（USCC/中文名）；SecretStore `cn_registry:default`；**尚未**关系树 / TED / Comtrade / 海关。
+**（2026-08-09 D-100）已交付国内登记首包**：`CnRegistryProvider` + 路由（USCC/中文名）；SecretStore `cn_registry:default`；**尚未**关系树 / 海关全量。
+
+**（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow`（`comtrade:default` 订阅密钥）；国家/HS 汇总；**禁止**当买家名单；**尚未**海关企业级数据。
 
 化工社反应数据不参与客户搜索和 Lead 评分主流程，只能作为特殊产品的化学证据补充。
 
@@ -596,7 +598,9 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 **（2026-08-07 D-093）已交付首包**：`opportunity-radar-lobster` + `chem-opportunity-radar` + `chem-opportunity-scoring`；复用产品情报与企业核验；信号来自用户文件/已配置网页检索；**不**默认挂载 MCP 询盘/新设 Skill。
 
-**（2026-08-09 D-101）已交付 TED 首包**：平台 Tool `search_tenders` → `OpportunitySignal`；**尚未** SAM/Comtrade/海关。
+**（2026-08-09 D-101）已交付 TED 首包**：平台 Tool `search_tenders` → `OpportunitySignal`；**尚未** SAM/海关。
+
+**（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow` → 国家/HS `TradeFlow` 汇总；**尚未**海关企业级进口商。
 
 ### 17.7 阶段 6：可选科研增强
 
@@ -604,6 +608,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-102（含清单进阶；计划 `docs/superpowers/plans/2026-08-09-chemclaw-lead-list-advanced-ux.md`）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103（含 Comtrade；计划 `docs/superpowers/plans/2026-08-09-chemclaw-comtrade-provider.md`）。
 
-尚未自动批准：Comtrade、CRM、化工社批量内置。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：CRM、化工社批量内置。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

@@ -214,6 +214,7 @@
 - **D-100（2026-08-09）**：用户批准销售主线队列后实现**国内登记 Provider 首包**：`CnRegistryProvider` + `RoutingLegalEntityProvider`；扩展 `lookup_legal_entity`（`query_type=uscc|auto|…`，返回 `uscc`）；USCC 校验位；SecretStore `cn_registry:default`（`base_url` 必填才联网）；Fixture 契约测试；Skill 仅文档接线；**不**接 TED/Comtrade/海关/爬虫/CRM。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-cn-registry-provider.md`。
 - **D-101（2026-08-09）**：用户批准「本机点检 → TED」队列后实现**TED TenderProvider 首包**：平台 `coworker/tender/`（`TedProvider` + Tool `search_tenders`）；TED Search API v3 免密钥 POST；结果映射为 `OpportunitySignal`（`ted:<publication-number>`）；Fixture 契约测试；挂商机雷达龙虾 / `chem-opportunity-radar` 文档接线；禁止伪造 TED 编号；**不**接 Comtrade/CRM/SMTP。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-ted-tender-provider.md`。
 - **D-102（2026-08-09）**：用户点名实现**客户清单进阶 UX**：`LeadsWorkbench` 行展开（匹配原因/关键证据/下一步/排除原因）；「继续补查」「调整 ICP 并重评」经 `requestLeadFollowup` 注入对话意图并切回会话；导入 JSON 若含 `run_id`/`stage`/`budget` 显示断点只读条；**仍无**发送邮件与 CRM 按钮；不静默改分、不自动重跑拓客。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-lead-list-advanced-ux.md`。
+- **D-103（2026-08-09）**：用户点名实现**UN Comtrade TradeFlowProvider 首包**：平台 `coworker/trade/`（`ComtradeProvider` + Tool `lookup_trade_flow`）；SecretStore `comtrade:default`（`api_key` 必填）；Fixture 契约测试；挂外贸拓客龙虾 / `chem-export-prospecting` / `chem-product-intelligence` 文档接线；返回国家/HS 汇总 + 非买家警告；无密钥中文错误；**禁止**把贸易流行当作成交买家；**不**接 CRM/海关全量/买家爬取。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-comtrade-provider.md`。
 
 ## 协作治理
 

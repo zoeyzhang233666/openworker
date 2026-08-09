@@ -194,6 +194,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 平台只读 Tool：检索欧盟 TED 公开采购公告，返回 `signal_type=tender` 的 `OpportunitySignal` 行（`signal_id=ted:<publication-number>` + `source.url`）。不评分、不伪造公告号；空结果为 `empty`。
 
+### `TradeFlow` / Comtrade（`lookup_trade_flow`）
+
+国家/HS 层面的贸易流汇总（进口/出口金额与重量等），用于市场吸引力旁证。由平台 Tool `lookup_trade_flow`（UN Comtrade，`comtrade:default` 订阅密钥）返回；**不等于**企业买家名单，不得据此编造进口商。
+
 ### Opportunity
 
 一个或多个 `OpportunitySignal` 经主体归一、产品相关性和确定性商机评分（`chem-opportunity-fit`）后形成的可跟进业务机会。状态含 Watch / NeedsReview / Actionable / Rejected；无主体或无事件日期不得标为 Actionable。

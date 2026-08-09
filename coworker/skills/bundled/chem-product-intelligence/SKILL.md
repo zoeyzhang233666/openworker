@@ -13,6 +13,8 @@ description: "Use when 外贸拓客需要核验化工商业 SKU、应用证据�
 
 CAS、名称、结构或规格相互冲突时不得静默选择：输出冲突字段、每一方来源与需要用户确认的问题，状态为未解决。`lookup_chemical_identity` 返回 `ambiguous`/`not_found`/`error` 时保持 `unresolved` 并请求补证，不得编造 CID/CAS。身份未解决时不得生成客户名单。网络请求只通过平台 Provider/Tool，不在本 Skill 内直接访问 PubChem。
 
+选市场时可调用只读平台 Tool `lookup_trade_flow`（UN Comtrade，需配置 `comtrade:default` 的 `api_key`）查询国家/HS 贸易流汇总；**不**在本 Skill 内嵌 Comtrade 客户端。贸易流是国家级指标，**禁止**据此编造企业买家或进口商名单；无密钥或 empty/error 时披露缺口，不得伪造金额。
+
 ## 应用与语言地图
 
 将应用关系逐条标为 `direct`、`cross_supported`、`inference` 或 `unverified`，保存证据 ID；“理论可用于”只能是 inference，不能写成市场正在采购。化学同义词、商业同义词、牌号、规格、应用词、客户角色、本地语言词和排除词必须分栏；动态词必须记录来源 ID，不得从模型记忆补词。

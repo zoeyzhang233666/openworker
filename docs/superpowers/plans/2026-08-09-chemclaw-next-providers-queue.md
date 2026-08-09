@@ -8,10 +8,10 @@
 
 - 计划见 `2026-08-09-chemclaw-ted-tender-provider.md`
 
-## 选项 C：Comtrade TradeFlowProvider（待点名）
+## 选项 C：Comtrade TradeFlowProvider — **已交付（D-103）**
 
 - 计划见 `2026-08-09-chemclaw-comtrade-provider.md`
 
-**默认下一刀：** Comtrade（选市场）或客户清单进阶 UX；一次只实现一个。
+**队列收口：** A/B/C 均已交付。默认下一刀改为**本机销售环点检**；CRM/科研见远期计划，须点名。
 
-**相关后置：** 清单进阶 UX、CRM/科研 — 见对应计划文件。
+**相关后置：** 清单进阶 UX（D-102 已交付）、CRM/科研 — 见对应计划文件。

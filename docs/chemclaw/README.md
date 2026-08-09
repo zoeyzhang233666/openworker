@@ -4,7 +4,7 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
-- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-102）**：四龙虾包；PubChem/GLEIF/国内登记；TED；询盘转报价；客户清单首包+进阶 UX；SMTP 发送审批。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用；无 Comtrade/CRM；清单页无发送按钮；草稿 ≠ 发送。收口回归（2026-08-09 D-102）：`npm` requestLeadFollowup + LeadsWorkbench + i18n/audit 见验收。
+- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103）**：四龙虾包；PubChem/GLEIF/国内登记；TED；Comtrade 贸易流；询盘转报价；客户清单首包+进阶 UX；SMTP 发送审批。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用；无 CRM；清单页无发送按钮；草稿 ≠ 发送。收口回归（2026-08-09 D-103）：`pytest` comtrade **11 passed**。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
 - 当前分支：`chemclaw-clean`（与本机 worktree 目录同名；GitHub 上选此分支即可，无需并入 `main`）
@@ -140,12 +140,12 @@
 1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
-4. 销售主线 D-091—D-102 已收口（含清单进阶）。**下一小任务（须点名）**：Comtrade；其后 CRM/化工社为远期。不批量内置化工社 Skills，不自动外发。
+4. 销售主线 D-091—D-103 已收口（含 Comtrade）。**下一小任务（须点名）**：本机销售环点检，或 CRM/化工社远期项。不批量内置化工社 Skills，不自动外发。
 
 ## 文档索引
 
 - [完整产品设计](../superpowers/specs/2026-07-29-chemclaw-product-design.md)
-- [销售增长智能设计（D-086—D-102）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
+- [销售增长智能设计（D-086—D-103）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
 - [外贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-export-sales-builtin-pack.md)
 - [内贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-domestic-sales-builtin-pack.md)
 - [商机雷达内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-opportunity-radar-builtin-pack.md)
@@ -158,7 +158,7 @@
 - [国内登记 Provider（D-100）](../superpowers/plans/2026-08-09-chemclaw-cn-registry-provider.md)
 - [TED / Comtrade 队列](../superpowers/plans/2026-08-09-chemclaw-next-providers-queue.md)
 - [TED TenderProvider（D-101）](../superpowers/plans/2026-08-09-chemclaw-ted-tender-provider.md)
-- [Comtrade 计划（待点名）](../superpowers/plans/2026-08-09-chemclaw-comtrade-provider.md)
+- [Comtrade TradeFlowProvider（D-103）](../superpowers/plans/2026-08-09-chemclaw-comtrade-provider.md)
 - [客户清单进阶 UX（D-102）](../superpowers/plans/2026-08-09-chemclaw-lead-list-advanced-ux.md)
 - [CRM/科研远期说明](../superpowers/plans/2026-08-09-chemclaw-crm-and-research-defer.md)
 - [已批准决策](DECISIONS.md)

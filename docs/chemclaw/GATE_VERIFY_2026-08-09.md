@@ -24,6 +24,7 @@
 4. 主导航有「客户清单」：可导入 LeadList JSON、导出 CSV、标记状态；**无**发送/CRM 按钮
 5. （D-099）转化龙虾草稿出现 `ready_for_human_send` 后对话有「提交发送审批」；点后出现 `email_send` 审批卡；拒绝则不外发；Email 未连接时中文错误
 6. （D-101 后）商机雷达可调用 `search_tenders`；结果须带来源 URL，不得伪造 TED 编号
+7. （D-103）配置 `comtrade:default` 的 `api_key` 后，外贸拓客/任意 Agent 可调用 `lookup_trade_flow`；无密钥时中文提示；结果含非买家警告，不得把贸易流行写成具体公司
 
 ## 程序侧复验（2026-08-09 进度队列）
 
@@ -36,5 +37,6 @@
 | 本机点检前复验（TED 前） | 四龙虾 + 既有 Tool 注册 **通过**（2026-08-09） |
 | D-101 `search_tenders` Fixture + 接线 | `pytest` TED **9 passed** |
 | D-102 清单进阶 UX | `npm` requestLeadFollowup + LeadsWorkbench + i18n/audit |
+| D-103 Comtrade `lookup_trade_flow` | `pytest` comtrade provider + skill wire **11 passed** |
 
 未在本机启动 GUI 点击；以上为接线验收，不替代人工点检。请重启 sidecar 后按「用户侧验收」点检。

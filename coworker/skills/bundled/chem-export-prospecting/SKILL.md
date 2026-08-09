@@ -12,6 +12,7 @@ description: "Use when 用户要围绕具体化工 SKU 和目标市场执行可�
 - 输入：`CommercialSKU` 草稿、`TargetMarket`、目标 Lead 数与检索预算。
 - 依次加载 `chem-product-intelligence`、`chem-buyer-discovery`、`chem-company-qualification`；评分由后续 `chem-lead-ranking` 负责。
 - 外部搜索和读取仅用已配置 Tool/Provider；不得把搜索摘要当作页面证据。
+- 评估目标市场吸引力时可用平台 Tool `lookup_trade_flow`（Comtrade）；结果仅为国家/HS 汇总，**不得**当作买家企业证据，也**不**在本 Skill 内嵌客户端。
 - 默认只读。发送邮件、购买联系人、写 CRM、上传客户资料或付费调用均须走现有审批。
 
 ## 状态机与断点
