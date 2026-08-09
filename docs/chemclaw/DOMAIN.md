@@ -190,6 +190,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 询盘、招标、交易、扩产、招聘、价格、展会等有来源的业务事件。单个信号不自动等于商机。须含可回溯 locator；口述无来源不得伪造信号。
 
+### TED 招标检索（`search_tenders`）
+
+平台只读 Tool：检索欧盟 TED 公开采购公告，返回 `signal_type=tender` 的 `OpportunitySignal` 行（`signal_id=ted:<publication-number>` + `source.url`）。不评分、不伪造公告号；空结果为 `empty`。
+
 ### Opportunity
 
 一个或多个 `OpportunitySignal` 经主体归一、产品相关性和确定性商机评分（`chem-opportunity-fit`）后形成的可跟进业务机会。状态含 Watch / NeedsReview / Actionable / Rejected；无主体或无事件日期不得标为 Actionable。

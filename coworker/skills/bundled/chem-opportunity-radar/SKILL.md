@@ -11,8 +11,10 @@ description: "Use when 用户要围绕化工 SKU 与市场约束，把有来源�
 
 - 输入：SKU 草稿或品名、市场/区域、关注的 `signal_type`、时间窗与排除条件。
 - 依次加载 `chem-product-intelligence`、`chem-company-qualification`、`chem-opportunity-scoring`。
-- 外部读取仅用已配置 Tool/Provider；本 Skill **不**默认调用 `chem-newbiz-lead` / `chem-inquiry-feed`（MCP 依赖未纳入本包）。
+- 外部读取仅用已配置 Tool/Provider；欧盟公开招标可用平台 Tool `search_tenders`（TED），将返回的信号纳入 `signal_collect`；**不**在本 Skill 内嵌 TED 客户端。
+- 本 Skill **不**默认调用 `chem-newbiz-lead` / `chem-inquiry-feed`（MCP 依赖未纳入本包）。
 - 禁止把搜索摘要当作事件正文；无来源口述不得生成 `OpportunitySignal`，只能 `NeedsReview` 并请求补证。
+- **禁止伪造** TED `publication-number` / `signal_id`；`search_tenders` 失败或 empty 时披露，不得编造公告。
 - 默认只读；发送/CRM/付费调用须审批。
 
 ## 状态机

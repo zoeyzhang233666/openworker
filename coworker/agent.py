@@ -40,6 +40,7 @@ from .chem import make_lookup_chemical_identity_tool
 from .entity import make_lookup_legal_entity_tool
 from .leads import make_format_lead_list_tool
 from .quote import make_calculate_quote_tool
+from .tender import make_search_tenders_tool
 from .web import make_web_fetch_tool, make_web_search_tool
 from .workspace_trust import WorkspaceTrustStore
 from .tools.shell import LocalExecutor
@@ -316,6 +317,8 @@ def build_engine(
     registry.register(make_calculate_quote_tool())
     # Lead list: deterministic Markdown/CSV workbench deliverable (no send/CRM).
     registry.register(make_format_lead_list_tool())
+    # TED public procurement search → OpportunitySignal-shaped rows (read-only).
+    registry.register(make_search_tenders_tool())
     # ask_user: the universal human-in-the-loop Q&A primitive (every agent; engine-intercepted).
     if question_asker is not None:
         registry.register(ask_user_tool())

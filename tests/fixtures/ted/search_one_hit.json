@@ -1,0 +1,16 @@
+{
+  "notices": [
+    {
+      "publication-number": "123456-2026",
+      "notice-title": { "eng": "Framework for supply of sodium benzoate" },
+      "buyer-name": { "eng": "Example City Hospital" },
+      "buyer-country": "DEU",
+      "publication-date": "2026-01-15Z",
+      "classification-cpv": ["24000000"],
+      "links": {
+        "html": "https://ted.europa.eu/en/notice/-/detail/123456-2026"
+      }
+    }
+  ],
+  "totalNoticeCount": 1
+}

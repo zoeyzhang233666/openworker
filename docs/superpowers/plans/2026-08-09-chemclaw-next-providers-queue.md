@@ -4,7 +4,7 @@
 
 - `CnRegistryProvider` + 路由；计划见 `2026-08-09-chemclaw-cn-registry-provider.md`
 
-## 选项 B：TED TenderProvider（待点名）
+## 选项 B：TED TenderProvider — **已交付（D-101）**
 
 - 计划见 `2026-08-09-chemclaw-ted-tender-provider.md`
 
@@ -12,6 +12,6 @@
 
 - 计划见 `2026-08-09-chemclaw-comtrade-provider.md`
 
-**默认下一刀：** TED（若追欧标）或 Comtrade（若追选市场）；一次只实现一个。
+**默认下一刀：** Comtrade（选市场）或客户清单进阶 UX；一次只实现一个。
 
 **相关后置：** 清单进阶 UX、CRM/科研 — 见对应计划文件。

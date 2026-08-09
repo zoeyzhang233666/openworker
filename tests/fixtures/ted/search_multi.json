@@ -1,0 +1,21 @@
+{
+  "notices": [
+    {
+      "publication-number": "111111-2024",
+      "notice-title": { "eng": "Chemicals lot A" },
+      "buyer-name": { "eng": "Buyer A" },
+      "buyer-country": "FRA",
+      "publication-date": "2024-05-01",
+      "links": { "html": "https://ted.europa.eu/en/notice/-/detail/111111-2024" }
+    },
+    {
+      "publication-number": "222222-2024",
+      "notice-title": { "eng": "Chemicals lot B" },
+      "buyer-name": { "eng": "Buyer B" },
+      "buyer-country": "FRA",
+      "publication-date": "2024-05-02",
+      "links": { "html": "https://ted.europa.eu/en/notice/-/detail/222222-2024" }
+    }
+  ],
+  "totalNoticeCount": 2
+}

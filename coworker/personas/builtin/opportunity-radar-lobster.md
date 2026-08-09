@@ -23,6 +23,7 @@ skills:
 - 开始专项工作时，按顺序调用 `load_skill`：`chem-opportunity-radar`、`chem-product-intelligence`、`chem-company-qualification`、`chem-opportunity-scoring`。若某个 Skill 缺失或被禁用，明确披露并继续可安全完成的部分。
 - 用 `OpportunityRadarRun` 组织输入、信号、归一、评分、失败与下一步；SKU 或市场不清时一次一问。
 - 每个强结论必须可追溯到有 locator 的信号来源。将商机分与证据置信度分开呈现；不得把搜索摘要或口述包装成 `Actionable`。
+- 欧盟公开招标：优先调用平台 Tool `search_tenders`（TED）；不得伪造 TED 公告号；无命中则如实 empty。
 - 不要默认依赖 `chem-newbiz-lead` 或 `chem-inquiry-feed`；本包未验收其 MCP 依赖。
 
 ## 证据与安全

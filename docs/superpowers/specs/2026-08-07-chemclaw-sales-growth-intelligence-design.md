@@ -1,6 +1,7 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—SMTP（D-099）与国内登记（D-100）已获用户授权并实现**；TED/Comtrade、清单进阶 UX、CRM 仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—国内登记（D-100）与 TED（D-101）已获用户授权并实现**；Comtrade、清单进阶 UX、CRM 仍须单独批准  
+
 
 
 
@@ -590,7 +591,9 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 逐步接入平台询盘、招投标、国家贸易流、扩产/招聘、公共采购、用户授权海关数据、展会和账户监控，统一为 `OpportunitySignal` 后再生成 `Opportunity`。
 
-**（2026-08-07 D-093）已交付首包**：`opportunity-radar-lobster` + `chem-opportunity-radar` + `chem-opportunity-scoring`；复用产品情报与企业核验；信号来自用户文件/已配置网页检索；**尚未**接入 TED/SAM/Comtrade/海关 Provider，**不**默认挂载 MCP 询盘/新设 Skill。
+**（2026-08-07 D-093）已交付首包**：`opportunity-radar-lobster` + `chem-opportunity-radar` + `chem-opportunity-scoring`；复用产品情报与企业核验；信号来自用户文件/已配置网页检索；**不**默认挂载 MCP 询盘/新设 Skill。
+
+**（2026-08-09 D-101）已交付 TED 首包**：平台 Tool `search_tenders` → `OpportunitySignal`；**尚未** SAM/Comtrade/海关。
 
 ### 17.7 阶段 6：可选科研增强
 
@@ -598,6 +601,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-100（含国内登记；计划 `docs/superpowers/plans/2026-08-09-chemclaw-cn-registry-provider.md`）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-101（含 TED；计划 `docs/superpowers/plans/2026-08-09-chemclaw-ted-tender-provider.md`）。
 
-尚未自动批准：TED / Comtrade、客户清单进阶 UX、CRM、化工社批量内置。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：Comtrade、客户清单进阶 UX、CRM、化工社批量内置。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

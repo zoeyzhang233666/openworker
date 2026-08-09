@@ -6,6 +6,12 @@
 
 `OpportunitySignal` 字段最小集：`signal_id`、`signal_type`、`summary`、`event_date`（可空）、`collected_at`、`source`、主体提示。缺 `event_date` 的事件不得支撑时效维度。
 
+## TED 招标信号（平台 Tool）
+
+- 调用 `search_tenders`（query / 可选 buyer_country / cpv）收集欧盟公开招标。
+- 返回行已是 `signal_type=tender` 与 `signal_id=ted:<publication-number>`；`source.url` 必须保留。
+- 不得改写或捏造 publication-number；empty/error 时进入补证或空清单 `complete`，不得假装有标。
+
 ## 归一与相关
 
 主体归一与冲突规则复用 `chem-company-qualification` 精神；SKU/应用相关复用 `chem-product-intelligence`。集团/工厂/品牌保留关系。

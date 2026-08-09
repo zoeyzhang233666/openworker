@@ -1,15 +1,19 @@
-# ChemClaw TED TenderProvider Implementation Plan（待点名后实现）
+# ChemClaw TED TenderProvider Implementation Plan（D-101）
 
-> 队列 B；**未获用户「开始实现 TED」前不写业务代码。**
+**Goal:** 欧盟公开招标检索 → 规范化 `OpportunitySignal`，挂商机雷达；口述无来源仍 `NeedsReview`。
 
-**Goal:** 欧盟公开招标检索 → 规范化 `OpportunitySignal`，挂商机雷达龙虾；口述无来源仍 `NeedsReview`。
+**Architecture:**
+- 平台 [`coworker/tender/`](../../../../coworker/tender/)：`TedProvider` + Tool `search_tenders`
+- TED Search API：`POST https://api.ted.europa.eu/v3/notices/search`（免密钥）
+- Fixture 契约测试；Skill/龙虾仅文档接线；不伪造 publication-number
 
-**Architecture（拟定）：**
-- 平台 `coworker/tender/`（或 `opportunity/`）：`TedProvider` + Tool `search_tenders`（只读）
-- Fixture 契约测试；可选 SecretStore 限流密钥
-- Skill `chem-opportunity-radar` 文档接线：信号须带来源 URL；不把 API 塞进 Skill
-- 不默认挂载询盘 MCP；不自动外发
+**Status (2026-08-09):** 已完成（D-101）。
 
-**验收：** Fixture 覆盖 resolved/empty/error；雷达提示词禁止伪造 TED 编号；CI 无外网。
+## Tasks
+- [x] TedProvider + OpportunitySignal 映射 + tests
+- [x] `search_tenders` 注册到 `agent.py`
+- [x] chem-opportunity-radar / opportunity-radar-lobster 接线
+- [x] D-101 / README / 规格
 
-**Out of Scope：** Comtrade、国内登记重做、SMTP、CRM。
+## Out of Scope
+- Comtrade、CRM、SMTP、国内登记重做
