@@ -211,6 +211,7 @@
 - **D-097（2026-08-09）**：用户明确授权实现**询盘转报价内置首包**：平台确定性 Tool `calculate_quote`（`coworker/quote/`）+ Skill `chem-inquiry-to-quote`（Inquiry / QuoteDraft / QuoteRun）；挂到现有 `export-engagement-lobster`（不新建龙虾）；缺量/缺价 → `NeedsReview`，不编造单价；草稿 ≠ 发送；**不**接 `chem-inquiry-feed`/`chem-quote-monitor` MCP、SMTP、发送按钮或 CRM。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-inquiry-to-quote-builtin-pack.md`。
 - **D-098（2026-08-09）**：用户批准销售主线队列后实现**客户清单工作台首包**：平台 Tool `format_lead_list`（`coworker/leads/`）+ Skill `chem-lead-list`；挂外贸/内贸拓客龙虾；GUI 主导航增加「客户清单」（修订 D-006），支持导入 LeadList JSON、导出 CSV、本地标记可联系/待补查/排除与备注；**不**显示发送/CRM 按钮。SMTP 与 TED/Comtrade/国内登记仅落盘后续计划，不在本决策内实现。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-lead-list-workbench.md`。
 - **D-099（2026-08-09）**：用户点名实现**SMTP 发送审批闭环首包**：**不**新建 `coworker/mail/`；复用 Email 连接器 `email_send` + SecretStore `email:default` + 现有审批卡；发送相关错误中文化；外贸转化龙虾/`chem-sales-engagement` 仅在 `ready_for_human_send` 且用户明确要求发送时可调用 `email_send`；对话 Transcript 在助手文本含 `ready_for_human_send` 时显示「提交发送审批」CTA；**禁止**自动外发；客户清单页仍无发送按钮；不接 CRM/TED/国内登记。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md`。
+- **D-100（2026-08-09）**：用户批准销售主线队列后实现**国内登记 Provider 首包**：`CnRegistryProvider` + `RoutingLegalEntityProvider`；扩展 `lookup_legal_entity`（`query_type=uscc|auto|…`，返回 `uscc`）；USCC 校验位；SecretStore `cn_registry:default`（`base_url` 必填才联网）；Fixture 契约测试；Skill 仅文档接线；**不**接 TED/Comtrade/海关/爬虫/CRM。计划见 `docs/superpowers/plans/2026-08-09-chemclaw-cn-registry-provider.md`。
 
 ## 协作治理
 

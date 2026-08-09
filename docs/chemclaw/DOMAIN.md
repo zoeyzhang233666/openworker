@@ -228,7 +228,11 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 ### 法定主体查询（`lookup_legal_entity`）
 
-平台只读 Tool：按 LEI 或法律名称查询法定主体（首包实现为 GLEIF）。返回 `resolved` / `not_found` / `ambiguous` / `error`、登记状态、法域与来源 URL/LEI；不推断产品需求，不冒充法律或制裁结论。LEI 经证据 locator 进入企业核验台账。
+平台只读 Tool：按 LEI、统一社会信用代码（USCC）或法律名称查询法定主体。路由：LEI/拉丁名 → GLEIF；USCC/中文名 → 国内登记（`cn_registry`，需配置 `base_url`）。返回 `resolved` / `not_found` / `ambiguous` / `error`、可选 LEI/USCC、登记状态、法域与来源；不推断产品需求，不冒充法律或制裁结论。LEI/USCC 经证据 locator 进入企业核验台账。
+
+### 统一社会信用代码（USCC）
+
+中国大陆 18 位主体标识码（含校验位）。平台校验格式与校验位；不得由模型编造。经 `cn_registry` 命中后作为 `government_registry` 证据。
 
 ### `Inquiry`
 

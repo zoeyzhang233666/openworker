@@ -6,4 +6,4 @@
 
 来源 locator 只能来自实际打开的 URL、真实用户文件或 Provider 返回的记录 ID。禁止用 `task-provided:*`、`unknown:*` 等占位 locator 填合同；只有用户口述且没有可回溯来源时，必须进入 `NeedsReview` 并提出补证问题，不能标成 Qualified。事件型事实缺少 `event_date` 时不得支持 `signal_recency`；`collected_at` 不得冒充事件日期。
 
-法定主体外呼使用平台 Tool `lookup_legal_entity`（GLEIF）。LEI 证据按 `government_registry`（上限 A）记录；`ambiguous`/`not_found`/`error` 不得伪造 LEI 或抬高为 Qualified 主体。
+法定主体外呼使用平台 Tool `lookup_legal_entity`（GLEIF 与/或国内登记）。LEI/USCC 证据按 `government_registry`（上限 A）记录；`ambiguous`/`not_found`/`error` 不得伪造 LEI/USCC 或抬高为 Qualified 主体。

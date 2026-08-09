@@ -24,4 +24,13 @@
 4. 主导航有「客户清单」：可导入 LeadList JSON、导出 CSV、标记状态；**无**发送/CRM 按钮
 5. （D-099）转化龙虾草稿出现 `ready_for_human_send` 后对话有「提交发送审批」；点后出现 `email_send` 审批卡；拒绝则不外发；Email 未连接时中文错误
 
-未在本机启动 GUI 点击；以上为接线验收，不替代人工点检。
+## 程序侧复验（2026-08-09 进度队列）
+
+| 检查项 | 结果 |
+|--------|------|
+| 四龙虾 persona 可加载 | 通过（export/domestic/opportunity/engagement） |
+| `lookup_*` / `calculate_quote` / `format_lead_list` 已注册 | 通过（`build_engine(chat_agent)`） |
+| 销售相关改动已小提交 | `1f52d31`（未 `git add .`） |
+| D-100 国内登记 + 路由 Fixture | `pytest` cn_registry/legal_entity **24 passed** |
+
+未在本机启动 GUI 点击；以上为接线验收，不替代人工点检。请重启 sidecar 后按「用户侧验收」点检。

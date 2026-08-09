@@ -1,6 +1,7 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）、内贸（D-092）、商机雷达（D-093）、外贸转化（D-094）、PubChem（D-095）、GLEIF（D-096）、询盘转报价（D-097）、客户清单工作台（D-098）与 SMTP 发送审批（D-099）已获用户授权并实现**；TED/Comtrade、国内登记增强仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—SMTP（D-099）与国内登记（D-100）已获用户授权并实现**；TED/Comtrade、清单进阶 UX、CRM 仍须单独批准  
+
 
 
 > 批准日期：2026-08-07  
@@ -311,7 +312,9 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 **（2026-08-09 D-095）已交付首包**：平台 Tool `lookup_chemical_identity` + `PubChemProvider`（`coworker/chem/`）；Fixture 契约测试；Skill 不内嵌 API 客户端。
 
-**（2026-08-09 D-096）已交付首包**：平台 Tool `lookup_legal_entity` + `GleifProvider`（`coworker/entity/`）；Fixture 契约测试；`chem-company-qualification` 文档接线。**尚未**接入国家登记 / 关系树 / TED / Comtrade。
+**（2026-08-09 D-096）已交付首包**：平台 Tool `lookup_legal_entity` + `GleifProvider`（`coworker/entity/`）；Fixture 契约测试；`chem-company-qualification` 文档接线。
+
+**（2026-08-09 D-100）已交付国内登记首包**：`CnRegistryProvider` + 路由（USCC/中文名）；SecretStore `cn_registry:default`；**尚未**关系树 / TED / Comtrade / 海关。
 
 化工社反应数据不参与客户搜索和 Lead 评分主流程，只能作为特殊产品的化学证据补充。
 
@@ -579,7 +582,9 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 复用产品情报、客户发现、企业核验和评分，替换国内 Provider、产业链规则、中文查询、园区/工商信号和国内联系策略。
 
-**（2026-08-07 D-092）已交付首包**：`domestic-sales-lobster` + `chem-domestic-prospecting`，复用四能力 Skill；国内规则以 Skill references 约束；**尚未**接入国内工商/海关 Provider。
+**（2026-08-07 D-092）已交付首包**：`domestic-sales-lobster` + `chem-domestic-prospecting`，复用四能力 Skill；国内规则以 Skill references 约束。
+
+**（2026-08-09 D-100）国内登记 Provider 已接入平台 Tool**；**尚未**海关 Provider。
 
 ### 17.6 阶段 5：商机雷达
 
@@ -593,6 +598,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：外贸拓客（D-091）、内贸拓客（D-092）、商机雷达首包（D-093）、外贸销售转化首包（D-094）、PubChem（D-095）、GLEIF（D-096）、询盘转报价首包（D-097）、客户清单工作台首包（D-098）与 SMTP 发送审批首包（D-099；计划 `docs/superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md`）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-100（含国内登记；计划 `docs/superpowers/plans/2026-08-09-chemclaw-cn-registry-provider.md`）。
 
-尚未自动批准：TED / Comtrade 等其他数据 Provider、国家登记增强。队列计划已落盘：`2026-08-09-chemclaw-next-providers-queue.md`。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：TED / Comtrade、客户清单进阶 UX、CRM、化工社批量内置。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

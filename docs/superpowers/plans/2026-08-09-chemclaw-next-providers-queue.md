@@ -1,22 +1,17 @@
-# ChemClaw 国内登记 / TED·Comtrade Provider 队列计划（待批准后单点实现）
+# ChemClaw 国内登记 / TED·Comtrade Provider 队列
 
-> 本文件落盘后续数据 Provider 选项；**一次只实现其中一个**，需用户点名后再写代码。
+## 选项 A：国内工商/登记 — **已交付（D-100）**
 
-## 选项 A：国内工商/登记 Provider（强化内贸 D-092）
+- `CnRegistryProvider` + 路由；计划见 `2026-08-09-chemclaw-cn-registry-provider.md`
 
-- 平台 `LegalEntityProvider` 国内后端（公开登记/可授权 API）
-- Tool 可复用或并列 `lookup_legal_entity` 的国内 query_type
-- Fixture 契约测试；不进 Skill
+## 选项 B：TED TenderProvider（待点名）
 
-## 选项 B：TED TenderProvider（强化商机 D-093）
+- 计划见 `2026-08-09-chemclaw-ted-tender-provider.md`
 
-- 欧盟公开招标检索 → `OpportunitySignal`
-- 挂商机雷达；口述无来源仍 NeedsReview
+## 选项 C：Comtrade TradeFlowProvider（待点名）
 
-## 选项 C：Comtrade TradeFlowProvider
+- 计划见 `2026-08-09-chemclaw-comtrade-provider.md`
 
-- 国家/HS 贸易流，辅助选市场，不直接产买家名单
+**默认下一刀：** TED（若追欧标）或 Comtrade（若追选市场）；一次只实现一个。
 
-**默认建议：** 先 A（内贸主体）或 B（若业务追欧标）；C 可后置。
-
-**Out of Scope 于任一单点：** SMTP、化工社批量内置、客户清单重做。
+**相关后置：** 清单进阶 UX、CRM/科研 — 见对应计划文件。

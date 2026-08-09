@@ -310,8 +310,8 @@ def build_engine(
     registry.register(make_web_fetch_tool())
     # Chemical identity: keyless PubChem assist (platform Provider; not embedded in Skills).
     registry.register(make_lookup_chemical_identity_tool())
-    # Legal entity: keyless GLEIF assist (platform Provider; not embedded in Skills).
-    registry.register(make_lookup_legal_entity_tool())
+    # Legal entity: GLEIF + optional CN registry (platform Provider; not embedded in Skills).
+    registry.register(make_lookup_legal_entity_tool(secrets=secrets))
     # Quote math: deterministic totals from explicit numbers (no invented prices).
     registry.register(make_calculate_quote_tool())
     # Lead list: deterministic Markdown/CSV workbench deliverable (no send/CRM).

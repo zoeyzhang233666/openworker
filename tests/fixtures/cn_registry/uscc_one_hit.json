@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "uscc": "91110000MA0123456P",
+      "legal_name": "示例化工有限公司",
+      "registration_status": "存续",
+      "legal_jurisdiction": "CN",
+      "hq_country": "CN",
+      "hq_city": "北京",
+      "url": "https://cn-registry.example/entity/91110000MA0123456P"
+    }
+  ]
+}

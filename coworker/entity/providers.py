@@ -27,7 +27,8 @@ HttpGet = Callable[[str], tuple[int, bytes]]
 
 @dataclass
 class LegalEntityCandidate:
-    lei: str
+    lei: str = ""
+    uscc: Optional[str] = None
     legal_name: Optional[str] = None
     registration_status: Optional[str] = None
     hq_country: Optional[str] = None
@@ -40,6 +41,7 @@ class LegalEntityCandidate:
 class LegalEntityResult:
     status: str  # resolved | not_found | ambiguous | error
     lei: Optional[str] = None
+    uscc: Optional[str] = None
     legal_name: Optional[str] = None
     registration_status: Optional[str] = None
     legal_jurisdiction: Optional[str] = None
@@ -54,6 +56,7 @@ class LegalEntityResult:
         return {
             "status": self.status,
             "lei": self.lei,
+            "uscc": self.uscc,
             "legal_name": self.legal_name,
             "registration_status": self.registration_status,
             "legal_jurisdiction": self.legal_jurisdiction,

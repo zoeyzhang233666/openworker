@@ -11,7 +11,7 @@ description: "Use when 用户要围绕具体化工 SKU 和国内市场/园区执
 
 - 输入：`CommercialSKU` 草稿、面向中国大陆的 `TargetMarket`、目标 Lead 数与检索预算。
 - 依次加载 `chem-product-intelligence`、`chem-buyer-discovery`、`chem-company-qualification`；评分由后续 `chem-lead-ranking` 负责。
-- 外部搜索和读取仅用已配置 Tool/Provider；不得把搜索摘要当作页面证据；本 Skill 不内嵌国内工商/海关 API。
+- 外部搜索和读取仅用已配置 Tool/Provider；不得把搜索摘要当作页面证据；国内主体可用平台 `lookup_legal_entity`（`uscc`/中文名，Provider `cn_registry`），**不**在本 Skill 内嵌工商/海关 API 客户端。
 - 默认只读。发送邮件/短信、购买联系人、写 CRM、上传客户资料或付费调用均须走现有审批。
 
 ## 国内规则要点

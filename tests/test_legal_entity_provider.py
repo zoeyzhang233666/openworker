@@ -150,6 +150,7 @@ def test_tool_returns_fixed_keys():
     for key in (
         "status",
         "lei",
+        "uscc",
         "legal_name",
         "registration_status",
         "legal_jurisdiction",
@@ -162,6 +163,7 @@ def test_tool_returns_fixed_keys():
     ):
         assert key in out
     assert out["status"] == "resolved"
+    assert out["uscc"] is None
     assert tool.__coworker_schema__["function"]["name"] == "lookup_legal_entity"
     assert tool.__aisuite_tool_metadata__.requires_approval is False
 
