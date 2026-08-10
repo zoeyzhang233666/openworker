@@ -253,6 +253,8 @@ export interface RootInfo {
   label: string;
   primary: boolean;
   exists: boolean;
+  /** False for scratch and auto-mounted system skill roots. */
+  removable?: boolean;
 }
 
 export async function getRoots(sessionId: string): Promise<RootInfo[]> {

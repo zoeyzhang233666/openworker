@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+# System label for auto-mounted skill resource trees (read-only). Not user-removable;
+# excluded from persisted extra_roots.
+SYSTEM_SKILLS_LABEL = "skills"
+
 
 @dataclass
 class RootDir:
@@ -28,6 +32,36 @@ class RootDir:
 
     def to_dict(self) -> dict[str, Any]:
         return {"path": str(self.path), "writable": self.writable, "label": self.label}
+
+
+def is_system_skills_root(root: Any) -> bool:
+    """True for auto-mounted skill resource roots (by label)."""
+    if isinstance(root, RootDir):
+        return root.label == SYSTEM_SKILLS_LABEL
+    if isinstance(root, dict):
+        return root.get("label") == SYSTEM_SKILLS_LABEL
+    return getattr(root, "label", None) == SYSTEM_SKILLS_LABEL
+
+
+def skill_readonly_root_dicts(
+    skill_dirs: Iterable[str | Path],
+) -> list[dict[str, Any]]:
+    """Build writable=False root dicts for existing skill search directories."""
+    out: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    for raw in skill_dirs:
+        path = Path(raw).expanduser().resolve()
+        if not path.is_dir() or path in seen:
+            continue
+        seen.add(path)
+        out.append(
+            {
+                "path": str(path),
+                "writable": False,
+                "label": SYSTEM_SKILLS_LABEL,
+            }
+        )
+    return out
 
 
 def normalize_roots(roots: Iterable[Any] | None) -> list[RootDir]:
@@ -66,6 +100,8 @@ def render_context(roots: list[RootDir]) -> str:
     for i, r in enumerate(roots):
         access = "read-write" if r.writable else "read-only"
         tag = " — primary scratch, the default place to save files" if i == 0 else ""
+        if r.label == SYSTEM_SKILLS_LABEL:
+            tag = " — installed skills (read-only references/scripts)"
         lines.append(f"- {r.path} [{access}]{tag}")
     lines.append(
         "Relative paths resolve against the primary directory; pass an absolute path to use "

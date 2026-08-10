@@ -53,7 +53,7 @@ export function useRoots(sessionId: string, reloadKey?: number) {
 
   const toggleAccess = useCallback(
     async (r: RootInfo) => {
-      if (r.primary) return;
+      if (r.primary || r.removable === false) return;
       setBusy(true);
       apply(await addRoot(sessionId, r.path, !r.writable)); // re-add updates access in place
       setBusy(false);

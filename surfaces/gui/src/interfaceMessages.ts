@@ -556,6 +556,8 @@ export const interfaceMessagesZh = {
   "Off = read-only. Tick to let the agent write here.": "关闭时为只读；勾选后允许 Agent 在此写入。",
   "Allow writes": "允许写入",
   "Temporary space": "临时空间",
+  "Installed skills": "已安装技能",
+  "Installed skills stay read-only": "已安装技能目录保持只读",
   "main": "主目录",
   "missing": "缺失",
   "The main workspace is always read-write": "主工作区始终为读写",

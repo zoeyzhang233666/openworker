@@ -27,7 +27,9 @@ export function RootRow({
     ? scratchPrimary
       ? t("Temporary space")
       : baseName(root.path)
-    : root.label;
+    : root.label === "skills"
+      ? t("Installed skills")
+      : root.label;
   return (
     <div className={"root-row" + (root.exists ? "" : " missing")}>
       <Icon name="folder" size={14} className="root-ico" />
@@ -48,12 +50,18 @@ export function RootRow({
       <button
         className={"root-access" + (root.writable ? " rw" : " ro")}
         onClick={() => onToggle(root)}
-        disabled={busy || root.primary}
-        title={t(root.primary ? "The main workspace is always read-write" : "Toggle read-only / read-write")}
+        disabled={busy || root.primary || root.removable === false}
+        title={t(
+          root.primary
+            ? "The main workspace is always read-write"
+            : root.removable === false
+              ? "Installed skills stay read-only"
+              : "Toggle read-only / read-write",
+        )}
       >
         {t(root.writable ? "Read-write" : "Read-only")}
       </button>
-      {!root.primary && (
+      {!root.primary && root.removable !== false && (
         <button className="root-x" onClick={() => onRemove(root.path)} disabled={busy} title={t("Remove")}>
           ×
         </button>

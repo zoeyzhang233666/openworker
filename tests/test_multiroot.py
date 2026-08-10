@@ -202,15 +202,20 @@ def test_add_and_remove_roots_live_and_persisted(tmp_path):
     engine = mgr.get_engine(sid, agent="cowork")
     assert engine is not None
 
-    # only the primary scratch to start
+    # primary scratch plus auto-mounted read-only skills root (seeded on manager init)
     roots = mgr.get_roots(sid)
-    assert len(roots) == 1 and roots[0]["primary"] and roots[0]["writable"]
+    assert roots[0]["primary"] and roots[0]["writable"]
+    assert any(r.get("label") == "skills" and r.get("removable") is False for r in roots)
+    user_roots_before = [r for r in roots if r.get("removable")]
+    assert user_roots_before == []
 
     # add a read-only and a read-write folder; the live engine sees them immediately
     mgr.add_root(sid, str(ro), writable=False)
     mgr.add_root(sid, str(rw), writable=True)
+    skills_root = Path(mgr.skill_store.global_dir).resolve()
     assert {r.path for r in engine.roots} == {
         Path(roots[0]["path"]).resolve(),
+        skills_root,
         ro.resolve(),
         rw.resolve(),
     }

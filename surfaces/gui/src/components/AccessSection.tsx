@@ -220,9 +220,10 @@ export function AccessSection({
         : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
   const folderPart = projectScoped
     ? baseName(workspace || roots.find((r) => r.primary)?.path || "") || null
-    : roots.length > 0
-      ? t("{count} folders", { count: roots.length })
-      : null;
+    : (() => {
+        const visible = roots.filter((r) => r.primary || r.removable !== false);
+        return visible.length > 0 ? t("{count} folders", { count: visible.length }) : null;
+      })()
   const summary = [sourcesPart, folderPart].filter(Boolean).join(" · ");
 
   return (

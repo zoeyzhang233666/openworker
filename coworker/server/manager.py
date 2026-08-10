@@ -38,7 +38,7 @@ from ..audit import AuditStore
 from ..config import load_config, workspace_allowed_commands
 from ..conversations import ConversationStore, title_from
 from ..engine import ApprovalOutcome, Approver, TurnEngine
-from ..roots import RootDir
+from ..roots import RootDir, is_system_skills_root, skill_readonly_root_dicts
 from ..workspace_trust import WorkspaceTrustStore
 from ..automation import Schedule, ScheduledTask, Scheduler, TaskRun, TaskStore
 from ..connectors import (
@@ -433,14 +433,19 @@ class SessionManager:
             self.session_store.touch_workspace(ws)
         # Orphan surfaces are multi-root: the scratch (ws) is the primary writable root, plus any
         # folders the user added (persisted per session). Code/Chat stay single-root (roots=None).
+        # Skill install trees are auto-mounted read-only so load_skill resources_path is readable.
         roots = None
         if ag.family == "knowledge" and ws:
             extra = [
                 r
                 for r in ((record.extra_roots if record else []) or [])
                 if Path(str(r.get("path", ""))).is_dir()
+                and not is_system_skills_root(r)
             ]
-            roots = [{"path": ws, "writable": True, "label": "scratch"}, *extra]
+            roots = self._with_skill_readonly_roots(
+                [{"path": ws, "writable": True, "label": "scratch"}, *extra],
+                ws,
+            )
         engine = build_engine(
             agent=ag,
             workspace=ws,
@@ -3654,12 +3659,38 @@ class SessionManager:
 
     @staticmethod
     def _extra_roots_of(engine: TurnEngine) -> list[dict[str, Any]]:
-        """Added folders = the engine's roots minus the primary scratch (index 0)."""
+        """User-added folders = engine roots minus primary scratch and system skill roots."""
         roots = getattr(engine, "roots", None) or []
         return [
             {"path": str(r.path), "writable": bool(r.writable), "label": r.label}
             for r in roots[1:]
+            if not is_system_skills_root(r)
         ]
+
+    def _skill_readonly_roots(
+        self, workspace: Optional[str | Path] = None
+    ) -> list[dict[str, Any]]:
+        """Installed skill trees as read-only roots so load_skill resources_path is readable."""
+        return skill_readonly_root_dicts(self._skill_dirs(workspace))
+
+    def _with_skill_readonly_roots(
+        self,
+        roots: list[dict[str, Any]],
+        workspace: Optional[str | Path] = None,
+    ) -> list[dict[str, Any]]:
+        """Append skill readonly roots not already present (by resolved path)."""
+        existing = {
+            Path(str(r.get("path", ""))).expanduser().resolve()
+            for r in roots
+            if r.get("path")
+        }
+        out = list(roots)
+        for skill_root in self._skill_readonly_roots(workspace):
+            path = Path(skill_root["path"]).resolve()
+            if path not in existing:
+                out.append(skill_root)
+                existing.add(path)
+        return out
 
     # -- LLM auto-titles (FB-010) -------------------------------------------------
     _AUTOTITLE_PROMPT = (
@@ -3772,6 +3803,7 @@ class SessionManager:
     def get_roots(self, session_id: str) -> list[dict[str, Any]]:
         """The directories this session can touch: primary scratch first, then added folders.
         Reads the live engine when one is running; otherwise reconstructs from persisted state.
+        Auto-mounted skill trees are included as non-removable read-only roots.
         """
         engine = self._engines.get(session_id)
         if engine is not None and getattr(engine, "roots", None):
@@ -3782,6 +3814,7 @@ class SessionManager:
                     "label": r.label,
                     "primary": i == 0,
                     "exists": r.path.is_dir(),
+                    "removable": i != 0 and not is_system_skills_root(r),
                 }
                 for i, r in enumerate(engine.roots)
             ]
@@ -3791,7 +3824,11 @@ class SessionManager:
             if record and record.workspace
             else self._provision_scratch(session_id)
         )
-        extra = (record.extra_roots if record else []) or []
+        extra = [
+            r
+            for r in ((record.extra_roots if record else []) or [])
+            if not is_system_skills_root(r)
+        ]
         out = [
             {
                 "path": primary,
@@ -3799,6 +3836,7 @@ class SessionManager:
                 "label": "scratch",
                 "primary": True,
                 "exists": Path(primary).is_dir(),
+                "removable": False,
             }
         ]
         for r in extra:
@@ -3810,8 +3848,24 @@ class SessionManager:
                     "label": r.get("label") or Path(p).name,
                     "primary": False,
                     "exists": Path(p).is_dir(),
+                    "removable": True,
                 }
             )
+        # Cold path: still expose skill roots so the agent can read resources before first turn
+        # rebuilds the engine (and the GUI can show them as non-removable).
+        agent_name = (record.agent if record else None) or "cowork"
+        try:
+            family = get_agent(agent_name).family
+        except Exception:
+            family = "knowledge"
+        if family == "knowledge":
+            out = self._with_skill_readonly_roots(out, primary)
+            for r in out:
+                if is_system_skills_root(r):
+                    r["primary"] = False
+                    r["exists"] = Path(str(r["path"])).is_dir()
+                    r["removable"] = False
+                    r.setdefault("writable", False)
         return out
 
     def add_root(
@@ -3827,9 +3881,15 @@ class SessionManager:
         engine = self._engines.get(session_id)
         if engine is not None and getattr(engine, "roots", None) is not None:
             if any(r.path == resolved for r in engine.roots):
-                # already present: just update its access level
+                # already present: just update its access level (system skill roots stay read-only)
                 for r in engine.roots:
                     if r.path == resolved:
+                        if is_system_skills_root(r):
+                            return {
+                                "ok": False,
+                                "error": "installed skills directory stays read-only",
+                                "roots": self.get_roots(session_id),
+                            }
                         r.writable = bool(writable)
             else:
                 engine.roots.append(RootDir(path=resolved, writable=bool(writable)))
@@ -3848,7 +3908,13 @@ class SessionManager:
                         agent="cowork",  # folder access is a Cowork affordance
                     )
                 )
-            extra = [r for r in self.get_roots(session_id) if not r["primary"]]
+            extra = [
+                r
+                for r in self.get_roots(session_id)
+                if not r["primary"]
+                and r.get("removable", True)
+                and not is_system_skills_root(r)
+            ]
             extra = [r for r in extra if Path(r["path"]).resolve() != resolved]
             extra.append(
                 {
@@ -3872,7 +3938,7 @@ class SessionManager:
         return {"ok": True, "roots": self.get_roots(session_id)}
 
     def remove_root(self, session_id: str, path: str) -> dict[str, Any]:
-        """Revoke a previously-added folder. The primary scratch cannot be removed."""
+        """Revoke a previously-added folder. The primary scratch and system skill roots cannot be removed."""
         resolved = Path(path).expanduser().resolve()
         engine = self._engines.get(session_id)
         if engine is not None and getattr(engine, "roots", None):
@@ -3881,6 +3947,12 @@ class SessionManager:
                     "ok": False,
                     "error": "cannot remove the primary scratch directory",
                 }
+            for r in engine.roots:
+                if r.path == resolved and is_system_skills_root(r):
+                    return {
+                        "ok": False,
+                        "error": "cannot remove the installed skills directory",
+                    }
             engine.roots[:] = [r for r in engine.roots if r.path != resolved]
             self.session_store.set_extra_roots(session_id, self._extra_roots_of(engine))
         else:
@@ -3894,10 +3966,24 @@ class SessionManager:
                     "ok": False,
                     "error": "cannot remove the primary scratch directory",
                 }
+            hit = next(
+                (r for r in current if Path(r["path"]).resolve() == resolved),
+                None,
+            )
+            if hit and (
+                is_system_skills_root(hit) or hit.get("removable") is False
+            ):
+                return {
+                    "ok": False,
+                    "error": "cannot remove the installed skills directory",
+                }
             extra = [
                 r
                 for r in current
-                if not r["primary"] and Path(r["path"]).resolve() != resolved
+                if not r["primary"]
+                and Path(r["path"]).resolve() != resolved
+                and r.get("removable", True)
+                and not is_system_skills_root(r)
             ]
             self.session_store.set_extra_roots(
                 session_id,
