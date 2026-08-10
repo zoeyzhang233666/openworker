@@ -1,6 +1,6 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）、合集单包 uncertainty-and-units（D-111）已实现**；Close/买联系人/化工社批量/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）、合集单包 uncertainty-and-units（D-111）、合集 Triage（D-112）已实现**；Close/买联系人/化工社批量安装/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
 
 
 
@@ -543,7 +543,7 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 | --- | --- |
 | `database-lookup` | 参考数据源适配和溯源模式，不整体内置 |
 | `market-research-reports` | 借鉴证据台账和 Claims Ledger；报告能力放 P2 |
-| `scientific-critical-thinking` | 提炼证据规则，与现有证据分级能力合并 |
+| `scientific-critical-thinking` | **（D-112 Triage → P0）**：待确认后 vendor 可选；与现有证据分级合并指针，不改 score_lead |
 | `uncertainty-and-units` | **（D-111）已试点内置**：报价/检测单位与不确定度可选 Skill；不进 Lead 评分；可选 extra `uncertainty` |
 | `rdkit`、`datamol` | 结构化学按需安装，不进入销售首版 |
 | `exploratory-data-analysis` | 海关/展会文件分析参考 |
@@ -624,8 +624,10 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 **（2026-08-10 D-111）已交付合集单包试点**：bundled `uncertainty-and-units`（K-Dense MIT，经 `D:\化工社skills合集`）；询盘/转化可选接线；**尚未**批量内置其余合集包或官方 reaction-publisher。
 
+**（2026-08-10 D-112）已交付合集 Triage**：[`docs/chemclaw/HUAGONGSHE_SKILL_TRIAGE.md`](../../chemclaw/HUAGONGSHE_SKILL_TRIAGE.md) 对 158 包四档分流；P0/P1 待用户确认后逐包实现；**不等于**批准批量安装。
+
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-111（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov、海关 CSV/XLSX、合集 `uncertainty-and-units` 试点）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-112（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov、海关 CSV/XLSX、合集 `uncertainty-and-units` 试点、合集 Triage）。
 
-尚未自动批准：Close/买联系人、化工社批量内置、CRM 字段更新/任务创建 CTA、海关外部 API、官方反应发布 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：Close/买联系人、化工社批量内置、P0/P1 未确认前的合集实现、CRM 字段更新/任务创建 CTA、海关外部 API、官方反应发布 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

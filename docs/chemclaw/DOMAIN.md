@@ -210,6 +210,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 bundled Skill（D-111）：K-Dense MIT，经化工社合集单包引入。辅助询盘/报价中的单位换算与不确定度核对；`audit_units.py` 无第三方依赖。可选 pip extra `uncertainty`（pint/uncertainties）。**不**进入 Lead 评分；不替代 `calculate_quote`；不联网。
 
+### 化工社合集分流（Triage）
+
+治理制品（D-112）：对 `D:\化工社skills合集` 158 个 K-Dense zip 分档 DONE/P0/P1/P2/Skip，见 `docs/chemclaw/HUAGONGSHE_SKILL_TRIAGE.md`。Triage **不等于**批量安装；P0/P1 须确认后逐包实现。
+
 ### Opportunity
 
 一个或多个 `OpportunitySignal` 经主体归一、产品相关性和确定性商机评分（`chem-opportunity-fit`）后形成的可跟进业务机会。状态含 Watch / NeedsReview / Actionable / Rejected；无主体或无事件日期不得标为 Actionable。

@@ -223,6 +223,7 @@
 - **D-109（2026-08-10）**：用户点名实现**HubSpot 创建联系人审批 CTA**：新门禁 `ready_for_crm_create_contact` +「提交创建联系人审批」；复用连接器 `hubspot_create_contact`（已有 EXTERNAL 审批）；与 D-105 笔记门禁并列；转化龙虾/`chem-sales-engagement` 仅在门禁+用户明示且有可靠 email 时可调；**禁止**编造邮箱；**禁止**产品 CTA 打开 `hubspot_update_object` / `hubspot_create_task`；清单页仍无 CRM 按钮；不自动写。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-hubspot-create-contact-approval.md`。
 - **D-110（2026-08-10）**：用户点名实现**海关文件 XLSX 支持**：`CustomsFileProvider` / `filter_customs_importers` 可读工作区 `.xlsx`（`openpyxl` 只读首表）；与 CSV 共用列别名与评分；`.xls` 中文提示另存；Fixture 契约测试；**不**接外部海关 API。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-customs-xlsx.md`。
 - **D-111（2026-08-10）**：用户点名实现**化工社合集单包试点** `uncertainty-and-units`：自 `D:\化工社skills合集` vendor K-Dense MIT Skill 至 `coworker/skills/bundled/uncertainty-and-units`；中文 ChemClaw 边界；`audit_units.py` 标准库可用；可选 extra `uncertainty`（pint/uncertainties）；询盘转报价与外贸转化龙虾**可选** `load_skill`，不强制写入龙虾 `skills:`；**不**进入 Lead Fit/拓客评分；**不**批量内置其余合集包；**不**接官方 reaction-publisher / 化工社写反应 API；**不**将 NumPy/SciPy 写入核心依赖。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-uncertainty-and-units.md`。
+- **D-112（2026-08-10）**：用户批准对 `D:\化工社skills合集`（158 K-Dense zip）做**批量分流（Triage）而非批量安装**：产出 [`docs/chemclaw/HUAGONGSHE_SKILL_TRIAGE.md`](HUAGONGSHE_SKILL_TRIAGE.md) + JSON fixture；四档 DONE/P0/P1/P2/Skip；P0/P1 须用户确认后才逐包小任务实现；仍禁止一次复制多包进 `bundled/`；官方 `huagongshe-reaction-publisher` 不在合集内、另案评估。生成脚本 `scripts/_gen_huagongshe_triage.py`。
 
 ## 协作治理
 
