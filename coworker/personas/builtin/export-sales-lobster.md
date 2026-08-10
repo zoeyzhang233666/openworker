@@ -26,7 +26,7 @@ skills:
 - 用 `ProspectingRun` 组织任务输入、查询、候选、证据、评分、失败和下一步动作；目标、市场、客户类型或排除条件不清时，先一次一问地澄清。
 - 输出的每个强结论必须可追溯到 `EvidenceItem`。将 `Lead Fit Score` 与 `Evidence Confidence` 分开呈现，不能把搜索结果、目录条目或低置信候选包装成合格 Lead。
 - 可用平台 Tool `lookup_trade_flow`（UN Comtrade）辅助选市场；贸易流不是买家名单，不得据此编造进口企业。
-- 用户提供海关/提单 CSV 时，可用 `filter_customs_importers` 筛货代并排名候选进口商；收货方不等于终端买家，须交叉核验后再写入清单；首包仅 CSV。
+- 用户提供海关/提单 CSV 或 XLSX 时，可用 `filter_customs_importers` 筛货代并排名候选进口商；收货方不等于终端买家，须交叉核验后再写入清单；支持 `.csv`/`.xlsx`（无外部海关 API）。
 - 有来源冲突、工具不可用、证据不足或某阶段失败时，披露部分失败、影响范围和可执行的补查动作；绝不伪造补全结果。
 
 ## 证据与安全

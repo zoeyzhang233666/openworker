@@ -1,6 +1,6 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）已实现**；Close/买联系人/化工社批量/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）已实现**；Close/买联系人/化工社批量/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
 
 
 
@@ -320,7 +320,9 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 **（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow`（`comtrade:default` 订阅密钥）；国家/HS 汇总；**禁止**当买家名单。
 
-**（2026-08-10 D-108）已交付海关企业级文件首包**：平台 Tool `filter_customs_importers`（工作区 CSV）；货代过滤 + 进口商评分；收货方≠终端买家；**尚未** XLSX / 外部海关 API。
+**（2026-08-10 D-108）已交付海关企业级文件首包**：平台 Tool `filter_customs_importers`（工作区 CSV）；货代过滤 + 进口商评分；收货方≠终端买家。
+
+**（2026-08-10 D-110）已交付海关 XLSX**：同 Tool 可读 `.xlsx`（`openpyxl` 首表）；`.xls` 请另存；**尚未**外部海关 API。
 
 化工社反应数据不参与客户搜索和 Lead 评分主流程，只能作为特殊产品的化学证据补充。
 
@@ -614,7 +616,7 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 **（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow` → 国家/HS `TradeFlow` 汇总。
 
-**（2026-08-10 D-108）已交付海关企业级文件首包**：平台 Tool `filter_customs_importers` → 候选进口商评分行（CSV）；**尚未** XLSX / 外部海关 API。
+**（2026-08-10 D-108 / D-110）已交付海关企业级文件首包**：平台 Tool `filter_customs_importers` → 候选进口商评分行（CSV/XLSX）；**尚未**外部海关 API。
 
 ### 17.7 阶段 6：可选科研增强
 
@@ -622,6 +624,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-109（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov 与海关 CSV 筛选）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-110（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov 与海关 CSV/XLSX 筛选）。
 
-尚未自动批准：Close/买联系人、化工社批量内置、CRM 字段更新/任务创建 CTA、海关 XLSX/外部 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：Close/买联系人、化工社批量内置、CRM 字段更新/任务创建 CTA、海关外部 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

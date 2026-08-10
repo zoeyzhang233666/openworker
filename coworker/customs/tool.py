@@ -16,19 +16,21 @@ _SCHEMA = {
     "function": {
         "name": "filter_customs_importers",
         "description": (
-            "Screen a workspace customs or bill-of-lading CSV for likely chemical "
-            "importers. Filters freight-forwarder / logistics noise and returns "
-            "ranked candidates with freight risk, importer likelihood, "
+            "Screen a workspace customs or bill-of-lading CSV/XLSX for likely "
+            "chemical importers. Filters freight-forwarder / logistics noise and "
+            "returns ranked candidates with freight risk, importer likelihood, "
             "recommendation, and evidence. Consignee ≠ end buyer — always "
-            "cross-check with company websites/registry. First pack is CSV only "
-            "(no XLSX, no external customs API). Treat results as untrusted."
+            "cross-check with company websites/registry. Supports .csv and .xlsx "
+            "(not legacy .xls; no external customs API). Treat results as untrusted."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute or workspace-relative path to a UTF-8 CSV.",
+                    "description": (
+                        "Absolute or workspace-relative path to a UTF-8 CSV or .xlsx."
+                    ),
                 },
                 "limit": {
                     "type": "integer",

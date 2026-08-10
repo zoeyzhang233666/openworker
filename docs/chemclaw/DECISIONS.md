@@ -221,6 +221,7 @@
 - **D-107（2026-08-10）**：用户点名实现**化工多平台内容重构 M2**：`chem-hook-cta-pack`（按需 load，不插入四核心强制流水线）；12 条合成回归语料 + `REGRESSION_CORPUS.md` + pytest；skills 只读 root 集成测已入库（随 D-104 补丁）；默认仍为 `cowork`；**不等于**批准 M3（managed rules / 词表热升级 / 安装包内 `load_skill` 验收）。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md`。
 - **D-108（2026-08-10）**：用户点名实现**海关企业级文件 Provider 首包**：平台 `coworker/customs/`（`CustomsFileProvider` + Tool `filter_customs_importers`）；工作区 UTF-8 CSV；货代噪声过滤 + 进口商启发式评分；结果含「收货方≠终端买家」警告；Fixture 契约测试；挂外贸拓客龙虾 / `chem-export-prospecting` / `chem-buyer-discovery`；**不**接 XLSX/外部海关 API；**不**把候选直接标为 Qualified Lead；不等于批准买联系人/CRM 扩展。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-customs-enterprise-file-provider.md`。
 - **D-109（2026-08-10）**：用户点名实现**HubSpot 创建联系人审批 CTA**：新门禁 `ready_for_crm_create_contact` +「提交创建联系人审批」；复用连接器 `hubspot_create_contact`（已有 EXTERNAL 审批）；与 D-105 笔记门禁并列；转化龙虾/`chem-sales-engagement` 仅在门禁+用户明示且有可靠 email 时可调；**禁止**编造邮箱；**禁止**产品 CTA 打开 `hubspot_update_object` / `hubspot_create_task`；清单页仍无 CRM 按钮；不自动写。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-hubspot-create-contact-approval.md`。
+- **D-110（2026-08-10）**：用户点名实现**海关文件 XLSX 支持**：`CustomsFileProvider` / `filter_customs_importers` 可读工作区 `.xlsx`（`openpyxl` 只读首表）；与 CSV 共用列别名与评分；`.xls` 中文提示另存；Fixture 契约测试；**不**接外部海关 API。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-customs-xlsx.md`。
 
 ## 协作治理
 

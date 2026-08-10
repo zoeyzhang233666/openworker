@@ -44,18 +44,21 @@ def test_export_documents_filter_customs_importers():
     assert "终端买家" in text or "收货方" in text
     assert "Comtrade" in text or "lookup_trade_flow" in text
     assert "不在本 Skill 内嵌" in text or "平台 Tool" in text
+    assert "xlsx" in text.lower() or "XLSX" in text
 
 
 def test_buyer_discovery_mentions_customs_file_tool():
     skill = _parse_skill(BUYER)
     assert "filter_customs_importers" in skill.instructions
     assert "货代" in skill.instructions or "终端买家" in skill.instructions
+    assert "xlsx" in skill.instructions.lower() or "XLSX" in skill.instructions
 
 
 def test_export_sales_lobster_mentions_customs_tool():
     text = PERSONA.read_text(encoding="utf-8")
     assert "filter_customs_importers" in text
     assert "海关" in text or "提单" in text
+    assert "xlsx" in text.lower() or "XLSX" in text
 
 
 def test_tool_registered_on_engine() -> None:

@@ -7,7 +7,7 @@
 - 标准库 CSV；列名别名归一；关键词 + 角色/HS 集中度启发式评分
 - Fixture 契约测试；挂外贸拓客 / 买家发现文档接线（不嵌客户端）
 
-**Status (2026-08-10):** 已完成（D-108）。首包仅 CSV；XLSX / 外部海关 API 属后续。
+**Status (2026-08-10):** 已完成（D-108）。XLSX 见 **D-110**；外部海关 API 仍属后续。
 
 ## Tasks
 
@@ -16,8 +16,9 @@
 - [x] 缺文件/缺公司列中文错误；结果含非终端买家警告
 - [x] Skill/龙虾文档接线 + wire 单测
 - [x] D-108 / README / DOMAIN / GATE / 规格
+- [x] XLSX 读取（D-110）
 
 ## Out of Scope
 
-- XLSX、外部海关/提单 API、买联系人、自动 CRM、化工社批量
+- 外部海关/提单 API、买联系人、自动 CRM、化工社批量
 - 将候选直接标为 Actionable Opportunity / Qualified Lead

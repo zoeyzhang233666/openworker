@@ -204,7 +204,7 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 ### 海关企业级筛选（`filter_customs_importers`）
 
-平台只读 Tool：读取工作区海关/提单 **CSV**，筛货代/物流噪声并对候选进口商评分（`recommendation`、货代风险、进口商可能性、证据摘要）。**收货方/进口商不等于终端买家**；须与官网/主体交叉核验后再写入 Lead。与 Comtrade 用途不同；首包无外部海关 API、无 XLSX。
+平台只读 Tool：读取工作区海关/提单 **CSV 或 XLSX**，筛货代/物流噪声并对候选进口商评分（`recommendation`、货代风险、进口商可能性、证据摘要）。**收货方/进口商不等于终端买家**；须与官网/主体交叉核验后再写入 Lead。与 Comtrade 用途不同；无外部海关 API；旧版 `.xls` 请另存为 `.xlsx`/CSV。
 
 ### Opportunity
 

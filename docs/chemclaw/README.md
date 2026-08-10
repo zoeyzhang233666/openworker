@@ -4,7 +4,7 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
-- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-109）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM.gov；Comtrade；海关 CSV 筛选；询盘转报价；客户清单首包+进阶 UX；SMTP 发送审批；HubSpot CRM **笔记 + 创建联系人**审批 CTA。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用；清单页无发送/CRM 按钮；草稿 ≠ 发送；不自动写 CRM。**本机销售环点检（2026-08-09）用户确认通过**。
+- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-110）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM.gov；Comtrade；海关 **CSV/XLSX** 筛选；询盘转报价；客户清单首包+进阶 UX；SMTP 发送审批；HubSpot CRM **笔记 + 创建联系人**审批 CTA。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用；清单页无发送/CRM 按钮；草稿 ≠ 发送；不自动写 CRM。**本机销售环点检（2026-08-09）用户确认通过**。
 - **化工多平台内容重构（2026-08-10，D-104 / D-107）**：选用 Plan B；**M1+M2 已落地**：`platform-rewrite-lobster` + 四核心 Skill + **`chem-hook-cta-pack`（按需）**、确定性扫描、合成夹具、**12 条回归语料**、空态三卡；knowledge 会话只读挂载 `skills`；默认仍为 `cowork`，新 Agent 默认禁用；不自动发帖。**M3**（词表热升级 / 安装包验收）须点名且确认打安装包。见 [platform-rewrite/README.md](platform-rewrite/README.md)、[HANDOFF_PLATFORM_REWRITE.md](HANDOFF_PLATFORM_REWRITE.md)、[计划](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
@@ -141,12 +141,12 @@
 1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
-4. 销售主线含 D-105/D-109 HubSpot、D-106 SAM、D-108 海关 CSV 已收口；内容重构 M1+M2（D-104/D-107）已落地。**下一小任务（须点名）**：内容重构 **M3**（须确认打安装包）；化工社单包；CRM 字段/任务 CTA；或海关 XLSX/外部 API。不批量内置化工社 Skills，不自动外发/写 CRM。
+4. 销售主线含 D-105/D-109 HubSpot、D-106 SAM、D-108/D-110 海关 CSV/XLSX 已收口；内容重构 M1+M2（D-104/D-107）已落地。**下一小任务（须点名）**：内容重构 **M3**（须确认打安装包）；化工社单包；CRM 字段/任务 CTA；或海关外部 API。不批量内置化工社 Skills，不自动外发/写 CRM。
 
 ## 文档索引
 
 - [完整产品设计](../superpowers/specs/2026-07-29-chemclaw-product-design.md)
-- [销售增长智能设计（D-086—D-109）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
+- [销售增长智能设计（D-086—D-110）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
 - [外贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-export-sales-builtin-pack.md)
 - [内贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-domestic-sales-builtin-pack.md)
 - [商机雷达内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-opportunity-radar-builtin-pack.md)
@@ -164,6 +164,7 @@
 - [SAM.gov TenderProvider（D-106）](../superpowers/plans/2026-08-10-chemclaw-sam-tender-provider.md)
 - [Comtrade TradeFlowProvider（D-103）](../superpowers/plans/2026-08-09-chemclaw-comtrade-provider.md)
 - [海关企业级文件 Provider（D-108）](../superpowers/plans/2026-08-10-chemclaw-customs-enterprise-file-provider.md)
+- [海关 XLSX 支持（D-110）](../superpowers/plans/2026-08-10-chemclaw-customs-xlsx.md)
 - [客户清单进阶 UX（D-102）](../superpowers/plans/2026-08-09-chemclaw-lead-list-advanced-ux.md)
 - [CRM/科研远期说明](../superpowers/plans/2026-08-09-chemclaw-crm-and-research-defer.md)
 - [化工多平台内容重构交接](HANDOFF_PLATFORM_REWRITE.md)

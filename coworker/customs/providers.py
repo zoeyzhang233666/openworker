@@ -1,7 +1,7 @@
 """Customs / bill-of-lading file provider — enterprise importer screening.
 
-Reads CSV from the user workspace. Filters freight-forwarder noise and scores
-likely importers. Consignee rows are trade clues, not proven end buyers.
+Reads CSV or XLSX from the user workspace. Filters freight-forwarder noise and
+scores likely importers. Consignee rows are trade clues, not proven end buyers.
 """
 
 from __future__ import annotations
@@ -142,6 +142,83 @@ def _parse_float(raw: str) -> Optional[float]:
         return None
 
 
+def _cell_str(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _load_csv_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        if not reader.fieldnames:
+            raise ValueError("CSV 无表头。至少需要公司列（如 consignee_name / importer / buyer）。")
+        headers = [str(h) for h in reader.fieldnames]
+        rows: list[dict[str, str]] = []
+        for raw in reader:
+            rows.append({k: ("" if v is None else str(v)) for k, v in raw.items()})
+        return headers, rows
+
+
+def _load_xlsx_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    try:
+        from openpyxl import load_workbook
+    except ImportError:
+        raise RuntimeError(
+            "未安装 openpyxl，无法读取 XLSX。请升级/重装 ChemClaw，或将文件另存为 UTF-8 CSV。"
+        ) from None
+    try:
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:  # noqa: BLE001 — surface as Chinese IO error
+        raise OSError(f"无法打开 XLSX：{exc}") from exc
+    try:
+        ws = wb.worksheets[0] if wb.worksheets else None
+        if ws is None:
+            raise ValueError("XLSX 无工作表。")
+        row_iter = ws.iter_rows(values_only=True)
+        try:
+            header_cells = next(row_iter)
+        except StopIteration:
+            raise ValueError(
+                "XLSX 无表头。至少需要公司列（如 consignee_name / importer / buyer）。"
+            ) from None
+        headers = [_cell_str(h) for h in header_cells]
+        if not any(headers):
+            raise ValueError(
+                "XLSX 无表头。至少需要公司列（如 consignee_name / importer / buyer）。"
+            )
+        # Deduplicate empty trailing headers
+        while headers and not headers[-1]:
+            headers.pop()
+        rows: list[dict[str, str]] = []
+        for cells in row_iter:
+            values = [_cell_str(c) for c in cells]
+            if not any(values):
+                continue
+            row = {
+                headers[i]: (values[i] if i < len(values) else "")
+                for i in range(len(headers))
+                if headers[i]
+            }
+            rows.append(row)
+        return headers, rows
+    finally:
+        wb.close()
+
+
+def _load_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".txt"}:
+        return _load_csv_rows(path)
+    if suffix == ".xlsx":
+        return _load_xlsx_rows(path)
+    if suffix == ".xls":
+        raise ValueError("暂不支持旧版 .xls。请另存为 .xlsx 或 UTF-8 CSV 后再试。")
+    raise ValueError("仅支持 CSV（.csv）或 Excel（.xlsx）。外部海关 API 尚未接入。")
+
+
 class CustomsFileProvider:
     """Screen importers from a workspace customs/BOL CSV."""
 
@@ -173,41 +250,41 @@ class CustomsFileProvider:
                 status="error",
                 source=source,
                 warnings=warnings,
-                error="未提供海关/提单 CSV 路径。请将文件放入工作区后传入 path。",
+                error="未提供海关/提单文件路径。请将 CSV 或 XLSX 放入工作区后传入 path。",
             )
         if not file_path.is_file():
             return CustomsFilterResult(
                 status="error",
                 source=source,
                 warnings=warnings,
-                error=f"找不到海关数据文件：{file_path}。请确认路径在已挂载工作区内且为 CSV。",
-            )
-        if file_path.suffix.lower() not in {".csv", ".txt"}:
-            return CustomsFilterResult(
-                status="error",
-                source=source,
-                warnings=warnings,
-                error="首包仅支持 CSV（.csv）。XLSX 与外部海关 API 尚未接入。",
+                error=(
+                    f"找不到海关数据文件：{file_path}。"
+                    "请确认路径在已挂载工作区内，且为 CSV 或 XLSX。"
+                ),
             )
 
         try:
-            with file_path.open(encoding="utf-8-sig", newline="") as fh:
-                reader = csv.DictReader(fh)
-                if not reader.fieldnames:
-                    return CustomsFilterResult(
-                        status="error",
-                        source=source,
-                        warnings=warnings,
-                        error="CSV 无表头。至少需要公司列（如 consignee_name / importer / buyer）。",
-                    )
-                headers = list(reader.fieldnames)
-                rows = list(reader)
+            headers, rows = _load_rows(file_path)
         except UnicodeDecodeError:
             return CustomsFilterResult(
                 status="error",
                 source=source,
                 warnings=warnings,
                 error="无法以 UTF-8 读取 CSV。请另存为 UTF-8 后再试。",
+            )
+        except RuntimeError as exc:
+            return CustomsFilterResult(
+                status="error",
+                source=source,
+                warnings=warnings,
+                error=str(exc),
+            )
+        except ValueError as exc:
+            return CustomsFilterResult(
+                status="error",
+                source=source,
+                warnings=warnings,
+                error=str(exc),
             )
         except OSError as exc:
             return CustomsFilterResult(

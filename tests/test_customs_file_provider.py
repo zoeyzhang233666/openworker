@@ -76,3 +76,33 @@ def test_tool_wrapper_returns_dict():
     assert isinstance(out["candidates"], list)
     assert len(out["candidates"]) <= 5
     assert out["warnings"]
+
+
+def test_xlsx_matches_csv_recommendations():
+    p = CustomsFileProvider()
+    csv_result = p.filter_importers(path=str(FIXTURES / "sample_shipments.csv"))
+    xlsx_result = p.filter_importers(path=str(FIXTURES / "sample_shipments.xlsx"))
+    assert xlsx_result.status == "ok"
+    assert csv_result.status == "ok"
+    csv_by = {c["company_name"]: c["recommendation"] for c in csv_result.candidates}
+    xlsx_by = {c["company_name"]: c["recommendation"] for c in xlsx_result.candidates}
+    assert xlsx_by["Acme Specialty Chemicals Inc"] == "likely_real_importer"
+    assert csv_by["Acme Specialty Chemicals Inc"] == xlsx_by["Acme Specialty Chemicals Inc"]
+    assert xlsx_by["Global Freight Forwarders LLC"] != "likely_real_importer"
+    assert any("终端买家" in w or "货代" in w for w in xlsx_result.warnings)
+
+
+def test_xlsx_missing_company_column_chinese_error():
+    p = CustomsFileProvider()
+    result = p.filter_importers(path=str(FIXTURES / "missing_company.xlsx"))
+    assert result.status == "error"
+    assert "公司列" in (result.error or "") or "consignee" in (result.error or "").lower()
+
+
+def test_xls_extension_chinese_error(tmp_path: Path):
+    fake = tmp_path / "legacy.xls"
+    fake.write_bytes(b"not-a-real-xls")
+    p = CustomsFileProvider()
+    result = p.filter_importers(path=str(fake))
+    assert result.status == "error"
+    assert ".xls" in (result.error or "") or "xlsx" in (result.error or "").lower()
