@@ -5,7 +5,7 @@
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
 - 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-112）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM.gov；Comtrade；海关 **CSV/XLSX** 筛选；询盘转报价；客户清单首包+进阶 UX；SMTP 发送审批；HubSpot CRM **笔记 + 创建联系人**审批 CTA；**化工社合集单包试点** `uncertainty-and-units`；**合集 158 包 Triage 表**（D-112，待确认 P0/P1 后再逐包落地）。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用；清单页无发送/CRM 按钮；草稿 ≠ 发送；不自动写 CRM。**本机销售环点检（2026-08-09）用户确认通过**。
-- **化工多平台内容重构（2026-08-10，D-104 / D-107）**：选用 Plan B；**M1+M2 已落地**：`platform-rewrite-lobster` + 四核心 Skill + **`chem-hook-cta-pack`（按需）**、确定性扫描、合成夹具、**12 条回归语料**、空态三卡；knowledge 会话只读挂载 `skills`；默认仍为 `cowork`，新 Agent 默认禁用；不自动发帖。**M3**（词表热升级 / 安装包验收）须点名且确认打安装包。见 [platform-rewrite/README.md](platform-rewrite/README.md)、[HANDOFF_PLATFORM_REWRITE.md](HANDOFF_PLATFORM_REWRITE.md)、[计划](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)。
+- **化工多平台内容重构（2026-08-10，D-104 / D-107）**：选用 Plan B；**M1+M2 已落地并收口**：`platform-rewrite-lobster` + 四核心 Skill + **`chem-hook-cta-pack`（按需）**、确定性扫描、合成夹具、**12 条回归语料**、空态三卡；knowledge 会话只读挂载 `skills`；默认仍为 `cowork`，新 Agent 默认禁用；不自动发帖。同日核对工作区假 dirty 已清；定向 pytest **26 passed**。**M3**（词表热升级 / 安装包验收）须点名且确认打安装包。见 [platform-rewrite/README.md](platform-rewrite/README.md)、[HANDOFF_PLATFORM_REWRITE.md](HANDOFF_PLATFORM_REWRITE.md)、[计划](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
 - 当前分支：`chemclaw-clean`（与本机 worktree 目录同名；GitHub 上选此分支即可，无需并入 `main`）
@@ -141,7 +141,7 @@
 1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
-4. 销售主线含 D-105/D-109 HubSpot、D-106 SAM、D-108/D-110 海关 CSV/XLSX 已收口；内容重构 M1+M2（D-104/D-107）已落地；**D-111** 合集单包已试点；**D-112 Triage 表**已落盘（待确认 P0/P1）。**下一小任务（须点名）**：确认 triage 后装 P0（默认 `scientific-critical-thinking`）；或内容重构 **M3**；CRM 字段/任务 CTA；海关外部 API。不批量内置化工社 Skills，不自动外发/写 CRM。
+4. 销售主线含 D-105/D-109 HubSpot、D-106 SAM、D-108/D-110 海关 CSV/XLSX 已收口；内容重构 M1+M2（D-104/D-107）已落地；**D-111** 合集单包已试点；**D-112 Triage 表**已落盘（待确认 P0/P1）。**用户侧**请按 [GATE_VERIFY_2026-08-09.md](GATE_VERIFY_2026-08-09.md)「操作清单」补勾 D-105/106/108/109/110。**点检通过后默认下一刀顺序（须点名）**：① CRM 字段/任务 CTA → ② 海关外部 API（确有在线需求）→ ③ 合集 P0 `scientific-critical-thinking` → ④ 内容重构 M3。不批量内置化工社 Skills，不自动外发/写 CRM。
 
 ## 文档索引
 

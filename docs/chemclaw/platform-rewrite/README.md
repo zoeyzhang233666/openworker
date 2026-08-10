@@ -25,6 +25,12 @@
 - knowledge 会话会自动把已安装 `skills` 目录挂为**只读 root**，以便 `load_skill` 后的 `read_file` 能读 references/schemas（不放宽全盘权限）  
 - 词表升级与安装包验收属 M3（见实施计划）
 
+## 收口记录（M2）
+
+- **2026-08-10**：工作区曾显示 platform-rewrite 相关路径「已修改」，核对 blob 与 `HEAD` 内容一致（Windows 换行/stat 假 dirty），已 `git restore` 清标记。
+- 定向回归：`pytest tests/test_platform_rewrite_skills.py tests/test_platform_rewrite_lobster.py tests/test_platform_rewrite_corpus.py` → **26 passed**（`--basetemp` 指向 `D:\OpenWorker\.chemclaw-dev\pytest-basetemp\...`）。
+- **未启动 M3**；下一刀须点名且确认打安装包。
+
 ## 相关文件
 
 - Persona：`coworker/personas/builtin/platform-rewrite-lobster.md`

@@ -3,7 +3,7 @@
 > **选用结论（2026-08-10）**：相对「冯冯形五 Skill 洗稿草图」，采用 **Plan B「内容重构」规格**。  
 > **本文件** = Plan B 正文收紧为可粘贴指令 + **M1 硬分期**（EXE / 全量语料 / 词表升级框架 **不是** 第一期 blocker）。  
 > **正式实施计划**：[../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)  
-> **状态**：**M1+M2 已落地（D-104 / D-107）**。粘贴块仍可用于新对话对齐约束。M3 待点名且确认打安装包。
+> **状态**：**M1+M2 已落地并收口（D-104 / D-107）**；2026-08-10 假 dirty 已清、定向 pytest 26 passed。粘贴块仍可用于新对话对齐约束。M3 待点名且确认打安装包。
 
 ## 如何使用
 

@@ -1,0 +1,44 @@
+{
+  "list_id": "smoke-lead-list-2026-08-09",
+  "title": "销售环点检示例清单",
+  "sku_summary": "苯甲酸钠（示例）",
+  "market_summary": "美国食品防腐剂买家（示例）",
+  "run_id": "smoke-run-001",
+  "stage": "ranking",
+  "budget": "5",
+  "leads": [
+    {
+      "company": "示例食品添加剂有限公司",
+      "customer_type": "终端买家",
+      "fit_score": 78,
+      "evidence_confidence": 62,
+      "match_reason": "官网产品页列出 sodium benzoate；应用与 ICP 食品防腐一致",
+      "key_evidence": "https://example.com/products/sodium-benzoate（示例 URL，点检用）",
+      "next_action": "补查统一社会信用代码 / LEI，确认采购角色",
+      "sales_status": "needs_review",
+      "notes": "点检导入用；可改标记后导出 CSV"
+    },
+    {
+      "company": "可联系示例贸易公司",
+      "customer_type": "分销商",
+      "fit_score": 71,
+      "evidence_confidence": 70,
+      "match_reason": "目录含食品级防腐剂 SKU；排除货代角色",
+      "key_evidence": "目录 PDF 第 3 页（示例）",
+      "next_action": "起草英文询盘（草稿≠发送）",
+      "sales_status": "contactable",
+      "notes": ""
+    },
+    {
+      "company": "已排除货代示例",
+      "customer_type": "货代",
+      "fit_score": 20,
+      "evidence_confidence": 80,
+      "match_reason": "物流/报关描述为主，非终端或专业分销",
+      "key_evidence": "About 页自称 freight forwarder",
+      "next_action": "保持排除",
+      "sales_status": "excluded",
+      "exclude_reason": "货代/物流，非目标买家"
+    }
+  ]
+}

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans.  
 > **规格来源：** Plan B「化工多平台内容重构」交接；相对 Plan A「洗稿草图」的选用结论见 [docs/chemclaw/HANDOFF_PLATFORM_REWRITE.md](../../chemclaw/HANDOFF_PLATFORM_REWRITE.md)。  
-> **Status (2026-08-10):** **M1 已落地（D-104）**；**M2 已落地（D-107）**。M3 待用户点名且确认打安装包。
+> **Status (2026-08-10):** **M1 已落地（D-104）**；**M2 已落地（D-107）**。同日 dirty 收口：platform-rewrite 路径与 HEAD 内容一致（假 dirty 已 restore）；定向 pytest **26 passed**。M3 待用户点名且确认打安装包。
 
 **Goal:** 交付可发现、默认可禁用的内置智能体「化工内容重构龙虾」（`platform-rewrite-lobster`）与四核心 bundled Skill，将化工/精细化工/贸易素材重构为小红书 / 抖音 / X 成稿，并保证事实不乱编、平台风格可区分、敏感表达可确定性扫描、门禁可回归。
 

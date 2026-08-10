@@ -46,6 +46,80 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 
 清单导入示例（D-102）：[`fixtures/smoke-lead-list.json`](fixtures/smoke-lead-list.json)
 
+海关点检样例（D-108 / D-110）：复制到当前对话工作区后使用（勿改仓库内原件也可直接指路径）：
+
+- CSV：`tests/fixtures/customs/sample_shipments.csv`
+- XLSX：`tests/fixtures/customs/sample_shipments.xlsx`
+- 缺列负例：`tests/fixtures/customs/missing_company.csv`（或 `.xlsx`）
+
+### 操作清单（D-105 / D-106 / D-108 / D-109 / D-110）
+
+> **给非技术用户**：下面按「点哪里、说什么、期望看到什么」写。未连接 HubSpot / 未配 SAM 密钥时，**期望是中文错误提示**，不要硬连真实写入。每做完一项，把上方勾选清单对应行打成 `[x]`，并在「点检结果记录」表加一行。
+
+#### A. 外贸转化 · CRM 笔记审批（D-105）
+
+1. 左侧「智能体」→ 找到「外贸转化龙虾」→ **启用**（默认是关的）。
+2. 新建对话，▾ 选中「外贸转化龙虾」。
+3. 在输入框粘贴并发送（制造门禁文案，不必真有客户）：
+
+```text
+请只输出一段简短中文跟进结论，并在文末单独一行写：recommended_action: ready_for_crm_write
+不要调用任何工具。
+```
+
+4. 回答结束后应出现按钮 **「提交 CRM 写入审批」**（无此按钮 = 失败）。
+5. 点该按钮 → 应注入一段「请提交 CRM 写入审批…」用户消息，Agent 尝试 `hubspot_log_note`。
+6. **未连接 HubSpot**：应出现**中文**说明并引导去「连接」配门户（不要英文堆栈）。
+7. 若已连接：应出**审批卡**；点拒绝 → 不得宣称已写入 CRM。
+8. 打开「客户清单」页：确认**没有**「发送邮件」/ CRM 写入按钮。
+
+#### B. 外贸转化 · 创建联系人审批（D-109）
+
+1. 仍在外贸转化龙虾对话（或新开一会话）。
+2. 发送：
+
+```text
+请只输出简短中文，并在文末写：recommended_action: ready_for_crm_create_contact
+假设已核验邮箱 buyer@example.com。不要调用工具。
+```
+
+3. 应出现 **「提交创建联系人审批」**（仅有 `ready_for_crm_write` 时不应单独冒出创建按钮）。
+4. 点击后注入创建意图；未连接 → 中文错误；已连接 → 审批卡，拒绝则不创建。
+5. 再确认客户清单页仍无 CRM 按钮。
+
+#### C. 商机雷达 · SAM（D-106，可选）
+
+1. 「智能体」启用「商机雷达龙虾」→ 新建对话选它。
+2. 发送：
+
+```text
+请调用 search_sam_opportunities，关键词用 sodium benzoate，limit 3。
+若未配置密钥，用中文说明即可，不要编造 noticeId。
+```
+
+3. **未配 `sam:default`**：中文提示缺密钥/未配置。
+4. **已配密钥**：结果 id 形如 `sam:<noticeId>`，带来源 URL；不得瞎编编号。
+
+#### D. 外贸拓客 · 海关 CSV（D-108）
+
+1. 「智能体」启用「外贸拓客龙虾」→ 新建对话选它。
+2. 把 `tests/fixtures/customs/sample_shipments.csv` 放进**本会话工作区**（或告诉 Agent 绝对路径）。
+3. 发送：
+
+```text
+请对工作区里的 sample_shipments.csv 调用 filter_customs_importers，limit 10。
+说明哪些像货代、哪些更像进口商；不要把候选直接标成 Qualified。
+```
+
+4. 期望：能筛出货代噪声；结果含「收货方≠终端买家」类警告；不把候选直接当 Qualified Lead。
+5. 再试缺列文件 `missing_company.csv`：应有**中文**缺列/不可用说明。
+
+#### E. 外贸拓客 · 海关 XLSX（D-110）
+
+1. 同上龙虾，对 `sample_shipments.xlsx` 再跑一遍 `filter_customs_importers`。
+2. 期望与 CSV 同类（评分行 + 非终端买家警告）。
+3. 若只有旧版 `.xls`：应提示另存为 xlsx/csv（中文）。
+
 ### 勾选清单
 
 - [x] 智能体页可见：外贸拓客 / 内贸拓客 / 商机雷达 / 外贸转化龙虾（默认关，可启用）
@@ -78,5 +152,8 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 | 2026-08-10 | 程序侧 | D-110 接线验收通过 | 海关 XLSX Fixture + provider 8 passed；用户侧 D-110 勾选待填 |
 | 2026-08-10 | 程序侧 | D-111 合集单包验收通过 | `uncertainty-and-units` vendor + wire：`tests/test_uncertainty_and_units_skill.py` 4 passed |
 | 2026-08-10 | 程序侧 | D-112 合集 Triage 落盘 | `HUAGONGSHE_SKILL_TRIAGE.md` + JSON；P0/P1 待用户确认 |
+| 2026-08-10 | 程序侧 | **点检操作清单 A–E 落盘**；工具复验 | `pytest` preflight+customs+sam **19 passed**；`npm` CRM CTA **4 passed**；用户侧勾选仍待按操作清单点完 |
 
-**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105—D-112 程序侧通过（含合集单包与 Triage 表），用户侧相关勾选待填。下一刀须点名（确认 triage 后装 P0、内容重构 M3、CRM 字段/任务、海关外部 API）；不顺手开化工社批量。
+**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105—D-112 程序侧通过（含合集单包与 Triage 表）。**2026-08-10**：已补「操作清单」A–E；程序侧复验含 `search_sam_opportunities` / `filter_customs_importers`（见上表）。**用户侧 D-105/106/108/109/110 勾选仍待你按操作清单点完后打钩。**
+
+点检通过后默认下一刀顺序（须再点名才实现）：**CRM 字段/任务 CTA** → **海关外部 API（确有在线数据需求时）** → **合集 P0 `scientific-critical-thinking`** → **内容重构 M3**。不顺手开化工社批量。

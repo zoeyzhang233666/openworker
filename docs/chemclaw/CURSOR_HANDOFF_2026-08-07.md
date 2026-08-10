@@ -1,5 +1,7 @@
 # ChemClaw → Cursor 接力说明（2026-08-07）
 
+> **过时（2026-08-10）**：本文「尚未完成：外贸拓客收口」及「未接 Provider」清单已被后续提交否定。外贸/内贸/商机/转化首包与多数 Provider（D-091—D-112）已落地；内容重构 M1+M2（D-104/D-107）已落地。请以 [`README.md`](README.md)、[`DECISIONS.md`](DECISIONS.md)、[`GATE_VERIFY_2026-08-09.md`](GATE_VERIFY_2026-08-09.md) 与 `AGENTS.md` 当前门禁为准。下文仅作历史交接，**不要**再按「先收口外贸五 Skill」整表重做。
+
 > 工作目录：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`  
 > 分支：`chemclaw-clean`  
 > 基线提交：`81b0b5c6e9c515594cd7664f334e76b7901fbac3`  
