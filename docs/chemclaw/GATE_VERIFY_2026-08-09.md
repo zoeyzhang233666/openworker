@@ -28,6 +28,7 @@
 | D-103 Comtrade `lookup_trade_flow` | `pytest` comtrade provider + skill wire **11 passed** |
 | **点检前总复验（D-091—D-103）** | `pytest tests/test_sales_loop_preflight.py` **2 passed**（2026-08-09） |
 | D-105 HubSpot CRM 笔记审批 | `pytest` hubspot portals + skill wire **12 passed**；`npm` requestCrmWriteApproval + Transcript/i18n/audit **49 passed** |
+| D-106 SAM.gov `search_sam_opportunities` | `pytest` sam tender provider + skill wire **11 passed**（2026-08-10） |
 
 ## 用户侧点检（需本机 UI）
 
@@ -56,6 +57,7 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 - [x] （可选 D-101）商机雷达可调用 `search_tenders`；结果带来源 URL，不伪造 TED 编号
 - [x] （可选 D-103）未配置 `comtrade:default` 时 `lookup_trade_flow` 中文提示；有密钥时返回汇总 + 非买家警告
 - [ ] （D-105）转化龙虾文案含 `ready_for_crm_write` 时有「提交 CRM 写入审批」；点后注入意图；`hubspot_log_note` 出现审批卡；拒绝不写入；未连接中文错误；清单页仍无 CRM 按钮
+- [ ] （可选 D-106）未配置 `sam:default` 时 `search_sam_opportunities` 中文提示；有密钥时返回 `sam:<noticeId>` + 来源 URL，不伪造 noticeId
 
 ### 点检结果记录
 
@@ -64,5 +66,6 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 | 2026-08-09 | 程序侧 | 总复验通过；dev 环境已重启 | `pytest tests/test_sales_loop_preflight.py` 2 passed；`/v1/health` ok |
 | 2026-08-09 | 用户 | **点检通过** | 用户口头确认「点检通过」；无失败项回报；销售环 UI 门禁关闭 |
 | 2026-08-10 | 程序侧 | D-105 接线验收通过 | HubSpot 中文错误 + CTA + Skill 接线；用户侧 D-105 勾选待填 |
+| 2026-08-10 | 程序侧 | D-106 接线验收通过 | SAM Fixture + 商机雷达接线 11 passed；用户侧 D-106 勾选待填 |
 
-**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105 程序侧通过，用户侧 HubSpot CTA 勾选待填。下一刀须点名（SAM、内容重构 M2、海关等）；不顺手开化工社批量。
+**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105/D-106 程序侧通过，用户侧 HubSpot CTA / SAM 勾选待填。下一刀须点名（内容重构 M2、海关企业级、化工社单包、CRM 扩展）；不顺手开化工社批量。

@@ -194,6 +194,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 平台只读 Tool：检索欧盟 TED 公开采购公告，返回 `signal_type=tender` 的 `OpportunitySignal` 行（`signal_id=ted:<publication-number>` + `source.url`）。不评分、不伪造公告号；空结果为 `empty`。
 
+### SAM.gov 招标检索（`search_sam_opportunities`）
+
+平台只读 Tool：检索美国 SAM.gov 联邦采购机会，返回 `signal_id=sam:<noticeId>` 的 `OpportunitySignal` 行。需 SecretStore `sam:default` 的 `api_key`；无 noticeId 的行跳过；不评分、不伪造编号。
+
 ### `TradeFlow` / Comtrade（`lookup_trade_flow`）
 
 国家/HS 层面的贸易流汇总（进口/出口金额与重量等），用于市场吸引力旁证。由平台 Tool `lookup_trade_flow`（UN Comtrade，`comtrade:default` 订阅密钥）返回；**不等于**企业买家名单，不得据此编造进口商。

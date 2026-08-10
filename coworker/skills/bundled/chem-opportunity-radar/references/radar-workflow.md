@@ -12,6 +12,11 @@
 - 返回行已是 `signal_type=tender` 与 `signal_id=ted:<publication-number>`；`source.url` 必须保留。
 - 不得改写或捏造 publication-number；empty/error 时进入补证或空清单 `complete`，不得假装有标。
 
+## SAM.gov 招标信号（平台 Tool）
+
+- 调用 `search_sam_opportunities`（query / 可选 posted_from、posted_to、naics）；需配置 `sam:default` 的 `api_key`。
+- 返回行 `signal_id=sam:<noticeId>`；无 noticeId 的行不得编造；empty/error/未配置时如实披露。
+
 ## 归一与相关
 
 主体归一与冲突规则复用 `chem-company-qualification` 精神；SKU/应用相关复用 `chem-product-intelligence`。集团/工厂/品牌保留关系。

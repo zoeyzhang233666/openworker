@@ -40,7 +40,7 @@ from .chem import make_lookup_chemical_identity_tool
 from .entity import make_lookup_legal_entity_tool
 from .leads import make_format_lead_list_tool
 from .quote import make_calculate_quote_tool
-from .tender import make_search_tenders_tool
+from .tender import make_search_sam_opportunities_tool, make_search_tenders_tool
 from .trade import make_lookup_trade_flow_tool
 from .web import make_web_fetch_tool, make_web_search_tool
 from .workspace_trust import WorkspaceTrustStore
@@ -320,6 +320,8 @@ def build_engine(
     registry.register(make_format_lead_list_tool())
     # TED public procurement search → OpportunitySignal-shaped rows (read-only).
     registry.register(make_search_tenders_tool())
+    # SAM.gov federal opportunities (SecretStore sam:default; read-only).
+    registry.register(make_search_sam_opportunities_tool(secrets=secrets))
     # UN Comtrade country/HS aggregates (SecretStore comtrade:default; not buyer lists).
     registry.register(make_lookup_trade_flow_tool(secrets=secrets))
     # ask_user: the universal human-in-the-loop Q&A primitive (every agent; engine-intercepted).
