@@ -22,6 +22,7 @@ SKILL_IDS = (
     "chem-platform-rewrite",
     "chem-content-policy",
     "chem-content-quality-check",
+    "chem-hook-cta-pack",
 )
 
 FIXTURES = ROOT / "docs" / "chemclaw" / "platform-rewrite" / "fixtures"
@@ -175,6 +176,44 @@ def test_platform_references_exist() -> None:
         path = base / name
         assert path.is_file()
         assert len(path.read_text(encoding="utf-8").strip()) > 40
+
+
+def test_hook_cta_pack_assets_and_schema() -> None:
+    skill_dir = BUNDLED / "chem-hook-cta-pack"
+    assert (skill_dir / "SKILL.md").is_file()
+    skill = _parse_skill(skill_dir / "SKILL.md")
+    assert skill.name == "chem-hook-cta-pack"
+    assert "钩子" in skill.description or "CTA" in skill.description or "标题" in skill.description
+    for name in (
+        "hooks-xiaohongshu.md",
+        "hooks-douyin.md",
+        "hooks-x.md",
+        "cta-patterns.md",
+        "anti-patterns.md",
+    ):
+        path = skill_dir / "references" / name
+        assert path.is_file(), name
+        text = path.read_text(encoding="utf-8")
+        assert len(text.strip()) > 40
+        if name == "anti-patterns.md":
+            assert "不得新增" in text or "禁止" in text
+
+    schema = json.loads(
+        (skill_dir / "schemas" / "hook-cta-pack.schema.json").read_text(encoding="utf-8")
+    )
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    sample = {
+        "schema_version": "chemclaw.hook-cta-pack.v1",
+        "target_platform": "xiaohongshu",
+        "title_candidates": ["工业级甲酯防腐评估笔记"],
+        "cover_text_candidates": ["99.5% · 25kg/袋"],
+        "hook_candidates": ["配方评估前先对齐规格"],
+        "cta_candidates": ["评论区留言索取规格资料"],
+        "facts_unchanged": True,
+        "notes": "未新增 CAS/认证/案例",
+    }
+    validator.validate(sample)
 
 
 def test_regression_fixtures_present() -> None:

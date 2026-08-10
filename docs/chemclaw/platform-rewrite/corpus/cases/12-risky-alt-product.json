@@ -1,0 +1,58 @@
+{
+  "id": "12-risky-alt-product",
+  "platform": "douyin",
+  "source": "苯甲酸钠，CAS 532-32-1，纯度 99.0%，25kg/袋。国家级第一，包过检测，绝对安全。",
+  "brief": {
+    "schema_version": "chemclaw.rewrite-brief.v1",
+    "target_platform": "douyin",
+    "content_type": "short_video",
+    "language": "zh-CN",
+    "audience": "采购与配方工程师",
+    "communication_goal": "介绍产品规格与常见应用，邀请索取资料",
+    "immutable_facts": {
+      "product_name": "苯甲酸钠",
+      "cas": "532-32-1",
+      "grade": "工业级",
+      "purity": "99.0%",
+      "packaging": "25kg/袋",
+      "application_facts": [
+        "用于防腐体系评估场景（用户原文）"
+      ],
+      "numeric_claims": [
+        "99.0%",
+        "25kg/袋"
+      ],
+      "certifications": []
+    },
+    "claims_allowed": [
+      "介绍规格与包装",
+      "说明可提供资料"
+    ],
+    "claims_needing_evidence": [],
+    "prohibited_inferences": [
+      "编造认证",
+      "编造客户案例",
+      "宣称绝对安全"
+    ],
+    "unknown_fields": [
+      "认证",
+      "检测报告",
+      "价格",
+      "交期"
+    ],
+    "must_keep": [
+      "苯甲酸钠",
+      "532-32-1",
+      "99.0%",
+      "25kg/袋"
+    ],
+    "must_remove": [],
+    "user_forbidden_terms": []
+  },
+  "output": "苯甲酸钠，CAS 532-32-1，纯度 99.0%，25kg/袋。国家级第一，包过检测，绝对安全。",
+  "required_sections": [],
+  "expect": {
+    "scan_blocked": true,
+    "must_not_contain": []
+  }
+}

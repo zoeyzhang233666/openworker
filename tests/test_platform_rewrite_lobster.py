@@ -18,6 +18,14 @@ SKILLS = [
     "chem-platform-rewrite",
     "chem-content-policy",
     "chem-content-quality-check",
+    "chem-hook-cta-pack",
+]
+
+CORE_PIPELINE = [
+    "chem-rewrite-brief",
+    "chem-platform-rewrite",
+    "chem-content-policy",
+    "chem-content-quality-check",
 ]
 
 
@@ -52,6 +60,8 @@ def test_platform_rewrite_lobster_manifest_contract():
         "chem-platform-rewrite",
         "chem-content-policy",
         "chem-content-quality-check",
+        "chem-hook-cta-pack",
+        "按需",
         "ready_for_publish_review",
         "不得主动联网",
         "自动发帖",
@@ -59,6 +69,15 @@ def test_platform_rewrite_lobster_manifest_contract():
         "【口播稿】",
     ):
         assert required in prompt
+    # Hook pack is listed but must not be forced into the four-step core pipeline wording.
+    core_line = next(
+        (line for line in prompt.splitlines() if "chem-rewrite-brief" in line and "→" in line),
+        "",
+    )
+    assert core_line
+    assert "chem-hook-cta-pack" not in core_line
+    for name in CORE_PIPELINE:
+        assert name in core_line
 
 
 def test_platform_rewrite_lobster_discovered_but_not_default(tmp_path):

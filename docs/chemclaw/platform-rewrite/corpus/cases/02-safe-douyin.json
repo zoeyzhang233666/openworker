@@ -1,0 +1,67 @@
+{
+  "id": "02-safe-douyin",
+  "platform": "douyin",
+  "source": "对羟基苯甲酸甲酯，CAS 99-76-3，工业级，纯度 99.5%，包装 25kg/袋。可用于防腐体系相关评估场景。",
+  "brief": {
+    "schema_version": "chemclaw.rewrite-brief.v1",
+    "target_platform": "douyin",
+    "content_type": "short_video",
+    "language": "zh-CN",
+    "audience": "采购与配方工程师",
+    "communication_goal": "介绍产品规格与常见应用，邀请索取资料",
+    "immutable_facts": {
+      "product_name": "对羟基苯甲酸甲酯",
+      "cas": "99-76-3",
+      "grade": "工业级",
+      "purity": "99.5%",
+      "packaging": "25kg/袋",
+      "application_facts": [
+        "用于防腐体系评估场景（用户原文）"
+      ],
+      "numeric_claims": [
+        "99.5%",
+        "25kg/袋"
+      ],
+      "certifications": []
+    },
+    "claims_allowed": [
+      "介绍规格与包装",
+      "说明可提供资料"
+    ],
+    "claims_needing_evidence": [],
+    "prohibited_inferences": [
+      "编造认证",
+      "编造客户案例",
+      "宣称绝对安全"
+    ],
+    "unknown_fields": [
+      "认证",
+      "检测报告",
+      "价格",
+      "交期"
+    ],
+    "must_keep": [
+      "对羟基苯甲酸甲酯",
+      "99-76-3",
+      "99.5%",
+      "25kg/袋"
+    ],
+    "must_remove": [],
+    "user_forbidden_terms": []
+  },
+  "output": "【口播稿】\n今天只讲三个数：对羟基苯甲酸甲酯，CAS 99-76-3，纯度 99.5%，包装 25kg/袋。\n如果你在做防腐体系评估，先把规格对上；认证和检测报告原文没有，我就不瞎编。\n需要规格书，把工况发我。\n【画面提示】白底特写包装袋标识；字幕打出 CAS 与纯度；切到资料目录示意（无伪造报告特写）。\n【话题】#精细化工 #原料科普\n【改写说明】口语短句；事实与原文一致；无安全绝对化用语。",
+  "required_sections": [
+    "口播稿",
+    "画面提示",
+    "话题",
+    "改写说明"
+  ],
+  "expect": {
+    "scan_blocked": false,
+    "gate_verdict": "pass",
+    "must_not_contain": [
+      "包过",
+      "100%无风险"
+    ]
+  }
+}

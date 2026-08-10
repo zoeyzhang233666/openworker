@@ -1,0 +1,69 @@
+{
+  "id": "01-safe-xhs",
+  "platform": "xiaohongshu",
+  "source": "对羟基苯甲酸甲酯，CAS 99-76-3，工业级，纯度 99.5%，包装 25kg/袋。可用于防腐体系相关评估场景。如需规格书可进一步沟通。",
+  "brief": {
+    "schema_version": "chemclaw.rewrite-brief.v1",
+    "target_platform": "xiaohongshu",
+    "content_type": "image_text",
+    "language": "zh-CN",
+    "audience": "采购与配方工程师",
+    "communication_goal": "介绍产品规格与常见应用，邀请索取资料",
+    "immutable_facts": {
+      "product_name": "对羟基苯甲酸甲酯",
+      "cas": "99-76-3",
+      "grade": "工业级",
+      "purity": "99.5%",
+      "packaging": "25kg/袋",
+      "application_facts": [
+        "用于防腐体系评估场景（用户原文）"
+      ],
+      "numeric_claims": [
+        "99.5%",
+        "25kg/袋"
+      ],
+      "certifications": []
+    },
+    "claims_allowed": [
+      "介绍规格与包装",
+      "说明可提供资料"
+    ],
+    "claims_needing_evidence": [],
+    "prohibited_inferences": [
+      "编造认证",
+      "编造客户案例",
+      "宣称绝对安全"
+    ],
+    "unknown_fields": [
+      "认证",
+      "检测报告",
+      "价格",
+      "交期"
+    ],
+    "must_keep": [
+      "对羟基苯甲酸甲酯",
+      "99-76-3",
+      "99.5%",
+      "25kg/袋"
+    ],
+    "must_remove": [],
+    "user_forbidden_terms": []
+  },
+  "output": "【标题】对羟基苯甲酸甲酯规格速览\n【封面字】99.5% · 25kg/袋\n【正文】\n需要工业级对羟基苯甲酸甲酯时，可以先核对这几项硬信息：CAS 99-76-3，纯度 99.5%，包装 25kg/袋。\n原文提到可用于防腐体系相关评估场景；未提供的认证与检测数据这里不补充。\n若要规格书或样品流程说明，把应用工况发过来即可继续沟通。\n【标签】#精细化工 #原料规格 #防腐助剂\n【改写说明】保留品名/CAS/纯度/包装；删除空泛营销；未新增认证或安全承诺。",
+  "required_sections": [
+    "标题",
+    "封面字",
+    "正文",
+    "标签",
+    "改写说明"
+  ],
+  "expect": {
+    "scan_blocked": false,
+    "gate_verdict": "pass",
+    "must_not_contain": [
+      "绝对安全",
+      "国家级",
+      "ISO9001"
+    ]
+  }
+}

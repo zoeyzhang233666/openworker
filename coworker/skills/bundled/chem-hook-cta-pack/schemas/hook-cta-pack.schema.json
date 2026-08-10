@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.hook-cta-pack.v1",
+  "title": "HookCtaPack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_platform",
+    "title_candidates",
+    "hook_candidates",
+    "cta_candidates",
+    "facts_unchanged"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "chemclaw.hook-cta-pack.v1"
+    },
+    "target_platform": {
+      "type": "string",
+      "enum": ["xiaohongshu", "douyin", "x"]
+    },
+    "title_candidates": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "cover_text_candidates": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "hook_candidates": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "cta_candidates": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "facts_unchanged": {
+      "type": "boolean",
+      "const": true
+    },
+    "notes": { "type": "string" }
+  }
+}

@@ -15,7 +15,8 @@
 3. `chem-content-policy` — 词表 + `scan_content.py`  
 4. `chem-content-quality-check` — `check_content.py` 确定性门禁  
 
-平台由 Persona 识别（用户说「改成小红书」即可）；可选钩子包属 M2。
+平台由 Persona 识别（用户说「改成小红书」即可）。  
+**按需（M2）**：`chem-hook-cta-pack` — 仅用户要标题 / 封面 / 钩子 / CTA 时 `load_skill`；不插入上述四步强制顺序；写入后仍须再过 policy → quality-check。
 
 ## 默认边界
 
@@ -27,7 +28,8 @@
 ## 相关文件
 
 - Persona：`coworker/personas/builtin/platform-rewrite-lobster.md`
-- Skills：`coworker/skills/bundled/chem-rewrite-brief|chem-platform-rewrite|chem-content-policy|chem-content-quality-check/`
+- Skills：`coworker/skills/bundled/chem-rewrite-brief|chem-platform-rewrite|chem-content-policy|chem-content-quality-check|chem-hook-cta-pack/`
 - 合成夹具：`fixtures/`
+- 回归语料（M2）：[`corpus/REGRESSION_CORPUS.md`](corpus/REGRESSION_CORPUS.md) + `corpus/cases/`
 - 计划：`docs/superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md`
 - 交接：`docs/chemclaw/HANDOFF_PLATFORM_REWRITE.md`
