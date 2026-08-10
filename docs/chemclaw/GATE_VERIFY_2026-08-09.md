@@ -76,5 +76,6 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 | 2026-08-10 | 程序侧 | D-108 接线验收通过 | 海关 CSV Fixture + 外贸拓客接线 9 passed；用户侧 D-108 勾选待填 |
 | 2026-08-10 | 程序侧 | D-109 接线验收通过 | 创建联系人 CTA + Skill 接线；用户侧 D-109 勾选待填 |
 | 2026-08-10 | 程序侧 | D-110 接线验收通过 | 海关 XLSX Fixture + provider 8 passed；用户侧 D-110 勾选待填 |
+| 2026-08-10 | 程序侧 | D-111 合集单包验收通过 | `uncertainty-and-units` vendor + wire：`tests/test_uncertainty_and_units_skill.py` 4 passed |
 
-**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105—D-110 程序侧通过，用户侧相关勾选待填。下一刀须点名（内容重构 M3、化工社单包、CRM 字段/任务、海关外部 API）；不顺手开化工社批量。
+**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105—D-111 程序侧通过（含合集单包 `uncertainty-and-units`），用户侧相关勾选待填。下一刀须点名（内容重构 M3、下一合集包、CRM 字段/任务、海关外部 API）；不顺手开化工社批量。

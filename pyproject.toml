@@ -48,6 +48,9 @@ messaging = ["python-telegram-bot>=21", "slack-bolt>=1.18", "aiohttp>=3.9"]
 browser = ["playwright>=1.44"]
 # AWS Bedrock provider (lazy-imported; desktop builds bundle it, pip users opt in).
 bedrock = ["boto3>=1.34"]
+# Optional numeric CLIs for bundled skill uncertainty-and-units (D-111).
+# audit_units.py stays stdlib-only; NumPy/SciPy stay out of ChemClaw core/optional.
+uncertainty = ["pint>=0.24", "uncertainties>=3.2"]
 
 [project.scripts]
 openworker = "coworker.cli:main"

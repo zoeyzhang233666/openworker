@@ -206,6 +206,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 平台只读 Tool：读取工作区海关/提单 **CSV 或 XLSX**，筛货代/物流噪声并对候选进口商评分（`recommendation`、货代风险、进口商可能性、证据摘要）。**收货方/进口商不等于终端买家**；须与官网/主体交叉核验后再写入 Lead。与 Comtrade 用途不同；无外部海关 API；旧版 `.xls` 请另存为 `.xlsx`/CSV。
 
+### 单位与不确定度（`uncertainty-and-units`）
+
+bundled Skill（D-111）：K-Dense MIT，经化工社合集单包引入。辅助询盘/报价中的单位换算与不确定度核对；`audit_units.py` 无第三方依赖。可选 pip extra `uncertainty`（pint/uncertainties）。**不**进入 Lead 评分；不替代 `calculate_quote`；不联网。
+
 ### Opportunity
 
 一个或多个 `OpportunitySignal` 经主体归一、产品相关性和确定性商机评分（`chem-opportunity-fit`）后形成的可跟进业务机会。状态含 Watch / NeedsReview / Actionable / Rejected；无主体或无事件日期不得标为 Actionable。

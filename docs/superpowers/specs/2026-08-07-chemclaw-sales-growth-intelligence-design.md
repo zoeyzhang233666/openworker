@@ -1,6 +1,6 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）已实现**；Close/买联系人/化工社批量/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）、合集单包 uncertainty-and-units（D-111）已实现**；Close/买联系人/化工社批量/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
 
 
 
@@ -544,7 +544,7 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 | `database-lookup` | 参考数据源适配和溯源模式，不整体内置 |
 | `market-research-reports` | 借鉴证据台账和 Claims Ledger；报告能力放 P2 |
 | `scientific-critical-thinking` | 提炼证据规则，与现有证据分级能力合并 |
-| `uncertainty-and-units` | 报价/检测场景可选，先审计依赖 |
+| `uncertainty-and-units` | **（D-111）已试点内置**：报价/检测单位与不确定度可选 Skill；不进 Lead 评分；可选 extra `uncertainty` |
 | `rdkit`、`datamol` | 结构化学按需安装，不进入销售首版 |
 | `exploratory-data-analysis` | 海关/展会文件分析参考 |
 | `polars` | 可能是大文件内部依赖，不作为用户 Skill |
@@ -622,8 +622,10 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 最后评估化工社、RDKit、文献、预测和研究报告能力。科研能力服务销售判断，不主导产品。
 
+**（2026-08-10 D-111）已交付合集单包试点**：bundled `uncertainty-and-units`（K-Dense MIT，经 `D:\化工社skills合集`）；询盘/转化可选接线；**尚未**批量内置其余合集包或官方 reaction-publisher。
+
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-110（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov 与海关 CSV/XLSX 筛选）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-111（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov、海关 CSV/XLSX、合集 `uncertainty-and-units` 试点）。
 
-尚未自动批准：Close/买联系人、化工社批量内置、CRM 字段更新/任务创建 CTA、海关外部 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：Close/买联系人、化工社批量内置、CRM 字段更新/任务创建 CTA、海关外部 API、官方反应发布 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
