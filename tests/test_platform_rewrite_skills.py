@@ -1,0 +1,189 @@
+"""Contract tests for platform-rewrite bundled skills (M1)."""
+
+from __future__ import annotations
+
+import csv
+import importlib.util
+import json
+from pathlib import Path
+
+from jsonschema import Draft202012Validator
+
+from coworker.skills.base import SkillLoader, _parse_skill
+from coworker.skills.bootstrap import BUNDLED_DIR, seed_bundled_skills
+from coworker.skills.store import SkillStore
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BUNDLED = ROOT / "coworker" / "skills" / "bundled"
+
+SKILL_IDS = (
+    "chem-rewrite-brief",
+    "chem-platform-rewrite",
+    "chem-content-policy",
+    "chem-content-quality-check",
+)
+
+FIXTURES = ROOT / "docs" / "chemclaw" / "platform-rewrite" / "fixtures"
+
+
+def _load_script(skill: str, script_name: str):
+    path = BUNDLED / skill / "scripts" / script_name
+    spec = importlib.util.spec_from_file_location(f"{skill}_{script_name}", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_platform_rewrite_skills_exist_with_assets() -> None:
+    for name in SKILL_IDS:
+        skill_dir = BUNDLED / name
+        md = skill_dir / "SKILL.md"
+        assert md.is_file(), name
+        skill = _parse_skill(md)
+        assert skill.name == name
+        assert skill.description.strip()
+        assert (skill_dir / "references").is_dir()
+        assert list((skill_dir / "schemas").glob("*.json")) or name == "chem-content-policy"
+
+
+def test_platform_rewrite_skills_seed_byte_identical(tmp_path: Path) -> None:
+    store = SkillStore(
+        global_dir=tmp_path / "skills",
+        settings_path=tmp_path / "skills-settings.json",
+    )
+    installed = set(seed_bundled_skills(store))
+    assert set(SKILL_IDS) <= installed
+    loader = SkillLoader([store.global_dir])
+    for name in SKILL_IDS:
+        assert loader.get(name) is not None
+        source = BUNDLED_DIR / name
+        target = store.global_dir / name
+        source_files = {
+            p.relative_to(source): p.read_bytes()
+            for p in source.rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts
+        }
+        target_files = {
+            p.relative_to(target): p.read_bytes()
+            for p in target.rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts
+        }
+        assert target_files == source_files
+
+
+def test_rewrite_brief_schema_accepts_minimal_fixture() -> None:
+    schema = json.loads(
+        (BUNDLED / "chem-rewrite-brief" / "schemas" / "rewrite-brief.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    brief = json.loads((FIXTURES / "brief-minimal.json").read_text(encoding="utf-8"))
+    validator.validate(brief)
+
+
+def test_scan_content_flags_blocked_terms() -> None:
+    scan = _load_script("chem-content-policy", "scan_content.py")
+    lexicon = BUNDLED / "chem-content-policy" / "references" / "lexicon" / "base.csv"
+    text = "本产品为国家级第一品牌，包过检测，绝对安全，100%无风险。"
+    result = scan.scan_content(text, lexicon_path=lexicon)
+    terms = {hit["term"] for hit in result["hits"]}
+    for expected in ("国家级", "第一", "包过", "绝对安全", "100%无风险"):
+        assert expected in terms
+    assert result["blocked"] is True
+    assert any(h["severity"] == "block" for h in result["hits"])
+
+
+def test_check_content_blocks_on_policy_and_fact_drift() -> None:
+    check = _load_script("chem-content-quality-check", "check_content.py")
+    brief = json.loads((FIXTURES / "brief-minimal.json").read_text(encoding="utf-8"))
+    source = (FIXTURES / "source-safe.txt").read_text(encoding="utf-8")
+    bad_output = (
+        "我们的对羟基苯甲酸甲酯纯度 99.9%，CAS 99-76-3，20kg/袋，"
+        "国家级第一，绝对安全，包过认证。"
+    )
+    result = check.check_content(
+        {
+            "source_text": source,
+            "output_text": bad_output,
+            "brief": brief,
+            "target_platform": "xiaohongshu",
+            "required_sections": ["标题", "正文", "标签", "改写说明"],
+            "policy_hits": [
+                {
+                    "term": "绝对安全",
+                    "severity": "block",
+                    "action": "block",
+                    "rule_id": "safety-absolute",
+                }
+            ],
+        }
+    )
+    assert result["verdict"] in ("revise", "blocked")
+    assert result["recommended_action"] != "ready_for_publish_review"
+    assert result["fact_integrity"]["passed"] is False
+    assert result["policy_scan"]["passed"] is False
+
+
+def test_check_content_passes_clean_rewrite() -> None:
+    check = _load_script("chem-content-quality-check", "check_content.py")
+    brief = json.loads((FIXTURES / "brief-minimal.json").read_text(encoding="utf-8"))
+    source = (FIXTURES / "source-safe.txt").read_text(encoding="utf-8")
+    good = (FIXTURES / "output-xhs-clean.txt").read_text(encoding="utf-8")
+    result = check.check_content(
+        {
+            "source_text": source,
+            "output_text": good,
+            "brief": brief,
+            "target_platform": "xiaohongshu",
+            "required_sections": ["标题", "封面字", "正文", "标签", "改写说明"],
+            "policy_hits": [],
+        }
+    )
+    assert result["verdict"] == "pass"
+    assert result["recommended_action"] == "ready_for_publish_review"
+    assert result["fact_integrity"]["passed"] is True
+    assert result["policy_scan"]["passed"] is True
+
+
+def test_lexicon_csv_has_required_columns() -> None:
+    path = BUNDLED / "chem-content-policy" / "references" / "lexicon" / "base.csv"
+    with path.open(encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert rows
+    required = {
+        "rule_id",
+        "term",
+        "platform",
+        "locale",
+        "category",
+        "severity",
+        "action",
+        "replacement_strategy",
+        "notes",
+    }
+    assert required <= set(rows[0].keys())
+    assert any(r["term"] == "绝对安全" and r["severity"] == "block" for r in rows)
+
+
+def test_platform_references_exist() -> None:
+    base = BUNDLED / "chem-platform-rewrite" / "references" / "platforms"
+    for name in ("xiaohongshu.md", "douyin.md", "x.md"):
+        path = base / name
+        assert path.is_file()
+        assert len(path.read_text(encoding="utf-8").strip()) > 40
+
+
+def test_regression_fixtures_present() -> None:
+    for name in (
+        "brief-minimal.json",
+        "source-safe.txt",
+        "source-risky.txt",
+        "output-xhs-clean.txt",
+        "output-douyin-clean.txt",
+        "output-x-clean.txt",
+    ):
+        assert (FIXTURES / name).is_file(), name

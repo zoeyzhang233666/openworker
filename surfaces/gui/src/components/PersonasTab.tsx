@@ -36,6 +36,7 @@ const BUILTIN_IDS = new Set([
   "domestic-sales-lobster",
   "opportunity-radar-lobster",
   "export-engagement-lobster",
+  "platform-rewrite-lobster",
 ]);
 
 /** Map legacy / opaque install errors to a restart hint (old sidecars ignore zip_b64). */

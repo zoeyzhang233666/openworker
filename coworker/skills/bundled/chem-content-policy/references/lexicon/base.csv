@@ -1,0 +1,9 @@
+rule_id,term,platform,locale,category,severity,action,replacement_strategy,notes
+abs-national,国家级,all,zh-CN,absolute,block,rewrite,改为有出处的奖项或删除,广告法绝对化
+abs-first,第一,all,zh-CN,absolute,block,rewrite,改为可核实比较或删除,需语境人工确认
+abs-top,顶级,all,zh-CN,absolute,warning,review,弱化或补证据,平台经验
+guarantee-pass,包过,all,zh-CN,guarantee,block,remove,删除承诺改「按标准检测」,禁止结果承诺
+safety-absolute,绝对安全,all,zh-CN,safety,block,rewrite,改为按规定条件使用/见SDS,化工安全
+safety-zero-risk,100%无风险,all,zh-CN,safety,block,rewrite,删除绝对无风险表述,化工安全
+safety-permanent,永久有效,all,zh-CN,guarantee,block,rewrite,改为保质期/贮存条件若用户已提供,禁止永久承诺
+efficacy-cure,根治,all,zh-CN,efficacy,block,remove,删除医疗化表述,非药场景

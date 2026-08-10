@@ -8,6 +8,7 @@ import { AddFolderForm } from "./AddFolderForm";
 // - cowork (D-080): chemical knowledge-work deliverables
 // - chain-lobster (D-072): value-chain starters
 // - chat (D-083): lightweight Q&A, no workspace
+// - platform-rewrite: chem multi-platform rewrite starters
 // App supplies the hero title (hideGreeting); per-agent greeting override for chat.
 
 export function SessionIntro({
@@ -23,15 +24,21 @@ export function SessionIntro({
   onPrefill: (text: string, attachments?: Attachment[]) => void;
   /** When true, skip the local h1 — App already shows the hero greeting (D-067 / D-083). */
   hideGreeting?: boolean;
-  /** cowork | chain-lobster | chat */
-  variant?: "cowork" | "chain-lobster" | "chat";
+  /** cowork | chain-lobster | chat | platform-rewrite */
+  variant?: "cowork" | "chain-lobster" | "chat" | "platform-rewrite";
 }) {
   const { t } = useI18n();
   const { roots, busy, error, addRoot } = useRoots(sessionId);
   const [addingFolder, setAddingFolder] = useState(false);
 
-  const shared = roots.filter((r) => !r.primary);
-  const ledeKey = (variant === "chat" ? "intro.chat.lede" : "intro.lede") as MessageKey;
+  const shared = roots.filter((r) => !r.primary && r.removable !== false);
+  const ledeKey = (
+    variant === "chat"
+      ? "intro.chat.lede"
+      : variant === "platform-rewrite"
+        ? "intro.rewrite.lede"
+        : "intro.lede"
+  ) as MessageKey;
 
   const pickFolder = () => {
     // A shared folder already exists → straight to the prompt; otherwise share one first.
@@ -83,6 +90,42 @@ export function SessionIntro({
             <span className="task-card-body">
               <span className="task-card-title">{t("intro.chain.task3.title")}</span>
               <span className="task-card-sub">{t("intro.chain.task3.sub")}</span>
+            </span>
+            <span className="task-card-act">{t("intro.act.start")}</span>
+          </button>
+        </div>
+      ) : variant === "platform-rewrite" ? (
+        <div className="intro-tasks" data-testid="intro-tasks-platform-rewrite">
+          <button
+            className="task-card"
+            data-testid="intro-task-rewrite-xhs"
+            onClick={() => onPrefill(t("intro.rewrite.task1.prompt"))}
+          >
+            <span className="task-card-body">
+              <span className="task-card-title">{t("intro.rewrite.task1.title")}</span>
+              <span className="task-card-sub">{t("intro.rewrite.task1.sub")}</span>
+            </span>
+            <span className="task-card-act">{t("intro.act.start")}</span>
+          </button>
+          <button
+            className="task-card"
+            data-testid="intro-task-rewrite-douyin"
+            onClick={() => onPrefill(t("intro.rewrite.task2.prompt"))}
+          >
+            <span className="task-card-body">
+              <span className="task-card-title">{t("intro.rewrite.task2.title")}</span>
+              <span className="task-card-sub">{t("intro.rewrite.task2.sub")}</span>
+            </span>
+            <span className="task-card-act">{t("intro.act.start")}</span>
+          </button>
+          <button
+            className="task-card"
+            data-testid="intro-task-rewrite-gate"
+            onClick={() => onPrefill(t("intro.rewrite.task3.prompt"))}
+          >
+            <span className="task-card-body">
+              <span className="task-card-title">{t("intro.rewrite.task3.title")}</span>
+              <span className="task-card-sub">{t("intro.rewrite.task3.sub")}</span>
             </span>
             <span className="task-card-act">{t("intro.act.start")}</span>
           </button>

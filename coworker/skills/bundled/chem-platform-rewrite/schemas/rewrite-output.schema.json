@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.rewrite-output.v1",
+  "title": "PlatformRewriteOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_platform",
+    "sections",
+    "rewrite_notes"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "chemclaw.rewrite-output.v1"
+    },
+    "target_platform": {
+      "type": "string"
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "rewrite_notes": {
+      "type": "string",
+      "minLength": 1
+    },
+    "full_text": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.content-gate-output.v1",
+  "title": "ContentGateOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rule_set",
+    "verdict",
+    "fact_integrity",
+    "policy_scan",
+    "platform_fit",
+    "independent_expression",
+    "recommended_action"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "chemclaw.content-gate.v1"
+    },
+    "rule_set": { "type": "string" },
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "revise", "blocked"]
+    },
+    "fact_integrity": {
+      "type": "object",
+      "required": ["passed", "issues"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "policy_scan": {
+      "type": "object",
+      "required": ["passed", "issues"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "platform_fit": {
+      "type": "object",
+      "required": ["passed", "issues"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "independent_expression": {
+      "type": "object",
+      "required": ["passed", "issues"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "issues": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "missing_required_sections": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recommended_action": {
+      "type": "string"
+    }
+  }
+}

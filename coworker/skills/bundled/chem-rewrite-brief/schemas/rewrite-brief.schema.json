@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.rewrite-brief.v1",
+  "title": "RewriteBrief",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target_platform",
+    "content_type",
+    "language",
+    "audience",
+    "communication_goal",
+    "immutable_facts",
+    "claims_allowed",
+    "claims_needing_evidence",
+    "prohibited_inferences",
+    "unknown_fields",
+    "must_keep",
+    "must_remove",
+    "user_forbidden_terms"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "chemclaw.rewrite-brief.v1"
+    },
+    "target_platform": {
+      "type": "string",
+      "enum": ["xiaohongshu", "douyin", "x", "wechat-video", "wechat-official", "linkedin", "facebook"]
+    },
+    "content_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "language": {
+      "type": "string",
+      "minLength": 1
+    },
+    "audience": {
+      "type": "string",
+      "minLength": 1
+    },
+    "communication_goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "immutable_facts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_name",
+        "cas",
+        "grade",
+        "purity",
+        "packaging",
+        "application_facts",
+        "numeric_claims",
+        "certifications"
+      ],
+      "properties": {
+        "product_name": { "type": ["string", "null"] },
+        "cas": { "type": ["string", "null"] },
+        "grade": { "type": ["string", "null"] },
+        "purity": { "type": ["string", "null"] },
+        "packaging": { "type": ["string", "null"] },
+        "application_facts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "numeric_claims": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "certifications": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "claims_allowed": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "claims_needing_evidence": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "prohibited_inferences": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "unknown_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "must_keep": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "must_remove": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "user_forbidden_terms": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

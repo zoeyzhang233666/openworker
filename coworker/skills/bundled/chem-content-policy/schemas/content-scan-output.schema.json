@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "chemclaw.content-scan.v1",
+  "title": "ContentScanOutput",
+  "type": "object",
+  "required": ["schema_version", "hit_count", "blocked", "hits"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "hit_count": { "type": "integer" },
+    "blocked": { "type": "boolean" },
+    "hits": { "type": "array" }
+  }
+}
