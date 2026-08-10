@@ -596,7 +596,7 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 **（2026-08-07 D-092）已交付首包**：`domestic-sales-lobster` + `chem-domestic-prospecting`，复用四能力 Skill；国内规则以 Skill references 约束。
 
-**（2026-08-09 D-100）国内登记 Provider 已接入平台 Tool**；**尚未**海关 Provider。
+**（2026-08-09 D-100）国内登记 Provider 已接入平台 Tool**；海关见 D-108（CSV 文件首包）。
 
 ### 17.6 阶段 5：商机雷达
 
