@@ -167,6 +167,7 @@
 - [海关 XLSX 支持（D-110）](../superpowers/plans/2026-08-10-chemclaw-customs-xlsx.md)
 - [单位与不确定度单包（D-111）](../superpowers/plans/2026-08-10-chemclaw-uncertainty-and-units.md)
 - [化工社合集 Triage（D-112）](HUAGONGSHE_SKILL_TRIAGE.md)
+- [合集 Triage 计划（D-112）](../superpowers/plans/2026-08-10-chemclaw-huagongshe-skill-triage.md)
 - [客户清单进阶 UX（D-102）](../superpowers/plans/2026-08-09-chemclaw-lead-list-advanced-ux.md)
 - [CRM/科研远期说明](../superpowers/plans/2026-08-09-chemclaw-crm-and-research-defer.md)
 - [化工多平台内容重构交接](HANDOFF_PLATFORM_REWRITE.md)
