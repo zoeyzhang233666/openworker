@@ -46,6 +46,7 @@
           "enum": [
             "ready_for_human_send",
             "ready_for_crm_write",
+            "ready_for_crm_create_contact",
             "revise_draft",
             "await_evidence"
           ]

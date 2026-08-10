@@ -309,6 +309,65 @@ describe("submit CRM write approval CTA (D-105)", () => {
   });
 });
 
+describe("submit CRM create-contact approval CTA (D-109)", () => {
+  it("shows the button only when ready_for_crm_create_contact is present and idle", () => {
+    const ready: Item[] = [
+      { kind: "user", text: "create contact" },
+      {
+        kind: "assistant",
+        text: "Email verified. recommended_action: ready_for_crm_create_contact",
+      },
+    ];
+    const { rerender } = render(<Transcript items={ready} onApprove={vi.fn()} />);
+    expect(screen.getByTestId("submit-crm-create-contact").textContent).toMatch(
+      /提交创建联系人审批|Submit create-contact for approval/,
+    );
+    expect(screen.queryByTestId("submit-crm-write-approval")).toBeNull();
+
+    rerender(<Transcript items={ready} onApprove={vi.fn()} running />);
+    expect(screen.queryByTestId("submit-crm-create-contact")).toBeNull();
+
+    rerender(
+      <Transcript
+        items={[{ kind: "assistant", text: "ready_for_crm_write only" }]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("submit-crm-create-contact")).toBeNull();
+    expect(screen.getByTestId("submit-crm-write-approval")).toBeTruthy();
+  });
+
+  it("can show note and create-contact CTAs together when both gates present", () => {
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text: "ready_for_crm_write and ready_for_crm_create_contact",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("submit-crm-write-approval")).toBeTruthy();
+    expect(screen.getByTestId("submit-crm-create-contact")).toBeTruthy();
+  });
+
+  it("dispatches the crm-create-contact event on click", () => {
+    const spy = vi.fn();
+    window.addEventListener("ocw-request-crm-create-contact", spy);
+    render(
+      <Transcript
+        items={[{ kind: "assistant", text: "ready_for_crm_create_contact" }]}
+        onApprove={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("submit-crm-create-contact"));
+    expect(spy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("ocw-request-crm-create-contact", spy);
+  });
+});
+
 describe("bubble hover affordances (FB-005)", () => {
   const TS = 1752969720; // unix seconds, as the server stamps them
   const ITEMS: Item[] = [

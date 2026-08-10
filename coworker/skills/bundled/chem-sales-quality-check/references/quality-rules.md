@@ -15,3 +15,4 @@
 - 无硬拒绝项 → `verdict=pass`，`recommended_action=ready_for_human_send`
 - `ready_for_human_send` 仅表示可提交人工**发送**审批，不等于已调用 `email_send`
 - 另可在同一轮或后续轮助手文案中给出 `ready_for_crm_write`（HubSpot 笔记写入审批门禁，D-105）；不等于已调用 `hubspot_log_note`，且不替代发送门禁
+- 另可给出 `ready_for_crm_create_contact`（HubSpot 创建联系人审批门禁，D-109）；须已有可靠 email；不等于已调用 `hubspot_create_contact`

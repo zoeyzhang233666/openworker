@@ -20,7 +20,8 @@ export function crmWriteApprovalIntentMessage(): string {
     "使用连接器工具 hubspot_log_note，向已存在的 HubSpot 联系人/公司/交易记录一条跟进笔记。" +
     "请先确认对象类型（contacts|companies|deals）、对象 ID 与笔记正文；" +
     "调用后等待我在审批卡中允许；未批准前不得宣称已写入 CRM。" +
-    "本首包不要调用 hubspot_create_contact / hubspot_update_object / hubspot_create_task。" +
+    "本笔记流程不要调用 hubspot_create_contact / hubspot_update_object / hubspot_create_task；" +
+    "若需新建联系人，应使用 ready_for_crm_create_contact 与「提交创建联系人审批」。" +
     "若 HubSpot 未连接，请用中文说明并引导我在「连接」中配置 HubSpot 门户。"
   );
 }

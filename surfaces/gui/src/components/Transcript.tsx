@@ -15,6 +15,10 @@ import {
   REQUEST_CRM_WRITE_APPROVAL_EVENT,
   isReadyForCrmWrite,
 } from "../requestCrmWriteApproval";
+import {
+  REQUEST_CRM_CREATE_CONTACT_EVENT,
+  isReadyForCrmCreateContact,
+} from "../requestCrmCreateContact";
 
 // Long user pastes swallow the transcript (owner ask 2026-07-30): clamp past a generous
 // threshold with a more…/less… toggle. Normal typed messages never see the control; the
@@ -572,6 +576,26 @@ export function Transcript({
                     </button>
                     <p className="text-[11.5px] text-inkMuted m-0">
                       {t("crmWriteApproval.hint")}
+                    </p>
+                  </div>
+                )}
+                {!running && isReadyForCrmCreateContact(item.text) && (
+                  <div className="mt-2 flex flex-col gap-1 items-start">
+                    <button
+                      type="button"
+                      className="btn"
+                      data-testid="submit-crm-create-contact"
+                      title={t("crmCreateContact.hint")}
+                      onClick={() =>
+                        window.dispatchEvent(
+                          new CustomEvent(REQUEST_CRM_CREATE_CONTACT_EVENT),
+                        )
+                      }
+                    >
+                      {t("crmCreateContact.submit")}
+                    </button>
+                    <p className="text-[11.5px] text-inkMuted m-0">
+                      {t("crmCreateContact.hint")}
                     </p>
                   </div>
                 )}

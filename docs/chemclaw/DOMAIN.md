@@ -232,7 +232,15 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 ### CRM 笔记写入（`hubspot_log_note`）
 
-复用 HubSpot 连接器：对已有 contact/company/deal 写 timeline 笔记；`requires_approval=True`。须文案含 `ready_for_crm_write` 且用户明确触发（对话或「提交 CRM 写入审批」CTA）；未连接返回中文错误。首包不经产品 CTA 主动建联系人/改字段/建任务。客户清单页不显示 CRM 按钮。
+复用 HubSpot 连接器：对已有 contact/company/deal 写 timeline 笔记；`requires_approval=True`。须文案含 `ready_for_crm_write` 且用户明确触发（对话或「提交 CRM 写入审批」CTA）；未连接返回中文错误。笔记流程不经 CTA 调用 `hubspot_create_contact`。客户清单页不显示 CRM 按钮。
+
+### `ready_for_crm_create_contact`
+
+转化跟进可提交**人工创建 HubSpot 联系人审批**的门禁标记。不等于已调用 `hubspot_create_contact`，也不等于已创建成功。须已有可靠 email；与 `ready_for_crm_write` 并列、互不替代。
+
+### CRM 创建联系人（`hubspot_create_contact`）
+
+复用 HubSpot 连接器创建联系人（`email` 必填）；`requires_approval=True`。须文案含 `ready_for_crm_create_contact` 且用户明确触发（对话或「提交创建联系人审批」CTA）；禁止编造邮箱/姓名；未开 `update_object` / `create_task` 产品 CTA。
 
 ### `FollowupPlan`
 

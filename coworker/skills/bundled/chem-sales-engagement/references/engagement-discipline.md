@@ -2,20 +2,27 @@
 
 ## 草稿 ≠ 发送
 
-- 产出主题/正文/跟进计划后，推荐动作最多到 `ready_for_human_send`（邮件）与/或 `ready_for_crm_write`（CRM 笔记）。
-- 不得暗示已发送、已成交、已寄样、已写入 CRM，或要求绕过审批。
+- 产出主题/正文/跟进计划后，推荐动作最多到 `ready_for_human_send`（邮件）、`ready_for_crm_write`（CRM 笔记）与/或 `ready_for_crm_create_contact`（创建联系人）。
+- 不得暗示已发送、已成交、已寄样、已写入 CRM、已创建联系人，或要求绕过审批。
 - **禁止自动外发**。不得在未获用户明确发送指令时调用 `email_send`。
 - 用户明确要求发送（含「提交发送审批」CTA）且门禁为 `ready_for_human_send`、收件邮箱可靠时：调用连接器 `email_send`（SMTP 在 Email 连接器，非新建 mail Provider）；仍须审批卡通过后才算发送成功。
 - 邮件未连接时如实披露中文错误，引导用户在「连接」中配置 Email（IMAP/SMTP）。
 
-## CRM 笔记写入（D-105 首包）
+## CRM 笔记写入（D-105）
 
 - **禁止自动写 CRM**。不得在未获用户明确指令时调用任何 HubSpot 写工具。
 - 当跟进事实已齐、且已有可靠 HubSpot 对象（contacts/companies/deals + ID）时，可在助手文案中给出 `ready_for_crm_write`（可与 `ready_for_human_send` 同轮或后续轮）。
 - 用户明确要求写入（含「提交 CRM 写入审批」CTA）且文案含 `ready_for_crm_write` 时：仅调用 `hubspot_log_note` 记录跟进笔记；仍须审批卡通过后才算写入成功。
-- **首包禁止**主动调用 `hubspot_create_contact` / `hubspot_update_object` / `hubspot_create_task`（即使底层有审批）。
+- 笔记流程**不要**调用 `hubspot_create_contact`（创建走下方独立门禁）。
 - HubSpot 未连接时如实披露中文错误，引导用户在「连接」中配置 HubSpot 门户。
 - 客户清单页不显示 CRM 按钮；CRM 写入只走对话 CTA + 审批卡。
+
+## CRM 创建联系人（D-109）
+
+- 仅当已有**可靠 email**（用户提供或已核验），且用户明确要在 HubSpot **新建联系人**时，可在文案中给出 `ready_for_crm_create_contact`。
+- 用户明确要求创建（含「提交创建联系人审批」CTA）且文案含该门禁时：仅调用 `hubspot_create_contact`；仍须审批卡；未批准不得宣称已创建。
+- **禁止**编造邮箱/姓名；**禁止**主动调用 `hubspot_update_object` / `hubspot_create_task`（即使底层有审批）。
+- 与 `ready_for_crm_write` 并列、互不替代；可同轮出现两个 CTA，但工具调用须按各自意图。
 
 ## 岗位策略优先
 
@@ -35,4 +42,4 @@
 
 ## 质量门禁
 
-运行 `chem-sales-quality-check` 的 `check_outreach.py`；`verdict=blocked` 时修订草稿，不得跳过门禁进入发送审批或 CRM 写入话术。
+运行 `chem-sales-quality-check` 的 `check_outreach.py`；`verdict=blocked` 时修订草稿，不得跳过门禁进入发送审批、CRM 笔记或创建联系人话术。

@@ -75,6 +75,10 @@ import {
   crmWriteApprovalIntentMessage,
 } from "./requestCrmWriteApproval";
 import {
+  REQUEST_CRM_CREATE_CONTACT_EVENT,
+  crmCreateContactIntentMessage,
+} from "./requestCrmCreateContact";
+import {
   REQUEST_LEAD_FOLLOWUP_EVENT,
   leadFollowupIntentMessage,
   type RequestLeadFollowupDetail,
@@ -1036,6 +1040,16 @@ export function App() {
     window.addEventListener(REQUEST_CRM_WRITE_APPROVAL_EVENT, onCrmWriteApproval);
     return () =>
       window.removeEventListener(REQUEST_CRM_WRITE_APPROVAL_EVENT, onCrmWriteApproval);
+  });
+  // D-109: «提交创建联系人审批» after ready_for_crm_create_contact — still gated.
+  useEffect(() => {
+    const onCrmCreateContact = () => {
+      if (running) return;
+      send(crmCreateContactIntentMessage());
+    };
+    window.addEventListener(REQUEST_CRM_CREATE_CONTACT_EVENT, onCrmCreateContact);
+    return () =>
+      window.removeEventListener(REQUEST_CRM_CREATE_CONTACT_EVENT, onCrmCreateContact);
   });
   // D-102: lead-list «继续补查» / «重评» — inject chat intent only (no auto-run / send / CRM).
   useEffect(() => {

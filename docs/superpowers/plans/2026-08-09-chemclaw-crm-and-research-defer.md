@@ -1,11 +1,12 @@
 # ChemClaw CRM / 买联系人 / 化工社科研 — 远期队列
 
-> HubSpot **笔记写入审批首包已交付（D-105）**；其余 CRM/买联系人/化工社仍须点名。
+> HubSpot **笔记写入（D-105）**与**创建联系人（D-109）**审批 CTA 已交付；其余 CRM/买联系人/化工社仍须点名。
 
 ## CRM / 买联系人 / 多渠道外发
 
 - **已交付（D-105）**：对话内 `ready_for_crm_write` → `hubspot_log_note` + 审批卡；清单页仍无 CRM 按钮；不自动写。
-- 仍未做：`hubspot_create_contact` / 字段更新 / 任务创建的产品 CTA；Close 等其他 CRM；买联系人；多渠道外发
+- **已交付（D-109）**：对话内 `ready_for_crm_create_contact` → `hubspot_create_contact` + 审批卡。
+- 仍未做：字段更新 / 任务创建的产品 CTA；Close 等其他 CRM；买联系人；多渠道外发
 - 任一新增真实 CRM 写入面或购买联系人必须：独立决策 + `requires_approval` + 中文审批文案
 - 复用现有 connectors 优先于自研
 

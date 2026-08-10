@@ -30,7 +30,12 @@
       }
     },
     "recommended_action": {
-      "enum": ["ready_for_human_send", "ready_for_crm_write", "revise_draft"]
+      "enum": [
+        "ready_for_human_send",
+        "ready_for_crm_write",
+        "ready_for_crm_create_contact",
+        "revise_draft"
+      ]
     }
   }
 }

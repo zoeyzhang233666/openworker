@@ -50,6 +50,9 @@ const messages = {
     "crmWriteApproval.submit": "提交 CRM 写入审批",
     "crmWriteApproval.hint":
       "将请求助手调用 hubspot_log_note；仍须在审批卡中确认。不会自动写入 CRM。",
+    "crmCreateContact.submit": "提交创建联系人审批",
+    "crmCreateContact.hint":
+      "将请求助手调用 hubspot_create_contact；仍须在审批卡中确认。不会自动创建联系人。",
     "nav.scheduled": "定时任务",
     "nav.connections": "连接",
     "nav.settings": "设置",
@@ -358,6 +361,9 @@ const messages = {
     "crmWriteApproval.submit": "Submit CRM write for approval",
     "crmWriteApproval.hint":
       "Asks the assistant to call hubspot_log_note; you still confirm on the approval card. No auto CRM write.",
+    "crmCreateContact.submit": "Submit create-contact for approval",
+    "crmCreateContact.hint":
+      "Asks the assistant to call hubspot_create_contact; you still confirm on the approval card. No auto create.",
     "nav.scheduled": "Automations",
     "nav.connections": "Connectors",
     "nav.settings": "Settings",

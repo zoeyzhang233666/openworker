@@ -30,6 +30,7 @@
 | D-105 HubSpot CRM 笔记审批 | `pytest` hubspot portals + skill wire **12 passed**；`npm` requestCrmWriteApproval + Transcript/i18n/audit **49 passed** |
 | D-106 SAM.gov `search_sam_opportunities` | `pytest` sam tender provider + skill wire **11 passed**（2026-08-10） |
 | D-108 海关 CSV `filter_customs_importers` | `pytest` customs file provider + skill wire **9 passed**（2026-08-10） |
+| D-109 HubSpot 创建联系人审批 | `pytest` create-contact skill wire **2 passed**；`npm` requestCrmCreateContact + Transcript **32 passed**（相关子集） |
 
 ## 用户侧点检（需本机 UI）
 
@@ -60,6 +61,7 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 - [ ] （D-105）转化龙虾文案含 `ready_for_crm_write` 时有「提交 CRM 写入审批」；点后注入意图；`hubspot_log_note` 出现审批卡；拒绝不写入；未连接中文错误；清单页仍无 CRM 按钮
 - [ ] （可选 D-106）未配置 `sam:default` 时 `search_sam_opportunities` 中文提示；有密钥时返回 `sam:<noticeId>` + 来源 URL，不伪造 noticeId
 - [ ] （可选 D-108）工作区放入海关 CSV 后 `filter_customs_importers` 可筛货代；结果含非终端买家警告；缺列/缺文件中文错误；不把候选直接当 Qualified
+- [ ] （可选 D-109）文案含 `ready_for_crm_create_contact` 时有「提交创建联系人审批」；点后注入意图；`hubspot_create_contact` 出现审批卡；拒绝不创建；仅笔记门禁时不出现创建 CTA（或两门禁可并存）；清单页仍无 CRM 按钮
 
 ### 点检结果记录
 
@@ -70,5 +72,6 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 | 2026-08-10 | 程序侧 | D-105 接线验收通过 | HubSpot 中文错误 + CTA + Skill 接线；用户侧 D-105 勾选待填 |
 | 2026-08-10 | 程序侧 | D-106 接线验收通过 | SAM Fixture + 商机雷达接线 11 passed；用户侧 D-106 勾选待填 |
 | 2026-08-10 | 程序侧 | D-108 接线验收通过 | 海关 CSV Fixture + 外贸拓客接线 9 passed；用户侧 D-108 勾选待填 |
+| 2026-08-10 | 程序侧 | D-109 接线验收通过 | 创建联系人 CTA + Skill 接线；用户侧 D-109 勾选待填 |
 
-**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105/D-106/D-108 程序侧通过，用户侧 HubSpot CTA / SAM / 海关 CSV 勾选待填。下一刀须点名（内容重构 M3、化工社单包、CRM 扩展、海关 XLSX/API）；不顺手开化工社批量。
+**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105/D-106/D-108/D-109 程序侧通过，用户侧相关勾选待填。下一刀须点名（内容重构 M3、化工社单包、CRM 字段/任务、海关 XLSX/API）；不顺手开化工社批量。
