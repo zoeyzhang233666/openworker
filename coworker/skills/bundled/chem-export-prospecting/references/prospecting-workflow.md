@@ -6,4 +6,6 @@
 
 `lookup_trade_flow` 仅用于市场/HS 吸引力旁证；不得把 Comtrade 行写成具体公司 Lead，也不得伪造贸易额。
 
+用户已把海关/提单 CSV 放入工作区时，可调用 `filter_customs_importers` 筛货代噪声并得到候选进口商排名；**收货方≠终端买家**，不得跳过官网/主体核验直接标为 Qualified；本 Tool 与 Comtrade 用途不同（企业线索 vs 国家/HS 汇总）；首包仅 CSV，无外部海关 API。
+
 部分成功时按 `chemclaw.prospecting-run.v1` 交付可复跑状态：创建/更新时间、输入与目标市场、Provider/Skill/规则版本、各阶段输入/输出/查询/证据 ID、失败对象、断点、预算消耗、候选/Lead ID、警告、未决问题和下一步。不要把待补查项包装为 Qualified；`complete` 不得使用空阶段列表。

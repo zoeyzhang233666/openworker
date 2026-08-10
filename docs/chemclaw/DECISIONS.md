@@ -219,6 +219,7 @@
 - **D-105（2026-08-10）**：用户点名实现**HubSpot CRM 审批写入首包**：**不**新建 CRM Provider；复用连接器 `hubspot_log_note`（已有 EXTERNAL 审批）；对话门禁 `ready_for_crm_write` +「提交 CRM 写入审批」CTA（镜像 D-099）；未连接中文错误；转化龙虾/`chem-sales-engagement` 仅在门禁+用户明示时可调 `hubspot_log_note`；**禁止**首包主动调用 `hubspot_create_contact` / `update_object` / `create_task`；**禁止**自动写 CRM；客户清单页仍无 CRM 按钮；不等于批准 Close/买联系人。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-hubspot-crm-write-approval.md`。
 - **D-106（2026-08-10）**：用户点名实现**SAM.gov TenderProvider 首包**：平台 `coworker/tender/sam.py`（`SamProvider` + Tool `search_sam_opportunities`）；SecretStore `sam:default`（`api_key`）；结果映射 `OpportunitySignal`（`sam:<noticeId>`）；Fixture 契约测试；挂商机雷达龙虾 / `chem-opportunity-radar`；禁止伪造 noticeId；无密钥中文错误；**不**接海关/SEC/USAspending。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-sam-tender-provider.md`。
 - **D-107（2026-08-10）**：用户点名实现**化工多平台内容重构 M2**：`chem-hook-cta-pack`（按需 load，不插入四核心强制流水线）；12 条合成回归语料 + `REGRESSION_CORPUS.md` + pytest；skills 只读 root 集成测已入库（随 D-104 补丁）；默认仍为 `cowork`；**不等于**批准 M3（managed rules / 词表热升级 / 安装包内 `load_skill` 验收）。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md`。
+- **D-108（2026-08-10）**：用户点名实现**海关企业级文件 Provider 首包**：平台 `coworker/customs/`（`CustomsFileProvider` + Tool `filter_customs_importers`）；工作区 UTF-8 CSV；货代噪声过滤 + 进口商启发式评分；结果含「收货方≠终端买家」警告；Fixture 契约测试；挂外贸拓客龙虾 / `chem-export-prospecting` / `chem-buyer-discovery`；**不**接 XLSX/外部海关 API；**不**把候选直接标为 Qualified Lead；不等于批准买联系人/CRM 扩展。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-customs-enterprise-file-provider.md`。
 
 ## 协作治理
 

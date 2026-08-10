@@ -1,6 +1,6 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot CRM 笔记审批（D-105）、SAM.gov（D-106）已实现**；Close/买联系人/化工社批量仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot CRM 笔记审批（D-105）、SAM.gov（D-106）、海关 CSV 企业级筛选（D-108）已实现**；Close/买联系人/化工社批量/海关外部 API 仍须单独批准  
 
 
 
@@ -318,7 +318,9 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 **（2026-08-09 D-100）已交付国内登记首包**：`CnRegistryProvider` + 路由（USCC/中文名）；SecretStore `cn_registry:default`；**尚未**关系树 / 海关全量。
 
-**（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow`（`comtrade:default` 订阅密钥）；国家/HS 汇总；**禁止**当买家名单；**尚未**海关企业级数据。
+**（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow`（`comtrade:default` 订阅密钥）；国家/HS 汇总；**禁止**当买家名单。
+
+**（2026-08-10 D-108）已交付海关企业级文件首包**：平台 Tool `filter_customs_importers`（工作区 CSV）；货代过滤 + 进口商评分；收货方≠终端买家；**尚未** XLSX / 外部海关 API。
 
 化工社反应数据不参与客户搜索和 Lead 评分主流程，只能作为特殊产品的化学证据补充。
 
@@ -602,11 +604,13 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 **（2026-08-07 D-093）已交付首包**：`opportunity-radar-lobster` + `chem-opportunity-radar` + `chem-opportunity-scoring`；复用产品情报与企业核验；信号来自用户文件/已配置网页检索；**不**默认挂载 MCP 询盘/新设 Skill。
 
-**（2026-08-09 D-101）已交付 TED 首包**：平台 Tool `search_tenders` → `OpportunitySignal`；**尚未**海关。
+**（2026-08-09 D-101）已交付 TED 首包**：平台 Tool `search_tenders` → `OpportunitySignal`。
 
-**（2026-08-10 D-106）已交付 SAM.gov 首包**：平台 Tool `search_sam_opportunities` → `OpportunitySignal`（`sam:<noticeId>`）；SecretStore `sam:default`；**尚未**海关/SEC/USAspending。
+**（2026-08-10 D-106）已交付 SAM.gov 首包**：平台 Tool `search_sam_opportunities` → `OpportunitySignal`（`sam:<noticeId>`）；SecretStore `sam:default`；**尚未** SEC/USAspending。
 
-**（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow` → 国家/HS `TradeFlow` 汇总；**尚未**海关企业级进口商。
+**（2026-08-09 D-103）已交付 Comtrade 首包**：平台 Tool `lookup_trade_flow` → 国家/HS `TradeFlow` 汇总。
+
+**（2026-08-10 D-108）已交付海关企业级文件首包**：平台 Tool `filter_customs_importers` → 候选进口商评分行（CSV）；**尚未** XLSX / 外部海关 API。
 
 ### 17.7 阶段 6：可选科研增强
 
@@ -614,6 +618,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-106（含 Comtrade、HubSpot 笔记审批与 SAM.gov）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-108（含 Comtrade、HubSpot 笔记审批、SAM.gov 与海关 CSV 筛选）。
 
-尚未自动批准：Close/买联系人、化工社批量内置、CRM 扩展写入面（create_contact 等）、海关企业级。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：Close/买联系人、化工社批量内置、CRM 扩展写入面（create_contact 等）、海关 XLSX/外部 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

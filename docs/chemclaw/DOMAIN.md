@@ -202,6 +202,10 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 国家/HS 层面的贸易流汇总（进口/出口金额与重量等），用于市场吸引力旁证。由平台 Tool `lookup_trade_flow`（UN Comtrade，`comtrade:default` 订阅密钥）返回；**不等于**企业买家名单，不得据此编造进口商。
 
+### 海关企业级筛选（`filter_customs_importers`）
+
+平台只读 Tool：读取工作区海关/提单 **CSV**，筛货代/物流噪声并对候选进口商评分（`recommendation`、货代风险、进口商可能性、证据摘要）。**收货方/进口商不等于终端买家**；须与官网/主体交叉核验后再写入 Lead。与 Comtrade 用途不同；首包无外部海关 API、无 XLSX。
+
 ### Opportunity
 
 一个或多个 `OpportunitySignal` 经主体归一、产品相关性和确定性商机评分（`chem-opportunity-fit`）后形成的可跟进业务机会。状态含 Watch / NeedsReview / Actionable / Rejected；无主体或无事件日期不得标为 Actionable。

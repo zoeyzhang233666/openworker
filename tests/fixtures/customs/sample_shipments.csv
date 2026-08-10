@@ -1,0 +1,12 @@
+consignee_name,party_role,consignee_address,product_description,hs_code,arrival_date,customs_value,shipper_name
+Acme Specialty Chemicals Inc,consignee,"123 Industrial Rd, Houston TX",methylparaben 99.5%,291829,2024-01-10,45000,Shanghai Fine Chem Co
+Acme Specialty Chemicals Inc,importer,"123 Industrial Rd, Houston TX",methylparaben USP,291829,2024-03-15,52000,Shanghai Fine Chem Co
+Acme Specialty Chemicals Inc,consignee,"123 Industrial Rd, Houston TX",propylparaben,291829,2024-06-01,38000,Shanghai Fine Chem Co
+Global Freight Forwarders LLC,consignee,"PO Box 100 Port of LA",methylparaben,291829,2024-02-01,12000,Misc Exporter
+Global Freight Forwarders LLC,notify,"Care of warehouse 9",assorted chemicals,280000,2024-02-08,8000,Misc Exporter
+Global Freight Forwarders LLC,consignee,Logistics Hub Bldg 2,plastic resins,390110,2024-02-20,90000,Misc Exporter
+Global Freight Forwarders LLC,consignee,Logistics Hub Bldg 2,steel coils,720810,2024-03-01,110000,Misc Exporter
+BrightFormulation Labs,consignee,"88 Formulation Way, NJ",methylparaben,291829,2024-04-12,21000,Zhejiang Intermediate Ltd
+BrightFormulation Labs,importer,"88 Formulation Way, NJ",ethylparaben,291829,2024-05-20,19000,Zhejiang Intermediate Ltd
+Ocean Customs Brokerage Co,customs broker,"Pier 4",general cargo,,2024-01-05,1000,Unknown
+Random Trading Desk,buyer,"Suite 12 Downtown",benzoic acid,291631,2024-07-01,15000,EU Chem GmbH
