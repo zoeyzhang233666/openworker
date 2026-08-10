@@ -5,7 +5,7 @@ description: "Use when 用户要对已核验化工 Lead/商机产出联系策略
 
 # 销售接触编排
 
-把一次销售转化任务组织为可恢复的 `EngagementRun`：联系策略 → 草稿 → 质量门禁 →（可选）人工触发发送审批。草稿不等于发送；本 Skill **不**自动外发、不写 CRM、不购买联系人。
+把一次销售转化任务组织为可恢复的 `EngagementRun`：联系策略 → 草稿 → 质量门禁 →（可选）人工触发发送审批 / CRM 笔记写入审批。草稿不等于发送；本 Skill **不**自动外发、**不**自动写 CRM、不购买联系人。
 
 ## 输入与边界
 
@@ -13,7 +13,8 @@ description: "Use when 用户要对已核验化工 Lead/商机产出联系策略
 - 依次加载 `chem-product-intelligence`（SKU 事实）与 `chem-sales-quality-check`（确定性门禁）。
 - 无可靠个人邮箱/手机时，只输出**岗位策略**与待补证项；禁止编造邮箱、微信或电话。
 - 禁止编造价格、交期、认证、已寄样、已发送或已成交等事实。
-- 默认只读；外发须用户明确要求后调用连接器 `email_send`，并走现有审批；CRM/付费调用仍须审批。
+- 默认只读；外发须用户明确要求后调用连接器 `email_send`，并走现有审批。
+- CRM 首包仅允许在 `ready_for_crm_write` 且用户明确要求（含「提交 CRM 写入审批」CTA）后调用 `hubspot_log_note`（对已有 contact/company/deal 记笔记）；**禁止**主动调用 `hubspot_create_contact` / `hubspot_update_object` / `hubspot_create_task`；付费调用仍须审批。
 
 ## 状态机
 
@@ -23,8 +24,9 @@ description: "Use when 用户要对已核验化工 Lead/商机产出联系策略
 
 - `OutreachDraft`：可空 `recipient_email`；必须有 `recipient_role`；价格/交期声明须有证据 ID。
 - `FollowupPlan`：节拍 + 停止条件 + 人工确认点；不得假设邮件已发出。
-- 质量门禁未 `pass` 时不得建议 `ready_for_human_send`，也不得调用 `email_send`。
+- 质量门禁未 `pass` 时不得建议 `ready_for_human_send` / `ready_for_crm_write`，也不得调用 `email_send` 或 `hubspot_log_note`。
 - 仅当 `ready_for_human_send` **且**用户明确要求发送 **且**有可靠 `to` 邮箱时，才可调用 `email_send`；未获审批不得宣称已发送。
+- 仅当文案含 `ready_for_crm_write` **且**用户明确要求写入 CRM **且**已知可靠 HubSpot 对象类型与 ID 时，才可调用 `hubspot_log_note`；未获审批不得宣称已写入；HubSpot 未连接时披露中文错误并引导「连接」。
 - 拒绝 `task-provided:` / `unknown:` / `placeholder:` 占位 locator。
 
 详见 `references/engagement-discipline.md`。

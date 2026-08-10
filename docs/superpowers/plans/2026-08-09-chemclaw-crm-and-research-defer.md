@@ -1,12 +1,13 @@
-# ChemClaw CRM / 买联系人 / 化工社科研 — 远期队列（不自动开工）
+# ChemClaw CRM / 买联系人 / 化工社科研 — 远期队列
 
-> 阶段后置说明；**不得**与销售 Provider 小任务并行铺开。
+> HubSpot **笔记写入审批首包已交付（D-105）**；其余 CRM/买联系人/化工社仍须点名。
 
 ## CRM / 买联系人 / 多渠道外发
 
-- 任一写入真实 CRM 或购买联系人必须：独立决策 + `requires_approval` + 中文审批文案
-- 复用现有 connectors（HubSpot/Close 等）优先于自研
-- 未批准前客户清单与转化页**不**显示对应按钮
+- **已交付（D-105）**：对话内 `ready_for_crm_write` → `hubspot_log_note` + 审批卡；清单页仍无 CRM 按钮；不自动写。
+- 仍未做：`hubspot_create_contact` / 字段更新 / 任务创建的产品 CTA；Close 等其他 CRM；买联系人；多渠道外发
+- 任一新增真实 CRM 写入面或购买联系人必须：独立决策 + `requires_approval` + 中文审批文案
+- 复用现有 connectors 优先于自研
 
 ## 阶段 6：化工社 / 科研（D-090）
 
@@ -17,4 +18,4 @@
 
 ## 开工条件
 
-用户明确点名「CRM」或「审核某化工社 Skill：&lt;id&gt;」后再写独立小计划与代码。
+用户明确点名「CRM：…」（扩展写入面）或「审核某化工社 Skill：&lt;id&gt;」后再写独立小计划与代码。

@@ -47,6 +47,9 @@ const messages = {
     "leads.detail.exclude": "排除原因",
     "sendApproval.submit": "提交发送审批",
     "sendApproval.hint": "将请求助手调用 email_send；仍须在审批卡中确认。不会自动外发。",
+    "crmWriteApproval.submit": "提交 CRM 写入审批",
+    "crmWriteApproval.hint":
+      "将请求助手调用 hubspot_log_note；仍须在审批卡中确认。不会自动写入 CRM。",
     "nav.scheduled": "定时任务",
     "nav.connections": "连接",
     "nav.settings": "设置",
@@ -214,6 +217,23 @@ const messages = {
     "experts.persona.export-engagement-lobster.name": "外贸转化龙虾",
     "experts.persona.export-engagement-lobster.tagline":
       "化工外贸转化 · 草稿跟进 · 询盘报价与人工发送",
+    "experts.persona.platform-rewrite-lobster.name": "化工内容重构龙虾",
+    "experts.persona.platform-rewrite-lobster.tagline":
+      "化工内容重构 · 多平台适配 · 事实保持 · 合规质检",
+    "intro.rewrite.lede":
+      "把化工素材改成适合平台发布的成稿——保留事实、区分语气、扫敏感词；不自动发帖。",
+    "intro.rewrite.task1.title": "改成小红书配文",
+    "intro.rewrite.task1.sub": "标题/封面字/正文/标签，保留规格事实",
+    "intro.rewrite.task1.prompt":
+      "请把下面化工素材改写成小红书图文（含标题、封面字、正文、标签与改写说明）。不要新增原文没有的 CAS、纯度、认证或安全承诺：\n\n",
+    "intro.rewrite.task2.title": "改成抖音口播稿",
+    "intro.rewrite.task2.sub": "口语短句 + 画面提示 + 话题",
+    "intro.rewrite.task2.prompt":
+      "请把下面化工素材改写成抖音口播稿（含口播稿、画面提示、话题与改写说明）。事实锚点保持不变，语气要口语化：\n\n",
+    "intro.rewrite.task3.title": "合规过稿（扫敏感词）",
+    "intro.rewrite.task3.sub": "先出简报再改写，门禁不过则修订",
+    "intro.rewrite.task3.prompt":
+      "请对下面文案做化工内容合规过稿：先 RewriteBrief，再按目标平台改写，运行敏感词扫描与质量门禁；未通过则修订。目标平台：小红书。原文：\n\n",
     "boot.starting": "正在启动 ChemClaw…",
     "boot.restoring": "正在恢复你的对话…",
     "sidebar.newConversation": "新建对话",
@@ -335,6 +355,9 @@ const messages = {
     "leads.detail.exclude": "Exclude reason",
     "sendApproval.submit": "Submit send for approval",
     "sendApproval.hint": "Asks the assistant to call email_send; you still confirm on the approval card. No auto-send.",
+    "crmWriteApproval.submit": "Submit CRM write for approval",
+    "crmWriteApproval.hint":
+      "Asks the assistant to call hubspot_log_note; you still confirm on the approval card. No auto CRM write.",
     "nav.scheduled": "Automations",
     "nav.connections": "Connectors",
     "nav.settings": "Settings",
@@ -504,6 +527,23 @@ const messages = {
     "experts.persona.export-engagement-lobster.name": "Export Engagement Lobster",
     "experts.persona.export-engagement-lobster.tagline":
       "Export conversion · drafts, inquiry quotes · human send after review",
+    "experts.persona.platform-rewrite-lobster.name": "Chem Content Rewrite Lobster",
+    "experts.persona.platform-rewrite-lobster.tagline":
+      "Chem content rewrite · multi-platform fit · fact lock · policy gate",
+    "intro.rewrite.lede":
+      "Rewrite chem copy for platforms—keep facts, shift tone, scan risky claims; never auto-post.",
+    "intro.rewrite.task1.title": "Rewrite for Xiaohongshu",
+    "intro.rewrite.task1.sub": "Title / cover / body / tags; keep spec facts",
+    "intro.rewrite.task1.prompt":
+      "Rewrite the following chemical copy for Xiaohongshu (title, cover line, body, tags, rewrite notes). Do not invent CAS, purity, certifications, or safety guarantees absent from the source:\n\n",
+    "intro.rewrite.task2.title": "Rewrite as Douyin script",
+    "intro.rewrite.task2.sub": "Spoken short lines + shot hints + topics",
+    "intro.rewrite.task2.prompt":
+      "Rewrite the following chemical copy as a Douyin spoken script (script, shot hints, topics, rewrite notes). Keep fact anchors; make the tone conversational:\n\n",
+    "intro.rewrite.task3.title": "Compliance pass (scan claims)",
+    "intro.rewrite.task3.sub": "Brief → rewrite → gate; revise if not pass",
+    "intro.rewrite.task3.prompt":
+      "Run a chem content compliance pass: RewriteBrief, platform rewrite, lexicon scan, and quality gate; revise until pass. Target platform: Xiaohongshu. Source:\n\n",
     "boot.starting": "Starting ChemClaw…",
     "boot.restoring": "Restoring your conversation…",
     "sidebar.newConversation": "New conversation",

@@ -215,9 +215,9 @@ def _hubspot_profile(
     hub_id, key, profile = hubspot_portals.resolve(secrets, portal)
     if profile is None:
         hint = (
-            f"no hubspot portal matching {portal!r}"
+            f"未找到匹配的 HubSpot 门户「{portal}」；请在「连接」中核对门户 ID/名称。"
             if portal
-            else "hubspot is not connected"
+            else "HubSpot 未连接；请在「连接」中配置 HubSpot 门户后再写入 CRM。"
         )
         return "", "", {"error": hint}
     if profile.get("managed"):
@@ -230,7 +230,12 @@ def _hubspot_profile(
     # `access_token` (which is what the broker refresh rotates).
     token = profile.get("token") or profile.get("access_token") or ""
     if not token:
-        return "", "", {"error": f"hubspot portal {hub_id} has no usable token"}
+        return "", "", {
+            "error": (
+                f"HubSpot 门户「{hub_id}」无可用令牌；"
+                "请在「连接」中重新授权或粘贴 Private App token。"
+            )
+        }
     name = str(profile.get("account") or f"portal {hub_id}")
     return name, token, None
 

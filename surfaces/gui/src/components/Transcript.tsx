@@ -11,6 +11,10 @@ import {
   REQUEST_SEND_APPROVAL_EVENT,
   isReadyForHumanSend,
 } from "../requestSendApproval";
+import {
+  REQUEST_CRM_WRITE_APPROVAL_EVENT,
+  isReadyForCrmWrite,
+} from "../requestCrmWriteApproval";
 
 // Long user pastes swallow the transcript (owner ask 2026-07-30): clamp past a generous
 // threshold with a more…/less… toggle. Normal typed messages never see the control; the
@@ -549,6 +553,26 @@ export function Transcript({
                       {t("sendApproval.submit")}
                     </button>
                     <p className="text-[11.5px] text-inkMuted m-0">{t("sendApproval.hint")}</p>
+                  </div>
+                )}
+                {!running && isReadyForCrmWrite(item.text) && (
+                  <div className="mt-2 flex flex-col gap-1 items-start">
+                    <button
+                      type="button"
+                      className="btn"
+                      data-testid="submit-crm-write-approval"
+                      title={t("crmWriteApproval.hint")}
+                      onClick={() =>
+                        window.dispatchEvent(
+                          new CustomEvent(REQUEST_CRM_WRITE_APPROVAL_EVENT),
+                        )
+                      }
+                    >
+                      {t("crmWriteApproval.submit")}
+                    </button>
+                    <p className="text-[11.5px] text-inkMuted m-0">
+                      {t("crmWriteApproval.hint")}
+                    </p>
                   </div>
                 )}
                 <BubbleMeta text={item.text} ts={item.ts} align="left" />

@@ -130,7 +130,15 @@ def test_tools_pick_the_requested_portal_by_id_or_name(secrets, monkeypatch):
         "Bearer tok-222",
     ]
     out = search("acme", portal="999")
-    assert "no hubspot portal" in out["error"]
+    assert "未找到匹配的 HubSpot 门户" in out["error"]
+
+
+def test_hubspot_not_connected_chinese_error(secrets):
+    out = _tool(secrets, "hubspot_log_note")("deals", "77", "note")
+    assert out.get("ok") is not True
+    err = out.get("error") or ""
+    assert "HubSpot 未连接" in err
+    assert "连接" in err
 
 
 def test_hidden_fields_stripped_from_search_and_get(secrets, monkeypatch):

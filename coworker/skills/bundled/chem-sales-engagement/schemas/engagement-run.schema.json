@@ -43,7 +43,12 @@
       "properties": {
         "verdict": {"enum": ["pass", "blocked", "pending"]},
         "recommended_action": {
-          "enum": ["ready_for_human_send", "revise_draft", "await_evidence"]
+          "enum": [
+            "ready_for_human_send",
+            "ready_for_crm_write",
+            "revise_draft",
+            "await_evidence"
+          ]
         },
         "rule_set": {
           "type": "object",

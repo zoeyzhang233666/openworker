@@ -71,6 +71,10 @@ import {
   sendApprovalIntentMessage,
 } from "./requestSendApproval";
 import {
+  REQUEST_CRM_WRITE_APPROVAL_EVENT,
+  crmWriteApprovalIntentMessage,
+} from "./requestCrmWriteApproval";
+import {
   REQUEST_LEAD_FOLLOWUP_EVENT,
   leadFollowupIntentMessage,
   type RequestLeadFollowupDetail,
@@ -1023,6 +1027,16 @@ export function App() {
     window.addEventListener(REQUEST_SEND_APPROVAL_EVENT, onSendApproval);
     return () => window.removeEventListener(REQUEST_SEND_APPROVAL_EVENT, onSendApproval);
   });
+  // D-105: «提交 CRM 写入审批» after ready_for_crm_write — hubspot_log_note still gated.
+  useEffect(() => {
+    const onCrmWriteApproval = () => {
+      if (running) return;
+      send(crmWriteApprovalIntentMessage());
+    };
+    window.addEventListener(REQUEST_CRM_WRITE_APPROVAL_EVENT, onCrmWriteApproval);
+    return () =>
+      window.removeEventListener(REQUEST_CRM_WRITE_APPROVAL_EVENT, onCrmWriteApproval);
+  });
   // D-102: lead-list «继续补查» / «重评» — inject chat intent only (no auto-run / send / CRM).
   useEffect(() => {
     const onLeadFollowup = (ev: Event) => {
@@ -1742,7 +1756,10 @@ export function App() {
                     <span className="mark">✦</span>
                     {emptyStateGreeting}
                   </h1>
-                  {agent === "cowork" || agent === "chain-lobster" || agent === "chat" ? (
+                  {agent === "cowork" ||
+                  agent === "chain-lobster" ||
+                  agent === "chat" ||
+                  agent === "platform-rewrite-lobster" ? (
                     <SessionIntro
                       hideGreeting
                       variant={
@@ -1750,7 +1767,9 @@ export function App() {
                           ? "chain-lobster"
                           : agent === "chat"
                             ? "chat"
-                            : "cowork"
+                            : agent === "platform-rewrite-lobster"
+                              ? "platform-rewrite"
+                              : "cowork"
                       }
                       sessionId={sessionId}
                       onOpenSessionSettings={openAccess}

@@ -218,6 +218,14 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 通过 Email（IMAP/SMTP）连接器外发：凭据在 SecretStore；Tool `requires_approval=True`，须审批卡允许后才 SMTP 发送。须用户明确触发（对话或「提交发送审批」CTA）；无连接时返回中文错误。草稿就绪 ≠ 已发送。
 
+### `ready_for_crm_write`
+
+转化跟进可提交**人工 CRM 写入审批**的门禁标记（可与 `ready_for_human_send` 同轮或后续轮）。不等于已调用 HubSpot 写工具，也不等于已写入 CRM。
+
+### CRM 笔记写入（`hubspot_log_note`）
+
+复用 HubSpot 连接器：对已有 contact/company/deal 写 timeline 笔记；`requires_approval=True`。须文案含 `ready_for_crm_write` 且用户明确触发（对话或「提交 CRM 写入审批」CTA）；未连接返回中文错误。首包不经产品 CTA 主动建联系人/改字段/建任务。客户清单页不显示 CRM 按钮。
+
 ### `FollowupPlan`
 
 多轮跟进节拍：日偏移、目的、草稿要点、停止条件与人工确认点；不得假设邮件已发出。

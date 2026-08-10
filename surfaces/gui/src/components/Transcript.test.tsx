@@ -268,6 +268,47 @@ describe("submit send approval CTA (D-099)", () => {
   });
 });
 
+describe("submit CRM write approval CTA (D-105)", () => {
+  it("shows the button only when ready_for_crm_write is present and session is idle", () => {
+    const ready: Item[] = [
+      { kind: "user", text: "log crm note" },
+      {
+        kind: "assistant",
+        text: "Follow-up ready. recommended_action: ready_for_crm_write",
+      },
+    ];
+    const { rerender } = render(<Transcript items={ready} onApprove={vi.fn()} />);
+    expect(screen.getByTestId("submit-crm-write-approval").textContent).toMatch(
+      /提交 CRM 写入审批|Submit CRM write for approval/,
+    );
+
+    rerender(<Transcript items={ready} onApprove={vi.fn()} running />);
+    expect(screen.queryByTestId("submit-crm-write-approval")).toBeNull();
+
+    rerender(
+      <Transcript
+        items={[{ kind: "assistant", text: "draft only, revise_draft" }]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("submit-crm-write-approval")).toBeNull();
+  });
+
+  it("dispatches the crm-write-approval event on click", () => {
+    const spy = vi.fn();
+    window.addEventListener("ocw-request-crm-write-approval", spy);
+    render(
+      <Transcript
+        items={[{ kind: "assistant", text: "ready_for_crm_write" }]}
+        onApprove={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("submit-crm-write-approval"));
+    expect(spy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("ocw-request-crm-write-approval", spy);
+  });
+});
+
 describe("bubble hover affordances (FB-005)", () => {
   const TS = 1752969720; // unix seconds, as the server stamps them
   const ITEMS: Item[] = [

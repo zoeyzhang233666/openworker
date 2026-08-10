@@ -13,3 +13,5 @@
 - `channel` 合法；`body`/`subject` 非空
 - `recipient_role` 非空；`recipient_email` 可为 null（岗位策略）
 - 无硬拒绝项 → `verdict=pass`，`recommended_action=ready_for_human_send`
+- `ready_for_human_send` 仅表示可提交人工**发送**审批，不等于已调用 `email_send`
+- 另可在同一轮或后续轮助手文案中给出 `ready_for_crm_write`（HubSpot 笔记写入审批门禁，D-105）；不等于已调用 `hubspot_log_note`，且不替代发送门禁
