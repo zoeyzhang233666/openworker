@@ -28,6 +28,24 @@ export interface WsEvent {
   data: any;
 }
 
+/** ask_user option: plain string or rich object (OPE-51). */
+export type QuestionOption =
+  | string
+  | {
+      label: string;
+      description?: string;
+      recommended?: boolean;
+      preview?: string;
+    };
+
+export interface GroupedQuestion {
+  question: string;
+  header?: string;
+  options?: QuestionOption[];
+  allow_text?: boolean;
+  multi?: boolean;
+}
+
 // Re-exported for transcript items below. Lives in api.ts (the REST/WS contract source of truth);
 // type-only import, so there's no runtime cycle with api.ts's `import type { ... } from "./types"`.
 import type { MessageSource } from "./api";
@@ -134,9 +152,11 @@ export type Item =
       // A live ask_user prompt (attended sessions answer inline; unattended ones route to the Inbox).
       kind: "question";
       question: string;
-      options?: string[];
+      options?: QuestionOption[];
       allow_text?: boolean;
       multi?: boolean;
+      header?: string;
+      questions?: GroupedQuestion[];
       resolved?: string;
     }
   | { kind: "notice"; tone: "info" | "warn"; text: string; retriable?: boolean };

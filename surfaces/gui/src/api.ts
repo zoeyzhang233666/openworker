@@ -1,4 +1,4 @@
-import type { SessionInfo, WsEvent } from "./types";
+import type { GroupedQuestion, QuestionOption, SessionInfo, WsEvent } from "./types";
 
 declare const __COWORKER_DEV_TOKEN__: string;
 
@@ -1385,9 +1385,12 @@ export interface InboxItem {
   resolved_at: string | null;
   visibility?: "inline" | "inbox";
   // Question metadata (ask_user): quick-reply choices + a free-text escape.
-  options?: string[];
+  // Options may be plain strings or rich {label, description, recommended, preview} objects.
+  options?: QuestionOption[];
   allow_text?: boolean;
   multi?: boolean;
+  header?: string;
+  questions?: GroupedQuestion[];
   // Kind-specific payload (directory: {path, writable}; …).
   data?: Record<string, any>;
   // Originating-session context (server-joined) so the Inbox is self-contained.

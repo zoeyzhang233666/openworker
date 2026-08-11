@@ -371,6 +371,12 @@ const messages = {
     "mermaid.repairFailed": "无法自动修复此图表",
     "mermaid.loadFailed": "图表库加载失败",
     "mermaid.retryLoad": "重新加载",
+    "ask.recommended": "推荐",
+    "ask.previous": "上一个问题",
+    "ask.question": "问题",
+    "ask.progress": "第 {current}/{total} 个",
+    "ask.typeOwn": "或输入自己的答案…",
+    "ask.yourAnswer": "请输入答案…",
   },
   "en-US": {
     "nav.conversations": "Conversations",
@@ -740,6 +746,12 @@ const messages = {
     "mermaid.repairFailed": "Could not automatically fix this diagram",
     "mermaid.loadFailed": "Could not load the diagram library",
     "mermaid.retryLoad": "Retry load",
+    "ask.recommended": "Recommended",
+    "ask.previous": "Previous question",
+    "ask.question": "Question",
+    "ask.progress": "{current} of {total}",
+    "ask.typeOwn": "Or type your own answer…",
+    "ask.yourAnswer": "Your answer…",
   },
 } as const;
 
