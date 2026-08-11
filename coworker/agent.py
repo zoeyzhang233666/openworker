@@ -23,7 +23,13 @@ from .connectors import (
 )
 from .engine import Approver, TurnEngine
 from .environment import environment_context
-from .memory import MemoryStore, Scope, format_memories, memory_tools
+from .memory import (
+    MemoryStore,
+    Scope,
+    format_user_rules,
+    memory_tools,
+    render_memory_block,
+)
 from .permissions import Mode, PermissionEngine
 from .project import load_agents_md
 from .roots import RootDir, normalize_roots, render_context
@@ -74,20 +80,46 @@ in which files, how you'll verify) — don't describe edits as if you were makin
 the plan is approved, this same session switches to execution and you implement it; if
 rejected, revise the plan using the feedback."""
 
-# When-to-remember rules, injected only when a memory store is wired. Without these,
-# models either never call `remember` or save noise the repo already records.
+# When-to-remember rules (MEMORY-SPEC §4.2), injected only when a memory store is wired.
+# Without these, models either never call `remember` or save noise the repo already
+# records. The conservative bias is deliberate: a wrong memory feels broken and creepy at
+# once; a missing one merely means the user repeats themselves.
 _MEMORY_GUIDANCE = """\
 Memory:
 - You have persistent memory across sessions. Use `remember` for durable facts: the user's \
 corrections and stated preferences (include the why), and project context you couldn't \
-rederive from the code. Don't save what the repo already records (code structure, git \
-history, AGENTS.md) or details that only matter to the current task. Use absolute dates, \
-never "yesterday".
+rederive from the code. Scope by what the fact is about: facts about the user -> "global"; \
+facts about the current work -> "workspace". Always pass a one-line summary (15 words max) \
+alongside the full content.
+- Save conservatively — a wrong memory costs more than a missing one. Save only clearly \
+durable facts ("from now on", "always", "in all my chats"). Ambiguous one-off phrasing \
+("I prefer simple talking"): apply it now, don't save it. But when the user explicitly \
+asks you to remember something, always save it.
+- Sensitive topics (health, finances, relationships, beliefs): never save silently. Ask \
+first — "Want me to remember this for next time?" — and save only on a yes.
+- When you save, say so in one short plain sentence in your visible reply ("I'll remember \
+that you prefer short replies."). And the first time a remembered fact shapes your \
+behavior in a session, note it in one quiet line ("Keeping this short since you prefer \
+simple replies.") — first use only, not every message.
+- Don't save what the repo already records (code structure, git history, AGENTS.md) or \
+details that only matter to the current task. Use absolute dates, never "yesterday".
 - Before saving, check the known-memories list: if an entry already covers it, revise that \
 entry with `memory_update` instead of adding a near-duplicate; retire wrong or obsolete \
 entries with `memory_forget`.
 - Memories reflect when they were written. If one names a file, flag, or URL, verify it \
 still exists before relying on it."""
+
+# Injected per turn when saving is off (§4.3). Off = stop learning; already-saved memories
+# stay injected and usable; write tools remain registered but refuse. Without this notice
+# the model bluffs a fake save (observed live 2026-07-28).
+_MEMORY_OFF_NOTICE = """\
+Saving new memories is turned off in this user's Settings. What you already know about \
+them (the known-memories list, if any) is still true and you should keep using it — but \
+writes are refused, and nothing new from this conversation will carry over to future \
+ones. If the user asks you to remember something new, state both halves plainly: you'll \
+keep it in mind for the rest of this conversation, but it won't be saved once the \
+conversation ends — they can turn saving back on in Settings ▸ Memory. Never imply you \
+saved, noted, or will remember anything new."""
 
 # UX-015 (§33): the GUI interleaves these status lines with humanized tool rows inside a
 # collapsed "turn" — they're what the user reads while the agent works. Universal (appended
@@ -228,6 +260,16 @@ def build_engine(
     max_iterations: Optional[int] = None,
     model_settings: Optional[dict[str, Any]] = None,
     memory_store: Optional[MemoryStore] = None,
+    # MEMORY-SPEC §5.1: called with the MemoryItem right after `remember`/`memory_update`
+    # persists — the manager uses this to push the memory_saved event for the save toast.
+    on_memory_saved: Optional[Any] = None,
+    # MEMORY-SPEC §6: standing rules from Settings. Injected once at build (session-stable);
+    # edits apply to NEW conversations. Independent of the memory on/off switch.
+    user_rules: Optional[Any] = None,
+    # True when saving is off at build (CLI/tests). Server prefers memory_saving_enabled.
+    memory_off: bool = False,
+    # LIVE saving switch consulted per write so mid-session flips apply immediately.
+    memory_saving_enabled: Optional[Any] = None,
     messages: Optional[list[dict[str, Any]]] = None,
     extra_tools: Optional[list[Any]] = None,
     secrets: Optional[SecretStore] = None,
@@ -405,15 +447,35 @@ def build_engine(
         if conventions:
             instructions = f"{instructions}\n\n{conventions}"
 
+    # Standing rules are session-stable knowledge (read once at build).
+    rules_block = format_user_rules(
+        (user_rules() if callable(user_rules) else user_rules) or ""
+    )
+    if rules_block:
+        instructions = f"{instructions}\n\n{rules_block}"
+
+    def _saving_enabled() -> bool:
+        if memory_saving_enabled is not None:
+            return bool(memory_saving_enabled())
+        return not memory_off
+
     if memory_store is not None:
+        # Always register the full toolset: the registry is fixed at build, so a live
+        # Settings flip can refuse or resume writes without rebuilding the engine.
         registry.register_all(
-            memory_tools(memory_store, workspace=str(ws) if ws else None)
+            memory_tools(
+                memory_store,
+                workspace=str(ws) if ws else None,
+                on_saved=on_memory_saved,
+                saving_enabled=_saving_enabled,
+            )
         )
         instructions = f"{instructions}\n\n{_MEMORY_GUIDANCE}"
+        # Known facts are fixed at session start (MEMORY-SPEC §7.1).
         remembered = memory_store.list(scope=Scope.GLOBAL)
         if ws is not None:
             remembered += memory_store.list(scope=Scope.WORKSPACE, workspace=str(ws))
-        block = format_memories(remembered)
+        block = render_memory_block(remembered)
         if block:
             instructions = f"{instructions}\n\n{block}"
 
@@ -474,6 +536,9 @@ def build_engine(
             parts.append(_PLAN_MODE_CONTEXT)
         elif permissions.mode is Mode.DISCUSS:
             parts.append(_DISCUSS_MODE_CONTEXT)
+        # Only the SAVING switch is per-turn (§4.3); known memories stay session-fixed.
+        if memory_store is not None and not _saving_enabled():
+            parts.append(_MEMORY_OFF_NOTICE)
         if roots_context is not None:
             ctx = roots_context()
             if ctx:
