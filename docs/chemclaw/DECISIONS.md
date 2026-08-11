@@ -233,6 +233,7 @@
 - **D-119（2026-08-10）**：在 D-118 之上补齐**写反应首包**：`validate_huagongshe_reaction`（须 Token，不写库，无审批）+ `create_huagongshe_reaction`（须 Token、`Idempotency-Key`、`requires_approval=True`）；bundled Skill `chem-huagongshe-reaction`（中文边界编排，按需 `load_skill`，不强制销售龙虾 `skills:`）；公开查询文案标明校验/保存依赖 Token 与审批。仍**禁止**进 Lead 评分；**不**整包拷贝官方 SKILL、不加 RDKit/SVG、不接编辑/删除 API。
 - **D-120（2026-08-11）**：澄清 D-118/D-119「不加 RDKit/SVG」= **禁止本机 RDKit 渲染与把 SVG 源码搬进模型上下文**；**允许**平台只读 Tool `fetch_huagongshe_svg` 经化工社公开接口拉取分子/反应 2D SVG，**完整写入会话工作区产物**（如 `huagongshe_assets/….svg`），Tool 回包仅元数据（路径、`public_url`、字节数等）。禁止用 `web_fetch` / shell 直连搬运 SVG 正文。交付用 `artifact:` 芯片或 Markdown 图链；仍**禁止**进 Lead 评分。
 - **D-121（2026-08-11）**：上下文压缩硬裁用户提示中性化，并提高摘要二次成功率。Trim 成功时显示「上下文已自动精简以继续」（不再使用「摘要不可用」）；摘要失败打 `warning` 日志；第二次摘要尝试收紧 summarizer span（更短 tool-result clip / 更小 char budget）后再 Trim。不改变「失败不阻塞、自动 Trim 续跑」契约；不关闭压缩。与 D-073/D-075 一致；D-120 只减少 SVG 胀爆，不能单独消灭硬裁。
+- **D-122（2026-08-11）**：四只销售龙虾（`export-sales-lobster` / `domestic-sales-lobster` / `opportunity-radar-lobster` / `export-engagement-lobster`）新对话空态改为专属 `SessionIntro` 三卡（lede + title/sub/prompt，中英 i18n），对齐拓客/商机/转化真实场景；不再落入代码向 `SUGGESTIONS`（跑测试套件 / 读项目概览 / 修失败构建）。标题仍用「与 {name} 畅谈」（D-067）；不改默认禁用、Skill、权限或 Provider。
 
 ## 协作治理
 

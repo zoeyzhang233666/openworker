@@ -4,7 +4,7 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
-- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-121）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM；Comtrade；海关；询盘转报价；清单；SMTP；HubSpot；化工社合集试点+Triage；API 公开查询；SAM/Comtrade 境外可选；VAT/汇率/维基；**化工社只读检索**（D-118）+ **写反应首包**（D-119）+ **公开 SVG 落盘 Tool**（D-120）+ **压缩硬裁提示中性化/二次收紧摘要**（D-121）。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用。**本机销售环点检（2026-08-09）用户确认通过**。
+- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-122）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM；Comtrade；海关；询盘转报价；清单；SMTP；HubSpot；化工社合集试点+Triage；API 公开查询；SAM/Comtrade 境外可选；VAT/汇率/维基；**化工社只读检索**（D-118）+ **写反应首包**（D-119）+ **公开 SVG 落盘 Tool**（D-120）+ **压缩硬裁提示中性化/二次收紧摘要**（D-121）+ **四销售龙虾专属空态三卡**（D-122）。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用。**本机销售环点检（2026-08-09）用户确认通过**。
 - **化工多平台内容重构（2026-08-10，D-104 / D-107）**：选用 Plan B；**M1+M2 已落地并收口**：`platform-rewrite-lobster` + 四核心 Skill + **`chem-hook-cta-pack`（按需）**、确定性扫描、合成夹具、**12 条回归语料**、空态三卡；knowledge 会话只读挂载 `skills`；默认仍为 `cowork`，新 Agent 默认禁用；不自动发帖。同日核对工作区假 dirty 已清；定向 pytest **26 passed**。**M3**（词表热升级 / 安装包验收）须点名且确认打安装包。见 [platform-rewrite/README.md](platform-rewrite/README.md)、[HANDOFF_PLATFORM_REWRITE.md](HANDOFF_PLATFORM_REWRITE.md)、[计划](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。

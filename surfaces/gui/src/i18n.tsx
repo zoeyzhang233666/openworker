@@ -198,6 +198,62 @@ const messages = {
     "intro.chain.task3.sub": "先把产业环节说清楚，再对应到公司和行情",
     "intro.chain.task3.prompt":
       "请从化工产业链的稀缺环节出发，分析可能对应哪些上市公司机会。请先把产业环节说清楚，再映射到公司和行情，并标明不确定处。",
+    "intro.export.lede":
+      "围绕具体 SKU 与目标市场，找出有证据的候选客户，给出双评分与下一步——不是研究报告。",
+    "intro.export.task1.title": "按产品 + 目标国找进口商/买家清单",
+    "intro.export.task1.sub": "先问清 SKU、市场与客户类型，再检索与核验",
+    "intro.export.task1.prompt":
+      "请围绕某个化工产品/SKU 和目标国家，找有证据的进口商或买家清单。请先问清产品规格、目标市场、客户类型与排除条件，再开始检索；每个强结论须可追溯证据，不编造企业或联系人。",
+    "intro.export.task2.title": "用海关/提单文件筛真实进口商",
+    "intro.export.task2.sub": "排除货代噪声，交叉核验后再写入清单",
+    "intro.export.task2.prompt":
+      "请用工作区里的海关或提单文件（CSV/XLSX）筛真实进口商。请先确认产品/HS 与目标市场，过滤货代等噪声，交叉核验后再写入候选清单；收货方不等于终端买家。",
+    "intro.export.task3.title": "对候选做双评分并输出可联系/待补查清单",
+    "intro.export.task3.sub": "Lead Fit 与证据置信度分开；不自动外发",
+    "intro.export.task3.prompt":
+      "请对已收集的候选客户做 Lead Fit 与 Evidence Confidence 双评分，输出可联系、待补查与已排除清单及下一步动作。禁止把低置信候选包装成合格 Lead；不自动外发。",
+    "intro.domestic.lede":
+      "围绕具体 SKU 与国内区域，用园区/工商公开证据找下游客户。",
+    "intro.domestic.task1.title": "按产品 + 省市/园区找国内下游客户",
+    "intro.domestic.task1.sub": "先对齐产品、区域与 ICP，再拓客",
+    "intro.domestic.task1.prompt":
+      "请围绕某个化工产品/SKU 和国内目标区域（省/市/园区可选），找有证据的下游客户。请先问清产品、区域、客户类型与排除条件，再开始检索；不编造企业或联系方式。",
+    "intro.domestic.task2.title": "核验主体与应用证据",
+    "intro.domestic.task2.sub": "统一社会信用代码优先；百科不是采购证据",
+    "intro.domestic.task2.prompt":
+      "请对国内候选企业核验主体与应用相关证据，优先统一社会信用代码与园区/工商公开信息。证据不足标为待核验；百科或目录条目不能单独支撑合格 Lead。",
+    "intro.domestic.task3.title": "输出双评分客户清单与下一步动作",
+    "intro.domestic.task3.sub": "可联系 / 待补查 / 已排除；不自动外发",
+    "intro.domestic.task3.prompt":
+      "请对国内候选做 Lead Fit 与 Evidence Confidence 双评分，输出可联系、待补查与已排除清单及下一步动作。不自动外发或写 CRM。",
+    "intro.radar.lede":
+      "把有来源的招标、询盘、扩产等信号整理成可跟进商机——不是拓客名单。",
+    "intro.radar.task1.title": "按产品搜近期招标/采购商机",
+    "intro.radar.task1.sub": "优先可回溯来源；不伪造公告号",
+    "intro.radar.task1.prompt":
+      "请围绕某个化工产品/SKU 搜索近期招标或采购商机。请先问清产品与市场约束，优先使用有来源的招标检索；不得伪造公告号；无命中则如实说明。",
+    "intro.radar.task2.title": "把询盘或扩产新闻整理成商机清单",
+    "intro.radar.task2.sub": "信号须可回溯；口述无来源保持待审阅",
+    "intro.radar.task2.prompt":
+      "请把询盘、扩产或其他有来源事件整理成可跟进商机清单。请先确认产品与市场边界；每个信号保留来源定位；无 URL/文件/登记号时只请求补证，不编造。",
+    "intro.radar.task3.title": "给商机打分并标出待补证项",
+    "intro.radar.task3.sub": "商机分与证据置信度分开；不自动外发",
+    "intro.radar.task3.prompt":
+      "请对已收集商机评分，区分商机分与证据置信度，标出风险与待补证项及建议动作。不得把搜索摘要包装成可行动商机；不自动外发。",
+    "intro.engagement.lede":
+      "对已核验 Lead/商机产出联系策略、开发信或询盘报价草稿；发送须人工审批。",
+    "intro.engagement.task1.title": "给已核验客户写开发信草稿",
+    "intro.engagement.task1.sub": "草稿 ≠ 发送；无可靠邮箱只给岗位策略",
+    "intro.engagement.task1.prompt":
+      "请为已核验的外贸客户写一封开发信或跟进消息草稿，并给出联系策略与跟进节拍。请先确认客户、产品卖点与语言；无可靠个人邮箱时只给岗位策略与补证项。绝不自动发送。",
+    "intro.engagement.task2.title": "把询盘整理成报价草稿",
+    "intro.engagement.task2.sub": "走计算器，不编造单价或缺量",
+    "intro.engagement.task2.prompt":
+      "请把一份外贸询盘整理成报价草稿。请先对齐规格、数量、币种与交期；单价与合计必须用报价计算器，缺数量或单价则标为待审阅，绝不编造价格。最多到人工审阅，不为报价单独外发。",
+    "intro.engagement.task3.title": "跑质量门禁并判断可否提交发送/CRM 审批",
+    "intro.engagement.task3.sub": "门禁未通过只给修订清单；须用户明确要求才发送",
+    "intro.engagement.task3.prompt":
+      "请对已写好的开发信或报价草稿跑销售质量门禁，说明是否可通过并能否进入发送或 CRM 审批。门禁未通过只给修订/补证清单；发送与 CRM 写入须用户明确要求且走现有审批，绝不自动外发。",
     "experts.persona.cowork.name": "ChemClaw",
     "experts.persona.cowork.tagline": "产出可交付成果——研究、分析、脚本",
     "experts.persona.code.name": "代码",
@@ -510,6 +566,62 @@ const messages = {
     "intro.chain.task3.sub": "Ground the chain first, then map to companies and markets",
     "intro.chain.task3.prompt":
       "Starting from scarce links in a chemical value chain, analyze possible listed-company opportunities. Ground the industrial links first, then map to companies and markets, and mark uncertainties.",
+    "intro.export.lede":
+      "From a concrete SKU and target market, find evidenced buyer candidates with dual scores and next actions — not a research report.",
+    "intro.export.task1.title": "Find importers/buyers by product + country",
+    "intro.export.task1.sub": "Clarify SKU, market, and ICP first, then research and verify",
+    "intro.export.task1.prompt":
+      "Please find evidenced importers or buyers for a chemical product/SKU and target country. First clarify specs, market, customer type, and exclusions; every strong claim needs evidence — never invent companies or contacts.",
+    "intro.export.task2.title": "Filter real importers from customs/BOL files",
+    "intro.export.task2.sub": "Drop forwarder noise; cross-check before listing",
+    "intro.export.task2.prompt":
+      "Please filter real importers from customs or bill-of-lading files (CSV/XLSX) in the workspace. Confirm product/HS and market first, exclude freight-forwarder noise, and cross-check before listing — consignee ≠ end buyer.",
+    "intro.export.task3.title": "Dual-score candidates into contactable / needs-research lists",
+    "intro.export.task3.sub": "Separate Lead Fit from evidence confidence; never auto-send",
+    "intro.export.task3.prompt":
+      "Please dual-score collected candidates with Lead Fit and Evidence Confidence, and output contactable, needs-research, and excluded lists plus next actions. Do not package low-confidence hits as qualified leads; never auto-send.",
+    "intro.domestic.lede":
+      "From a concrete SKU and China region, find downstream buyers with park/registry public evidence.",
+    "intro.domestic.task1.title": "Find domestic buyers by product + province/park",
+    "intro.domestic.task1.sub": "Align product, region, and ICP before prospecting",
+    "intro.domestic.task1.prompt":
+      "Please find evidenced downstream buyers for a chemical product/SKU and a China target region (province/city/park optional). First clarify product, region, customer type, and exclusions; never invent companies or contacts.",
+    "intro.domestic.task2.title": "Verify entity and application evidence",
+    "intro.domestic.task2.sub": "Prefer Unified Social Credit Code; encyclopedia ≠ purchase proof",
+    "intro.domestic.task2.prompt":
+      "Please verify entity and application evidence for domestic candidates, preferring Unified Social Credit Code and park/registry public records. Mark weak evidence as needs review; encyclopedia or directory hits alone cannot support a qualified lead.",
+    "intro.domestic.task3.title": "Output dual-scored lists and next actions",
+    "intro.domestic.task3.sub": "Contactable / needs-research / excluded; never auto-send",
+    "intro.domestic.task3.prompt":
+      "Please dual-score domestic candidates with Lead Fit and Evidence Confidence, and output contactable, needs-research, and excluded lists plus next actions. Never auto-send or write CRM.",
+    "intro.radar.lede":
+      "Turn sourced tenders, inquiries, and expansion signals into followable opportunities — not a prospecting list.",
+    "intro.radar.task1.title": "Search recent tenders/procurement by product",
+    "intro.radar.task1.sub": "Prefer traceable sources; never invent notice IDs",
+    "intro.radar.task1.prompt":
+      "Please search recent tenders or procurement opportunities for a chemical product/SKU. First clarify product and market constraints; prefer sourced tender search; never invent notice IDs; say empty honestly if none.",
+    "intro.radar.task2.title": "Turn inquiries or expansion news into an opportunity list",
+    "intro.radar.task2.sub": "Signals must be traceable; unsourced hearsay stays NeedsReview",
+    "intro.radar.task2.prompt":
+      "Please turn inquiries, expansions, or other sourced events into a followable opportunity list. Confirm product and market first; keep locators for every signal; if no URL/file/registry id, only ask for more evidence — never invent.",
+    "intro.radar.task3.title": "Score opportunities and flag evidence gaps",
+    "intro.radar.task3.sub": "Separate opportunity score from evidence confidence; never auto-send",
+    "intro.radar.task3.prompt":
+      "Please score collected opportunities, separate opportunity score from evidence confidence, and flag risks, gaps, and next actions. Do not package search snippets as actionable opportunities; never auto-send.",
+    "intro.engagement.lede":
+      "For verified leads/opportunities, draft outreach or inquiry quotes; sending requires human approval.",
+    "intro.engagement.task1.title": "Draft outreach for a verified buyer",
+    "intro.engagement.task1.sub": "Draft ≠ send; without a reliable email, give role strategy only",
+    "intro.engagement.task1.prompt":
+      "Please draft an outreach or follow-up message for a verified export buyer, plus contact strategy and follow-up cadence. First confirm the account, product angles, and language; without a reliable personal email, give role strategy and evidence gaps only. Never auto-send.",
+    "intro.engagement.task2.title": "Turn an inquiry into a quote draft",
+    "intro.engagement.task2.sub": "Use the calculator; never invent unit prices or quantities",
+    "intro.engagement.task2.prompt":
+      "Please turn an export inquiry into a quote draft. First align specs, quantity, currency, and lead time; totals must use the quote calculator — missing quantity or unit price means NeedsReview, never invent prices. Stop at human review; do not send quotes automatically.",
+    "intro.engagement.task3.title": "Run quality gate and check send/CRM approval readiness",
+    "intro.engagement.task3.sub": "If gate fails, only revise; send only on explicit user request",
+    "intro.engagement.task3.prompt":
+      "Please run the sales quality gate on a finished outreach or quote draft and say whether it can enter send or CRM approval. If it fails, only give revision/evidence gaps; send and CRM writes need an explicit user request plus existing approvals — never auto-send.",
     "experts.persona.cowork.name": "ChemClaw",
     "experts.persona.cowork.tagline": "Produce a deliverable — research, analysis, scripts.",
     "experts.persona.code.name": "Code",

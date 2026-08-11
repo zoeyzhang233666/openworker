@@ -86,7 +86,7 @@ import {
 import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
 import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen, waitCopyPool } from "./firstTokenWaitCopy";
 import { SearchModal } from "./components/SearchModal";
-import { SessionIntro } from "./components/SessionIntro";
+import { SessionIntro, introVariantForAgent } from "./components/SessionIntro";
 import { FolderGate } from "./components/FolderGate";
 import { Onboarding } from "./components/Onboarding";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -1770,27 +1770,21 @@ export function App() {
                     <span className="mark">✦</span>
                     {emptyStateGreeting}
                   </h1>
-                  {agent === "cowork" ||
-                  agent === "chain-lobster" ||
-                  agent === "chat" ||
-                  agent === "platform-rewrite-lobster" ? (
-                    <SessionIntro
-                      hideGreeting
-                      variant={
-                        agent === "chain-lobster"
-                          ? "chain-lobster"
-                          : agent === "chat"
-                            ? "chat"
-                            : agent === "platform-rewrite-lobster"
-                              ? "platform-rewrite"
-                              : "cowork"
-                      }
-                      sessionId={sessionId}
-                      onOpenSessionSettings={openAccess}
-                      onPrefill={prefillComposer}
-                    />
-                  ) : (
-                    needsWorkspace(agent) && (
+                  {(() => {
+                    const introVariant = introVariantForAgent(agent);
+                    if (introVariant) {
+                      return (
+                        <SessionIntro
+                          hideGreeting
+                          variant={introVariant}
+                          sessionId={sessionId}
+                          onOpenSessionSettings={openAccess}
+                          onPrefill={prefillComposer}
+                        />
+                      );
+                    }
+                    return (
+                      needsWorkspace(agent) && (
                       <div className="suggestions">
                         {gatesWorkspace(agent) && !workspace && (
                           <div className="suggest-head flex items-center justify-between gap-2 flex-wrap">
@@ -1820,8 +1814,9 @@ export function App() {
                           </div>
                         ))}
                       </div>
-                    )
-                  )}
+                      )
+                    );
+                  })()}
                 </div>
               ) : (
                 <>
