@@ -434,6 +434,65 @@ describe("bubble hover affordances (FB-005)", () => {
   });
 });
 
+describe("memory save notices (MEMORY-SPEC §5.1)", () => {
+  it("new save Undo calls onUndoMemory(id, undefined)", () => {
+    const onUndoMemory = vi.fn();
+    render(
+      <Transcript
+        items={[{ kind: "memory", id: 7, text: "prefers tables" }]}
+        onApprove={vi.fn()}
+        onUndoMemory={onUndoMemory}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("memory-undo-7"));
+    expect(onUndoMemory).toHaveBeenCalledWith(7, undefined);
+  });
+
+  it("update Undo calls onUndoMemory(id, previous)", () => {
+    const onUndoMemory = vi.fn();
+    render(
+      <Transcript
+        items={[{ kind: "memory", id: 9, text: "prefers lists", previous: "prefers tables" }]}
+        onApprove={vi.fn()}
+        onUndoMemory={onUndoMemory}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("memory-undo-9"));
+    expect(onUndoMemory).toHaveBeenCalledWith(9, "prefers tables");
+  });
+
+  it("undone=true hides Undo and shows the restored/forgotten state", () => {
+    const onUndoMemory = vi.fn();
+    const { rerender } = render(
+      <Transcript
+        items={[{ kind: "memory", id: 3, text: "prefers tables", undone: true }]}
+        onApprove={vi.fn()}
+        onUndoMemory={onUndoMemory}
+      />,
+    );
+    expect(screen.queryByTestId("memory-undo-3")).toBeNull();
+    expect(screen.getByTestId("memory-toast-undone")).toBeTruthy();
+
+    rerender(
+      <Transcript
+        items={[
+          {
+            kind: "memory",
+            id: 4,
+            text: "prefers lists",
+            previous: "prefers tables",
+            undone: true,
+          },
+        ]}
+        onApprove={vi.fn()}
+        onUndoMemory={onUndoMemory}
+      />,
+    );
+    expect(screen.queryByTestId("memory-undo-4")).toBeNull();
+    expect(screen.getByTestId("memory-toast-undone")).toBeTruthy();
+  });
+});
+
 describe("humanizeTool", () => {
   it("prefers run_shell's model-written description and keeps the command as the object", () => {
     const line = humanizeTool("run_shell", { command: "git log --since=yesterday", description: "List yesterday's merges" });

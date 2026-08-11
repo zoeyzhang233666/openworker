@@ -394,6 +394,9 @@ interface Props {
   /** D-074: enable in-place mermaid repair for assistant bubbles. */
   sessionId?: string;
   onMermaidRepaired?: MermaidRepairContext["onRepaired"];
+  // MEMORY-SPEC §5.1: undo a just-announced write. `previous` (set when the write was
+  // an edit) is the text to restore; without it the memory is deleted.
+  onUndoMemory?: (id: number, previous?: string) => void;
 }
 
 // The transcript index whose notice gets the Retry button: the tail error notice, looking
@@ -417,6 +420,7 @@ export function Transcript({
   agentLabel,
   sessionId,
   onMermaidRepaired,
+  onUndoMemory,
 }: Props) {
   const { t } = useI18n();
   const who = agentLabel || t("assistant");
@@ -635,6 +639,35 @@ export function Transcript({
                   <button className="btn ml-2" data-testid="notice-retry" onClick={onRetry}>
                     {t("Retry")}
                   </button>
+                )}
+              </div>
+            );
+          // §5.1 save notice: quiet, inline, and it STAYS — the user reads it in place
+          // and can undo whenever they get to it.
+          case "memory":
+            return (
+              <div className="approval-inline" key={bi} data-testid={`memory-toast-${item.id}`}>
+                {item.undone ? (
+                  <span data-testid="memory-toast-undone">
+                    {item.previous ? t("memory.toastRestored") : t("memory.toastForgotten")}
+                  </span>
+                ) : (
+                  <>
+                    <span>
+                      <span className="status ok">✓</span>{" "}
+                      {item.previous ? t("memory.toastUpdated") : t("memory.toastSaved")}
+                      {item.text ? ` — ${item.text}` : null}
+                    </span>
+                    {onUndoMemory && (
+                      <button
+                        className="btn ml-2"
+                        data-testid={`memory-undo-${item.id}`}
+                        onClick={() => onUndoMemory(item.id, item.previous)}
+                      >
+                        {t("memory.toastUndo")}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             );

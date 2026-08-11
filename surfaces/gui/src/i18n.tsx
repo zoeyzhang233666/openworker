@@ -347,6 +347,40 @@ const messages = {
     "settings.runSetup": "重新运行设置",
     "settings.voiceDesktop": "语音输入设置仅在 ChemClaw 桌面应用中可用。",
     "settings.gallery": "ChemClaw 团队精选的协作助手，可在安装前查看其能力。",
+    "memory.title": "记忆",
+    "memory.subtitle":
+      "ChemClaw 可在对话之间记住对你有用的长期偏好。下面列出它目前了解的全部内容。",
+    "memory.rememberNew": "记住新的长期偏好",
+    "memory.rememberHelp":
+      "你在对话中提到的长期偏好会被保存并用于之后的对话——每次保存都会出现一条可撤销的提示。关闭后不再保存新的长期记忆；下方已有内容仍会继续使用，直到你删除。",
+    "memory.enabledMessage": "之后对话里分享的细节会被记住，以便长期更好地协助你。",
+    "memory.disabledMessage":
+      "已停止保存新的长期记忆。已有内容仍会用于新对话——如需忘记，请在下方删除。",
+    "memory.learnedTitle": "已记住的内容",
+    "memory.learnedHelp":
+      "自动从对话中保存。可修正错误或删除。编辑与删除只影响新对话；已打开的对话仍保留启动时的知识。",
+    "memory.forgetAll": "忘记全部…",
+    "memory.empty": "暂无内容。当你在对话中提到长期偏好，或说「记住…」时，会出现在这里。",
+    "memory.userRulesTitle": "你的长期指令",
+    "memory.userRulesHelp":
+      "你主动设置的指令在每次对话中都会遵循，且优先于自动学到的记忆。",
+    "memory.userRulesPlaceholder":
+      "我使用读屏软件——不要用表格，并描述图片\n日期请使用 YYYY-MM-DD",
+    "memory.save": "保存",
+    "memory.savedForNewChats": "已保存——仅对新对话生效。已打开的对话仍使用启动时的指令。",
+    "memory.loading": "加载中…",
+    "memory.fix": "修改",
+    "memory.delete": "删除",
+    "memory.cancel": "取消",
+    "memory.confirmDeleteAll":
+      "删除全部已记住的内容？\n\n此操作无法撤销。已打开的对话仍保留启动时的知识；新对话将从空白开始。",
+    "memory.deleteAllDone":
+      "已删除全部记忆。新对话将从空白开始；已打开的对话仍保留启动时的知识。",
+    "memory.toastSaved": "我会记住",
+    "memory.toastUpdated": "我更新了记忆",
+    "memory.toastUndo": "撤销",
+    "memory.toastForgotten": "已忘记",
+    "memory.toastRestored": "已恢复之前内容",
     "settings.autoStart": "登录后自动启动 ChemClaw。",
     "onboarding.welcome": "欢迎使用 ChemClaw",
     "onboarding.model": "选择模型提供商即可开始 — ChemClaw 使用你自己的密钥，并将其保留在这台设备上。",
@@ -722,6 +756,43 @@ const messages = {
     "settings.runSetup": "Run setup again",
     "settings.voiceDesktop": "Voice Input setup is available in the ChemClaw desktop app.",
     "settings.gallery": "Curated coworkers from the ChemClaw team — see what each can do before installing.",
+    "memory.title": "Memory",
+    "memory.subtitle":
+      "ChemClaw can remember useful long-term preferences between conversations. Everything it knows is listed here.",
+    "memory.rememberNew": "Remember new long-term preferences",
+    "memory.rememberHelp":
+      "Lasting preferences you mention in chat are saved and used in future conversations — you'll see a small note each time, with one-tap Undo. Turning this off stops saving NEW long-term memory; anything already below is still used until you delete it.",
+    "memory.enabledMessage":
+      "Details you share from future conversations will be remembered, so ChemClaw can be more helpful over time.",
+    "memory.disabledMessage":
+      "I'll stop saving new long-term memory. What I already know is kept and still used — delete anything below you'd rather I forget.",
+    "memory.learnedTitle": "What I've learned about you",
+    "memory.learnedHelp":
+      "Saved automatically from your conversations. Fix anything that's wrong — or delete it. Edits and deletions apply to new conversations; ones you already have open keep what they knew when they started.",
+    "memory.forgetAll": "Forget everything…",
+    "memory.empty":
+      "Nothing yet. When you mention a lasting preference in chat — or say “remember that…” — it will show up here.",
+    "memory.userRulesTitle": "Your long-term instructions",
+    "memory.userRulesHelp":
+      "Instructions you set yourself are followed in every conversation and outrank automatically learned memories.",
+    "memory.userRulesPlaceholder":
+      "I use a screen reader — no tables, describe any image\nUse YYYY-MM-DD for dates",
+    "memory.save": "Save",
+    "memory.savedForNewChats":
+      "Saved — applies to new conversations. Ones you already have open keep the instructions they started with.",
+    "memory.loading": "Loading…",
+    "memory.fix": "Edit",
+    "memory.delete": "Delete",
+    "memory.cancel": "Cancel",
+    "memory.confirmDeleteAll":
+      "Delete everything that's been remembered about you?\n\nThis can't be undone. Conversations you already have open still know what they knew — new conversations start with a clean slate.",
+    "memory.deleteAllDone":
+      "Everything I remembered has been deleted. New conversations start fresh; ones you already have open still know what they knew when they started.",
+    "memory.toastSaved": "I'll remember that",
+    "memory.toastUpdated": "I've updated what I remember",
+    "memory.toastUndo": "Undo",
+    "memory.toastForgotten": "Okay — forgotten.",
+    "memory.toastRestored": "Okay — put back the way it was.",
     "settings.autoStart": "Launch ChemClaw automatically when you sign in.",
     "onboarding.welcome": "Welcome to ChemClaw",
     "onboarding.model": "Pick a model provider to get started — ChemClaw runs on your own key and keeps it on this computer.",

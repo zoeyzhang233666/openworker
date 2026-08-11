@@ -8,7 +8,9 @@ import {
   getSessionMessages,
   getSessions,
   announceAutomationsChanged,
+  announceMemoryChanged,
   connectEvents,
+  deleteMemory,
   getSettings,
   getPersonas,
   getInbox,
@@ -20,6 +22,7 @@ import {
   runAutomation,
   setSessionFlags,
   setUnattended,
+  updateMemory,
   Session,
   type InboxItem,
   type MessageSource,
@@ -264,10 +267,10 @@ export function App() {
   } | null>(null);
   // Which Settings section the full-page Settings surface opens on (§ Settings-as-page).
   const [settingsTab, setSettingsTab] = useState<
-    "appearance" | "models" | "skills" | "voice" | "personas"
+    "appearance" | "models" | "skills" | "voice" | "memory" | "personas"
   >("appearance");
   const openSettings = (
-    tab: "appearance" | "models" | "skills" | "voice" | "personas" = "appearance",
+    tab: "appearance" | "models" | "skills" | "voice" | "memory" | "personas" = "appearance",
   ) => {
     setSettingsTab(tab);
     setSurface("settings");
@@ -845,6 +848,18 @@ export function App() {
           // this divider just shows where the model's memory was summarized.
           setItems((p) => [...p, { kind: "notice", tone: "info", text: d.text || "上下文已自动压缩（较早轮次已摘要）" }]);
           break;
+        case "memory_saved":
+          setItems((p) => [
+            ...p,
+            {
+              kind: "memory",
+              id: Number(d.id),
+              text: String(d.summary || d.content || ""),
+              ...(d.previous ? { previous: String(d.previous) } : {}),
+            },
+          ]);
+          announceMemoryChanged();
+          break;
         case "interrupted":
           flushPartialStream();
           setItems((p) => [...p, { kind: "notice", tone: "warn", text: t("Interrupted.") }]);
@@ -1121,6 +1136,16 @@ export function App() {
     // Optimistic running: turn_start confirms; a rejected retry still ends in turn_done.
     setRunning(true);
     sessionRef.current?.retry();
+  };
+  const undoMemorySave = async (id: number, previous?: string) => {
+    if (previous) await updateMemory(id, previous).catch(() => {});
+    else await deleteMemory(id).catch(() => {});
+    announceMemoryChanged();
+    setItems((p) =>
+      p.map((it) =>
+        it.kind === "memory" && it.id === id ? { ...it, undone: true } : it,
+      ),
+    );
   };
   const changeMode = (m: string) => {
     setMode(m);
@@ -1827,6 +1852,7 @@ export function App() {
                     onApprove={approve}
                     running={running}
                     onRetry={retry}
+                    onUndoMemory={(id, previous) => void undoMemorySave(id, previous)}
                     agentLabel={agentDisplayName}
                     sessionId={sessionId}
                     onMermaidRepaired={onMermaidRepaired}
