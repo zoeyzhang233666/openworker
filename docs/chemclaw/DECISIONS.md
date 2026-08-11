@@ -235,6 +235,7 @@
 - **D-121（2026-08-11）**：上下文压缩硬裁用户提示中性化，并提高摘要二次成功率。Trim 成功时显示「上下文已自动精简以继续」（不再使用「摘要不可用」）；摘要失败打 `warning` 日志；第二次摘要尝试收紧 summarizer span（更短 tool-result clip / 更小 char budget）后再 Trim。不改变「失败不阻塞、自动 Trim 续跑」契约；不关闭压缩。与 D-073/D-075 一致；D-120 只减少 SVG 胀爆，不能单独消灭硬裁。
 - **D-122（2026-08-11）**：四只销售龙虾（`export-sales-lobster` / `domestic-sales-lobster` / `opportunity-radar-lobster` / `export-engagement-lobster`）新对话空态改为专属 `SessionIntro` 三卡（lede + title/sub/prompt，中英 i18n），对齐拓客/商机/转化真实场景；不再落入代码向 `SUGGESTIONS`（跑测试套件 / 读项目概览 / 修失败构建）。标题仍用「与 {name} 畅谈」（D-067）；不改默认禁用、Skill、权限或 Provider。
 - **D-123（2026-08-11）**：正式安装包运行态与遗留 OpenWorker 数据隔离。默认状态目录改为 Windows `%APPDATA%\\ChemClaw`、POSIX `~/.config/chemclaw`（`COWORKER_STATE_DIR` 仍可覆盖，开发态继续用 `.chemclaw-dev\\state`）。PyInstaller 必须把本 worktree 的 `coworker/skills/bundled/**` 与 `coworker/personas/builtin/**` 打入 sidecar；聊天记录永不打进安装包，只存在于状态目录。不自动迁移 `%APPDATA%\\coworker` 旧数据。
+- **D-124（2026-08-11）**：上游 OpenWorker 选择性 backport Wave A（共同基线 `01b6f83`，参考 tip `9702c86`）。合入 #415 DNS connection pin、#416 Python 3.10 `tomli` fallback、#419 GUI CI `tsc --noEmit`、#417 GUI README/`lib.rs` 去 `platform/` 旧路径。禁止 `git merge upstream/main`；禁止 cherry-pick #471/#472 merge commit。#471 ask_user 与 #472 Memory 为 Wave B/C，须用户点名后按 [chemclaw-upstream-file-by-file-upgrade-plan-2026-08-11.md](chemclaw-upstream-file-by-file-upgrade-plan-2026-08-11.md) 局部移植。
 
 ## 协作治理
 
