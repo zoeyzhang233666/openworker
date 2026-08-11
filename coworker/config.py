@@ -9,7 +9,10 @@ workspace path. Other permission grants remain global-only.
 
 from __future__ import annotations
 
-import tomllib
+try:
+    import tomllib  # stdlib since 3.11
+except ModuleNotFoundError:  # Python 3.10
+    import tomli as tomllib  # type: ignore[no-redef]
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
