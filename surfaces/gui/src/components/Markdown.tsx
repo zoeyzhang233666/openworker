@@ -6,7 +6,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
@@ -187,20 +187,20 @@ export function Markdown({
   const repairRef = useRef(repairContext);
   repairRef.current = repairContext;
 
-  const components = useMemo(
-    () => ({
-      a: MarkdownLink,
-      pre: ({ children }: { children?: ReactNode }) => {
-        if (renderMermaid) {
-          const src = mermaidSourceFromPreChildren(children);
-          if (src !== null)
-            return <MermaidBlock source={src} repairContext={repairRef.current} />;
-        }
-        return <pre>{children}</pre>;
-      },
-    }),
-    [renderMermaid],
-  );
+  const components = useMemo((): Components => {
+    const Pre: Components["pre"] = ({ children }) => {
+      if (renderMermaid) {
+        const src = mermaidSourceFromPreChildren(children);
+        if (src !== null)
+          return <MermaidBlock source={src} repairContext={repairRef.current} />;
+      }
+      return <pre>{children}</pre>;
+    };
+    return {
+      a: MarkdownLink as Components["a"],
+      pre: Pre,
+    };
+  }, [renderMermaid]);
 
   return (
     <div className="md">

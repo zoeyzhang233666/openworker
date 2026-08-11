@@ -190,6 +190,33 @@ npm.cmd run tauri -- dev
 - `binaries\sidecar` 被仓库 `.gitignore` 排除；生产构建脚本会把 PyInstaller 后端放入这里，源码开发只需要空占位目录，Tauri 会回退到 Worktree 根目录的 `.venv\Scripts\openworker-server.exe`。
 - `npm.cmd run tauri -- dev` 只运行源码桌面窗口；`npm.cmd run tauri -- build` 才会进入安装包构建，本阶段不需要。
 
+### 正式安装包（Windows / macOS）
+
+须用户明确确认后再构建（D-060）。聊天记录与用户技能不在安装包内，只存在于状态目录（Windows `%APPDATA%\ChemClaw`，macOS `~/.config/chemclaw`；开发态用 `COWORKER_STATE_DIR`）。
+
+**Windows（本机可打）：**
+
+```powershell
+# Developer PowerShell for VS 2022 + LIBCLANG_PATH
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+.\packaging\build_windows.ps1 -Bundles nsis
+# 产物：surfaces\gui\src-tauri\target\release\bundle\nsis\ChemClaw_*_x64-setup.exe
+```
+
+**macOS（须在 Mac 或 GitHub Actions macOS runner；不可从 Windows 交叉编译）：**
+
+```bash
+# 在 macOS 上，仓库根目录：
+python3 -m venv .venv && .venv/bin/pip install -e '.[bedrock]' pyinstaller tzdata typer
+cd surfaces/gui && npm ci && cd ../..
+bash packaging/build_dmg.sh
+# 产物：surfaces/gui/src-tauri/target/release/bundle/dmg/ChemClaw_<version>_<arch>.dmg
+```
+
+也可在 GitHub 对 `Release` workflow 执行 **Run workflow**（`workflow_dispatch`），下载 `macos-arm64` / `macos-x64` artifact（稳定名 `ChemClaw-macos-arm64.dmg` 等）。无 Apple 签名时首次启动：右键 → 打开，或 `xattr -cr /Applications/ChemClaw.app`。
+
+验收安装包：sidecar 内应有本 worktree 的 `SKILL.md`（约 108）与 `personas/builtin` 龙虾 md（7）；全新状态目录下对话为空、品牌为 ChemClaw。
+
 ## 4. 测试命令与实测结果
 
 ### 后端

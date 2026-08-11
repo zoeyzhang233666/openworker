@@ -36,12 +36,18 @@ export type FirstTokenWaitKey = (typeof FIRST_TOKEN_WAIT_ROTATION_KEYS)[number];
 export type FeedbackWaitKey = (typeof FEEDBACK_WAIT_ROTATION_KEYS)[number];
 export type WaitCopyPool = "first" | "feedback";
 
-export function nextFirstTokenWaitIndex(index: number, length = FIRST_TOKEN_WAIT_ROTATION_KEYS.length): number {
+export function nextFirstTokenWaitIndex(
+  index: number,
+  length: number = FIRST_TOKEN_WAIT_ROTATION_KEYS.length,
+): number {
   if (length <= 0) return 0;
   return ((index % length) + length) % length;
 }
 
-export function advanceFirstTokenWaitIndex(index: number, length = FIRST_TOKEN_WAIT_ROTATION_KEYS.length): number {
+export function advanceFirstTokenWaitIndex(
+  index: number,
+  length: number = FIRST_TOKEN_WAIT_ROTATION_KEYS.length,
+): number {
   if (length <= 0) return 0;
   return (nextFirstTokenWaitIndex(index, length) + 1) % length;
 }

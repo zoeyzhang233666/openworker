@@ -25,13 +25,13 @@ _IS_WINDOWS = sys.platform == "win32"
 
 
 def state_dir() -> Path:
-    """Where coworker keeps its state — the one cross-platform source of truth.
+    """Where ChemClaw keeps its state — the one cross-platform source of truth.
 
     Resolution order:
-    1. `$COWORKER_STATE_DIR` — explicit override on any OS (used by tests/sidecars).
-    2. Windows: `%APPDATA%\\coworker` (e.g. `C:\\Users\\You\\AppData\\Roaming\\coworker`),
-       the native per-user app-data location.
-    3. macOS / Linux: `~/.config/coworker` (XDG-style, unchanged from prior behavior).
+    1. `$COWORKER_STATE_DIR` — explicit override on any OS (used by tests/dev/sidecars).
+    2. Windows: `%APPDATA%\\ChemClaw` (ChemClaw product data; not shared with legacy
+       OpenWorker `%APPDATA%\\coworker` chat history).
+    3. macOS / Linux: `~/.config/chemclaw` (XDG-style ChemClaw product data).
     """
     base = os.environ.get("COWORKER_STATE_DIR")
     if base:
@@ -39,8 +39,8 @@ def state_dir() -> Path:
     if sys.platform == "win32":
         appdata = os.environ.get("APPDATA")
         if appdata:
-            return Path(appdata) / "coworker"
-    return Path.home() / ".config" / "coworker"
+            return Path(appdata) / "ChemClaw"
+    return Path.home() / ".config" / "chemclaw"
 
 
 def _load_dotenv(path: Path) -> dict[str, str]:

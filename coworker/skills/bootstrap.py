@@ -5,10 +5,12 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from ..runtime_paths import bundled_skills_dir
 from .base import _parse_skill
 from .store import SkillStore, validate_name
 
-BUNDLED_DIR = Path(__file__).resolve().parent / "bundled"
+# Mutable so tests can monkeypatch; defaults to source tree or PyInstaller datas.
+BUNDLED_DIR = bundled_skills_dir()
 
 
 def list_bundled_skill_names() -> set[str]:

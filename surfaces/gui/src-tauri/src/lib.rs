@@ -91,7 +91,7 @@ fn server_bin() -> PathBuf {
 }
 
 /// Mirror of `coworker.secrets.state_dir()` so the shell and server agree on `desktop.json`.
-/// Windows: `%APPDATA%\coworker`; POSIX: `~/.config/coworker`. `COWORKER_STATE_DIR` overrides.
+/// Windows: `%APPDATA%\ChemClaw`; POSIX: `~/.config/chemclaw`. `COWORKER_STATE_DIR` overrides.
 fn state_dir() -> PathBuf {
     if let Ok(d) = std::env::var("COWORKER_STATE_DIR") {
         return PathBuf::from(d);
@@ -99,11 +99,11 @@ fn state_dir() -> PathBuf {
     #[cfg(windows)]
     {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            return PathBuf::from(appdata).join("coworker");
+            return PathBuf::from(appdata).join("ChemClaw");
         }
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".config").join("coworker")
+    PathBuf::from(home).join(".config").join("chemclaw")
 }
 
 fn desktop_prefs_path() -> PathBuf {

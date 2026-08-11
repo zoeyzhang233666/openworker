@@ -22,6 +22,7 @@ from ..agents.base import Agent
 from ..agents.chat import chat_agent
 from ..agents.code import CODE_CAPABILITIES, code_agent
 from ..agents.cowork import COWORK_CAPABILITIES, cowork_agent
+from ..runtime_paths import builtin_personas_dir
 from .manifest import PersonaManifest, load_manifest_file
 
 DEFAULT_PERSONA_ID = "cowork"
@@ -155,7 +156,7 @@ class PersonaRegistry:
             default_surfaced=False,
         )
         # Markdown-backed built-ins (Ops, …) — dogfood the manifest path.
-        d = Path(builtin_dir) if builtin_dir else Path(__file__).parent / "builtin"
+        d = Path(builtin_dir) if builtin_dir else builtin_personas_dir()
         self._load_dir(d, builtin=True)
 
     def _load_dir(self, directory: str | Path, *, builtin: bool) -> None:

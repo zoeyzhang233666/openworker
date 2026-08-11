@@ -9,7 +9,7 @@ import {
   type ArtifactInfo,
 } from "../api";
 import type { TodoItem } from "../types";
-import { useI18n } from "../i18n";
+import { useI18n, type MessageKey } from "../i18n";
 import { AccessSection } from "./AccessSection";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
@@ -88,7 +88,7 @@ export function RightRail({
   const [content, setContent] = useState<ArtifactContent | null>(null);
 
   const visibleArtifacts = (list: ArtifactInfo[]) =>
-    list.filter((a) => !String(a.path).replaceAll("\\", "/").startsWith(HIDDEN_CHEMCLAW_PREFIX));
+    list.filter((a) => !String(a.path).split("\\").join("/").startsWith(HIDDEN_CHEMCLAW_PREFIX));
 
   const refreshArtifacts = () =>
     getArtifacts(sessionId)
@@ -154,7 +154,6 @@ export function RightRail({
       }
       getArtifacts(sessionId)
         .then((list) => {
-          setTaskProgressAvailable(hasTaskProgress(list));
           setArtifacts(visibleArtifacts(list));
           setSelected(match(list, path) ?? minimal(path));
         })
@@ -253,7 +252,7 @@ export function RightRail({
 }
 
 function localizeArtifactError(
-  t: (key: string, vars?: Record<string, string | number>) => string,
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string,
   error: string,
   _path: string,
 ): string {

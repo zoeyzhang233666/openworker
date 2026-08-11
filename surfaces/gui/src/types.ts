@@ -5,6 +5,7 @@ export type EventType =
   | "assistant_delta"
   | "reasoning_delta"
   | "assistant_message"
+  | "message_updated"
   | "tool_proposed"
   | "permission_required"
   | "directory_requested"

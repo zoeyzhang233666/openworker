@@ -4,11 +4,11 @@ import {
   setPublicApiLookup,
   type PublicApiLookup,
 } from "../api";
-import { useI18n } from "../i18n";
+import { useI18n, type MessageKey } from "../i18n";
 
 function statusLabel(
   row: PublicApiLookup,
-  t: (k: string) => string,
+  t: (k: MessageKey) => string,
 ): string {
   if (row.kind === "free") return t("Ready · no API key");
   if (row.kind === "workspace_file") return t("Workspace file · no API key");

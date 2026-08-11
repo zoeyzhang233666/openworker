@@ -87,6 +87,34 @@ for pkg in ("slack_bolt", "telegram"):  # [messaging] extra — optional
     except Exception:
         pass
 
+# ChemClaw runtime assets are NOT Python modules — collect_submodules skips them.
+# Without these trees the frozen sidecar has zero SKILL.md / lobster personas, so
+# seed_bundled_skills and PersonaRegistry fall back to whatever is already in the
+# user's AppData (often empty or stale).
+
+
+def _data_tree(src, dest_prefix):
+    entries = []
+    if not os.path.isdir(src):
+        return entries
+    for dirpath, _dirnames, filenames in os.walk(src):
+        for name in filenames:
+            full = os.path.join(dirpath, name)
+            rel_dir = os.path.relpath(dirpath, src)
+            dest = dest_prefix if rel_dir in (".", "") else os.path.join(dest_prefix, rel_dir)
+            entries.append((full, dest))
+    return entries
+
+
+datas += _data_tree(
+    os.path.join(ROOT, "coworker", "skills", "bundled"),
+    os.path.join("coworker", "skills", "bundled"),
+)
+datas += _data_tree(
+    os.path.join(ROOT, "coworker", "personas", "builtin"),
+    os.path.join("coworker", "personas", "builtin"),
+)
+
 a = Analysis(
     [os.path.join(PACKAGING, "server_entry.py")],
     pathex=[ROOT],
