@@ -12,7 +12,7 @@
 - **macOS DMG（2026-08-11）**：`packaging/build_dmg.sh` 的 APP 名改为读 `tauri.conf.json` `productName`（ChemClaw）；Release workflow 稳定产物名为 `ChemClaw-macos-arm64.dmg` / `ChemClaw-macos-x64.dmg`。须在 **macOS runner**（GitHub Actions `workflow_dispatch` 或标签 `app-v*`）或本机 Mac 构建，Windows 不能交叉编译。已推送 `chemclaw-clean` @ `9b0ac4c` 与标签 `app-v0.1.7-chemclaw-macos`。若 Actions 页仍为 0 runs：到仓库 Settings → Actions → General 允许 Actions 后再 **Re-run** / `workflow_dispatch`。无 Apple 证书时为未签名包：Mac 上右键打开或 `xattr -cr ChemClaw.app`。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
-- 当前分支：`chore/upstream-backport-2026-08-11`（Wave A 上游 backport；合回后仍以 `chemclaw-clean` 为日常基线）
+- 当前分支：`chemclaw-clean`（Wave A 已 fast-forward 合入；GitHub 上选此分支即可。本地 ahead 5，push 须点名）
 - **唯一开发基线 Worktree**：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`（后续只在此继续开发）
 - 旧 Worktree（只读备份，待确认后删除，本次不删）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（分支 `design/chemclaw-foundation` / 标签式备份 `backup/broken-2026-08-03` 已在 `backup` 远程）
 - 业务代码（本 Worktree）：
