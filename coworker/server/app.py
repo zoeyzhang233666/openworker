@@ -1433,6 +1433,24 @@ def create_app(manager: SessionManager) -> FastAPI:
             return {"ok": False, "error": "provider required"}
         return manager.set_web_search(provider, (body or {}).get("api_key"))
 
+    # -- public API lookups (连接 → API 公开查询) --------------------------------
+    @app.get("/v1/public-api-lookups")
+    def public_api_lookups_list() -> list[dict[str, Any]]:
+        return manager.list_public_api_lookups()
+
+    @app.get("/v1/public-api-lookups/{lookup_id}")
+    def public_api_lookups_get(lookup_id: str) -> Any:
+        from fastapi import HTTPException
+
+        row = manager.get_public_api_lookup(lookup_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="未找到该公开查询项")
+        return row
+
+    @app.post("/v1/public-api-lookups/{lookup_id}")
+    def public_api_lookups_set(lookup_id: str, body: dict) -> dict[str, Any]:
+        return manager.set_public_api_lookup(lookup_id, body or {})
+
     # -- model providers (OpenAI, Ollama, …) ------------------------------------
     @app.get("/v1/providers")
     def providers_get() -> list[dict[str, Any]]:

@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional
+
+_log = logging.getLogger(__name__)
 
 from . import compaction as _compaction
 from .events import Event, EventType
@@ -498,34 +501,48 @@ class TurnEngine:
         )
         model = str(cfg.get("model") or "") or self.model
 
-        def _build() -> Optional[_compaction.CompactionState]:
-            return _compaction.build_state(
-                self.messages,
-                provider=self.provider,
-                model=model,
-                keep_tokens=keep,
-                prior=self.compaction_state,
-            )
-
         state: Optional[_compaction.CompactionState] = None
         failed = False
-        for _attempt in range(2):  # first try + the unconditional single retry
+        # Attempt 0: normal summarizer input. Attempt 1: tighter span clip (less likely
+        # to overflow/timeout the summarizer itself). Then Trim — never block the turn.
+        for attempt in range(2):
+            tight = attempt > 0
+
+            def _build_attempt(
+                *, _tight: bool = tight
+            ) -> Optional[_compaction.CompactionState]:
+                return _compaction.build_state(
+                    self.messages,
+                    provider=self.provider,
+                    model=model,
+                    keep_tokens=keep,
+                    prior=self.compaction_state,
+                    tight_span=_tight,
+                )
+
             try:
-                state = await asyncio.to_thread(_build)
+                state = await asyncio.to_thread(_build_attempt)
                 failed = False
                 break
-            except Exception:
+            except Exception as exc:
                 failed = True
+                _log.warning(
+                    "context summarizer failed (attempt %s/2, tight_span=%s): %s: %s",
+                    attempt + 1,
+                    tight,
+                    type(exc).__name__,
+                    str(exc)[:240] or "(empty message)",
+                )
         if state is not None:
             self.compaction_state = state
             self._last_context_tokens = None  # stale once the outbound view shrank
-            return "Context compacted — earlier turns were summarized"
+            return "上下文已自动压缩（较早轮次已摘要）"
         if failed or force:
             trimmed = _compaction.trim_state(self.messages, prior=self.compaction_state)
             if trimmed is not None:
                 self.compaction_state = trimmed
                 self._last_context_tokens = None
-                return "上下文已自动裁剪（摘要不可用）"
+                return "上下文已自动精简以继续"
         return None
 
     # -- helpers ----------------------------------------------------------------

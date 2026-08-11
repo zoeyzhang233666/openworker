@@ -1,0 +1,9 @@
+{
+  "detail": [
+    {
+      "loc": ["body", "participants"],
+      "msg": "at least one REACTANT and one PRODUCT required",
+      "type": "value_error"
+    }
+  ]
+}

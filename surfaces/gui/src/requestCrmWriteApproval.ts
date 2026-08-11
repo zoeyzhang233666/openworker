@@ -4,10 +4,14 @@ export const REQUEST_CRM_WRITE_APPROVAL_EVENT = "ocw-request-crm-write-approval"
 
 export const READY_FOR_CRM_WRITE = "ready_for_crm_write";
 
+/** Gate line only — bare mentions in prose must not show the CTA. */
+const READY_FOR_CRM_WRITE_ACTION =
+  /recommended_action:\s*ready_for_crm_write\b/i;
+
 /** True when assistant text marks the engagement ready for human CRM write. */
 export function isReadyForCrmWrite(text: string | undefined | null): boolean {
   if (!text) return false;
-  return text.includes(READY_FOR_CRM_WRITE);
+  return READY_FOR_CRM_WRITE_ACTION.test(text);
 }
 
 /**

@@ -6,10 +6,17 @@ import {
 } from "./requestCrmWriteApproval";
 
 describe("requestCrmWriteApproval", () => {
-  it("detects ready_for_crm_write in assistant text", () => {
+  it("detects recommended_action ready_for_crm_write only", () => {
     expect(isReadyForCrmWrite(null)).toBe(false);
     expect(isReadyForCrmWrite("draft only")).toBe(false);
-    expect(isReadyForCrmWrite(`verdict=pass\n${READY_FOR_CRM_WRITE}`)).toBe(true);
+    expect(isReadyForCrmWrite(READY_FOR_CRM_WRITE)).toBe(false);
+    expect(isReadyForCrmWrite("质量门禁通过（ready_for_crm_write）")).toBe(false);
+    expect(
+      isReadyForCrmWrite(`verdict=pass\nrecommended_action: ${READY_FOR_CRM_WRITE}`),
+    ).toBe(true);
+    expect(
+      isReadyForCrmWrite("Follow-up ready. recommended_action: ready_for_crm_write"),
+    ).toBe(true);
   });
 
   it("builds an intent that requires hubspot_log_note and human approval", () => {

@@ -33,6 +33,7 @@ def test_company_qualification_documents_lookup_tool():
     assert "lookup_legal_entity" in text
     assert "GLEIF" in text
     assert "USCC" in text or "统一社会信用" in text or "cn_registry" in text
+    assert "validate_eu_vat" in text
     assert "government_registry" in text
     assert "NeedsReview" in text
     assert "不得编造 LEI" in text or "不得伪造 LEI" in text

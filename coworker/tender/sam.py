@@ -104,8 +104,10 @@ class SamProvider:
                 status="error",
                 source=self._source(),
                 error=(
-                    "SAM.gov 数据源未配置。请在凭据中设置 sam:default "
-                    "（api_key 为 SAM 公开 API 密钥），详见 sam.gov 账户详情页。"
+                    "SAM.gov 数据源未配置（境外可选，非大陆刚需）。"
+                    "可改用 EU TED（免密钥 search_tenders）或网页搜索。"
+                    "若确需美国联邦标且能访问 sam.gov：在「连接 → API 公开查询」配置 "
+                    "sam:default（api_key）。"
                 ),
             )
 

@@ -299,13 +299,34 @@ describe("submit CRM write approval CTA (D-105)", () => {
     window.addEventListener("ocw-request-crm-write-approval", spy);
     render(
       <Transcript
-        items={[{ kind: "assistant", text: "ready_for_crm_write" }]}
+        items={[
+          {
+            kind: "assistant",
+            text: "recommended_action: ready_for_crm_write",
+          },
+        ]}
         onApprove={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByTestId("submit-crm-write-approval"));
     expect(spy).toHaveBeenCalledTimes(1);
     window.removeEventListener("ocw-request-crm-write-approval", spy);
+  });
+
+  it("does not show write CTA for bare or prose mentions of the gate token", () => {
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text: "质量门禁通过（ready_for_crm_write）；若需新建联系人用 ready_for_crm_create_contact。",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("submit-crm-write-approval")).toBeNull();
+    expect(screen.queryByTestId("submit-crm-create-contact")).toBeNull();
   });
 });
 
@@ -329,7 +350,12 @@ describe("submit CRM create-contact approval CTA (D-109)", () => {
 
     rerender(
       <Transcript
-        items={[{ kind: "assistant", text: "ready_for_crm_write only" }]}
+        items={[
+          {
+            kind: "assistant",
+            text: "recommended_action: ready_for_crm_write only",
+          },
+        ]}
         onApprove={vi.fn()}
       />,
     );
@@ -343,7 +369,8 @@ describe("submit CRM create-contact approval CTA (D-109)", () => {
         items={[
           {
             kind: "assistant",
-            text: "ready_for_crm_write and ready_for_crm_create_contact",
+            text:
+              "recommended_action: ready_for_crm_write\nrecommended_action: ready_for_crm_create_contact",
           },
         ]}
         onApprove={vi.fn()}
@@ -358,7 +385,12 @@ describe("submit CRM create-contact approval CTA (D-109)", () => {
     window.addEventListener("ocw-request-crm-create-contact", spy);
     render(
       <Transcript
-        items={[{ kind: "assistant", text: "ready_for_crm_create_contact" }]}
+        items={[
+          {
+            kind: "assistant",
+            text: "recommended_action: ready_for_crm_create_contact",
+          },
+        ]}
         onApprove={vi.fn()}
       />,
     );

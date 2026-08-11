@@ -1,0 +1,74 @@
+[
+  {
+    "Name": "Tenders.guru PL",
+    "Url": "https://tenders.guru/api/pl/tenders?page=1",
+    "Ok": false,
+    "Status": null,
+    "Ms": 21332,
+    "Error": "无法连接到远程服务器",
+    "Snippet": ""
+  },
+  {
+    "Name": "Tenders.guru ES",
+    "Url": "https://tenders.guru/api/es/tenders?page=1",
+    "Ok": false,
+    "Status": null,
+    "Ms": 13472,
+    "Error": "无法连接到远程服务器",
+    "Snippet": ""
+  },
+  {
+    "Name": "OpenSanctions search",
+    "Url": "https://api.opensanctions.org/search/default?q=BASF&limit=1",
+    "Ok": false,
+    "Status": 401,
+    "Ms": 1079,
+    "Error": "401 Unauthorized",
+    "Snippet": ""
+  },
+  {
+    "Name": "VATComply rates",
+    "Url": "https://api.vatcomply.com/rates?base=EUR",
+    "Ok": true,
+    "Status": 200,
+    "Ms": 1853,
+    "Error": "",
+    "Snippet": ""
+  },
+  {
+    "Name": "VATComply VAT",
+    "Url": "https://api.vatcomply.com/vat?vat_number=DE811111125",
+    "Ok": true,
+    "Status": 200,
+    "Ms": 514,
+    "Error": "",
+    "Snippet": ""
+  },
+  {
+    "Name": "Frankfurter latest",
+    "Url": "https://api.frankfurter.app/latest?from=EUR&to=USD,CNY",
+    "Ok": true,
+    "Status": 200,
+    "Ms": 4786,
+    "Error": "",
+    "Snippet": ""
+  },
+  {
+    "Name": "USAspending awards",
+    "Url": "https://api.usaspending.gov/api/v2/search/spending_by_award/",
+    "Ok": true,
+    "Status": 200,
+    "Ms": 2220,
+    "Error": "",
+    "Snippet": ""
+  },
+  {
+    "Name": "World Bank indicator",
+    "Url": "https://api.worldbank.org/v2/country/CHN/indicator/NY.GDP.MKTP.CD?format=json&per_page=1",
+    "Ok": true,
+    "Status": 200,
+    "Ms": 688,
+    "Error": "",
+    "Snippet": ""
+  }
+]

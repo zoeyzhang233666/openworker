@@ -82,6 +82,10 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 
 保存模型、MCP、邮箱和外部服务秘密的系统边界。秘密不得进入模型上下文、日志、Skill Git 历史或默认备份。
 
+### API 公开查询
+
+「连接」页第三栏（D-113 / D-114）：展示 Skill/Agent 使用的平台 Provider 清单，并写清做什么、谁在用、如何配置；需密钥项提供官方说明/申请外链（如 SAM、Comtrade）。与 MCP（自建工具服务器）和连接器（HubSpot/邮箱）分离；界面与 API **永不回显**密钥明文。
+
 ### ApiHub
 
 芯化和云提供的 OpenAI 兼容模型中转网关。ChemClaw 以两个独立提供商接入：`apihub-cn`（国内，默认端点 `https://apihub.chem-cloud.cn/v1`）与 `apihub-intl`（国际，默认端点 `https://www.tokenfoundryx.com/v1`）。各自独立密钥与精选模型目录；端点可自定义。ApiHub 不是 ChemClaw 品牌本身，卡片显示为 `ApiHub CN (chem-cloud)` / `ApiHub Intl (chem-cloud)`。
@@ -196,11 +200,27 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 ### SAM.gov 招标检索（`search_sam_opportunities`）
 
-平台只读 Tool：检索美国 SAM.gov 联邦采购机会，返回 `signal_id=sam:<noticeId>` 的 `OpportunitySignal` 行。需 SecretStore `sam:default` 的 `api_key`；无 noticeId 的行跳过；不评分、不伪造编号。
+平台只读 Tool：检索美国 SAM.gov 联邦采购机会，返回 `signal_id=sam:<noticeId>` 的 `OpportunitySignal` 行。需 SecretStore `sam:default` 的 `api_key`；无 noticeId 的行跳过；不评分、不伪造编号。**定位为境外可选**：大陆用户通常难以自助申请密钥；未配置时主路径改用 EU TED（`search_tenders`）与网页搜索，不以拿到 SAM key 为验收刚需。
 
 ### `TradeFlow` / Comtrade（`lookup_trade_flow`）
 
-国家/HS 层面的贸易流汇总（进口/出口金额与重量等），用于市场吸引力旁证。由平台 Tool `lookup_trade_flow`（UN Comtrade，`comtrade:default` 订阅密钥）返回；**不等于**企业买家名单，不得据此编造进口商。
+国家/HS 层面的贸易流汇总（进口/出口金额与重量等），用于市场吸引力旁证。由平台 Tool `lookup_trade_flow`（UN Comtrade，`comtrade:default` 订阅密钥）返回；**不等于**企业买家名单，不得据此编造进口商。**定位为境外可选**：未配置时主路径改用海关 CSV/XLSX（`filter_customs_importers`）与网页搜索。
+
+### 欧盟 VAT 核验（`validate_eu_vat`）
+
+平台只读 Tool：经 VATComply（免密钥）核验欧盟 VAT 号，返回 `valid`/`invalid`/`error` 与可选登记名址。仅为主体辅助，**不是**法律结论，不得仅凭 valid 判定 `Qualified`。
+
+### 汇率换算（`lookup_fx_rate`）
+
+平台只读 Tool：Frankfurter（免密钥）查询汇率并换算**用户已给出**的金额。用于询盘转报价多币种场景；**禁止**用其编造单价或数量。
+
+### 维基百科摘要（`lookup_wikipedia`）
+
+平台只读 Tool：MediaWiki 摘要（默认 `zh`，可 `en`）。用于品名/别名/用途百科背景；**不得**单独支撑 `Qualified` / `Actionable` 或采购意图。
+
+### 化工社化学检索与写反应（`search_huagongshe` / `lookup_huagongshe_chemical` / `fetch_huagongshe_svg` / `validate_huagongshe_reaction` / `create_huagongshe_reaction`）
+
+平台 Tool：对接 [化工社](https://huagongshe.com/guide) `GET /api/search`、`GET /api/chemicals/{id}`、公开 SVG（`GET /api/mol/{id}/svg/{w}x{h}.svg`、`GET /api/reactions/{id}/svg/{w}x{h}.svg`）、`POST /api/reactions/validate`、`POST /api/reactions`。可选 SecretStore `huagongshe:default` Bearer Token——公开检索与 SVG 可不配；**校验与保存必须配置**（含 `reaction:write`）。`fetch_huagongshe_svg` 将完整 SVG **落盘到工作区产物**，回包不含 SVG 正文；禁止用 `web_fetch` 搬运源码。`validate` 不写库、不审批；`create` 须 `Idempotency-Key` 且 `requires_approval=True`。**仅为化学证据补充**，不参与客户搜索与 Lead 评分。编排 Skill：`chem-huagongshe-reaction`（按需 `load_skill`，不强制进销售龙虾）。编辑/删改/改可见性在化工社网页完成；不引入本机 RDKit。
 
 ### 海关企业级筛选（`filter_customs_importers`）
 

@@ -43,6 +43,16 @@ from .quote import make_calculate_quote_tool
 from .tender import make_search_sam_opportunities_tool, make_search_tenders_tool
 from .customs import make_filter_customs_importers_tool
 from .trade import make_lookup_trade_flow_tool
+from .vat import make_validate_eu_vat_tool
+from .fx import make_lookup_fx_rate_tool
+from .wiki import make_lookup_wikipedia_tool
+from .huagongshe import (
+    make_create_huagongshe_reaction_tool,
+    make_fetch_huagongshe_svg_tool,
+    make_lookup_huagongshe_chemical_tool,
+    make_search_huagongshe_tool,
+    make_validate_huagongshe_reaction_tool,
+)
 from .web import make_web_fetch_tool, make_web_search_tool
 from .workspace_trust import WorkspaceTrustStore
 from .tools.shell import LocalExecutor
@@ -315,6 +325,21 @@ def build_engine(
     registry.register(make_lookup_chemical_identity_tool())
     # Legal entity: GLEIF + optional CN registry (platform Provider; not embedded in Skills).
     registry.register(make_lookup_legal_entity_tool(secrets=secrets))
+    # EU VAT: keyless VATComply assist (platform Provider; not a legal conclusion).
+    registry.register(make_validate_eu_vat_tool())
+    # FX: keyless Frankfurter (convert user-supplied amounts only; never invent prices).
+    registry.register(make_lookup_fx_rate_tool())
+    # Wikipedia: encyclopedia background for SKU/synonyms (never sole Qualified evidence).
+    registry.register(make_lookup_wikipedia_tool())
+    # Huagongshe: chemistry search + SVG asset save + reaction validate/create
+    # (chemical evidence only; create requires approval + Token; never Lead scoring).
+    registry.register(make_search_huagongshe_tool(secrets=secrets))
+    registry.register(make_lookup_huagongshe_chemical_tool(secrets=secrets))
+    registry.register(
+        make_fetch_huagongshe_svg_tool(secrets=secrets, workspace_root=ws)
+    )
+    registry.register(make_validate_huagongshe_reaction_tool(secrets=secrets))
+    registry.register(make_create_huagongshe_reaction_tool(secrets=secrets))
     # Quote math: deterministic totals from explicit numbers (no invented prices).
     registry.register(make_calculate_quote_tool())
     # Lead list: deterministic Markdown/CSV workbench deliverable (no send/CRM).

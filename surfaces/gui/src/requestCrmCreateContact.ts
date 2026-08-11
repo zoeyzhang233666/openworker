@@ -4,10 +4,14 @@ export const REQUEST_CRM_CREATE_CONTACT_EVENT = "ocw-request-crm-create-contact"
 
 export const READY_FOR_CRM_CREATE_CONTACT = "ready_for_crm_create_contact";
 
+/** Gate line only — bare mentions in prose must not show the CTA. */
+const READY_FOR_CRM_CREATE_CONTACT_ACTION =
+  /recommended_action:\s*ready_for_crm_create_contact\b/i;
+
 /** True when assistant text marks readiness to create a HubSpot contact (not note-write). */
 export function isReadyForCrmCreateContact(text: string | undefined | null): boolean {
   if (!text) return false;
-  return text.includes(READY_FOR_CRM_CREATE_CONTACT);
+  return READY_FOR_CRM_CREATE_CONTACT_ACTION.test(text);
 }
 
 /**

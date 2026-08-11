@@ -1,0 +1,10 @@
+{
+  "visibility": "private",
+  "source_type": "self",
+  "reaction_smiles": "CCO.CC(=O)O>>CCOC(=O)C",
+  "participants": [
+    {"role": "REACTANT", "smiles": "CCO", "preferred_name": "ethanol"},
+    {"role": "REACTANT", "smiles": "CC(=O)O", "preferred_name": "acetic acid"},
+    {"role": "PRODUCT", "smiles": "CCOC(=O)C", "preferred_name": "ethyl acetate"}
+  ]
+}

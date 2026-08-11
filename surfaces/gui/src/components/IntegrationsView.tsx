@@ -2,27 +2,26 @@ import { useEffect, useState } from "react";
 import { getConnectors } from "../api";
 import { McpTab } from "./ManageTabs";
 import { ConnectorsSection } from "./connectors/ConnectorsSection";
+import { PublicApiLookupsSection } from "./PublicApiLookupsSection";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
 
-// The Connectors surface (renamed from "Integrations", §26) keeps the left sub-nav, now just
-// Connectors · MCP. The old "Messaging routing" tab (and its ⚠ unrouted badge) moved whole to
-// Inbox ▸ Configure (§28): inbox-delivery config belongs with the Inbox, and Unrouted is
-// "messages that never reached you". The one remaining Activity is the audit log, reached from
-// the account menu.
-type IntTab = "connectors" | "mcp";
+// Connectors · MCP · API public lookups. Messaging routing lives under Inbox.
+type IntTab = "connectors" | "mcp" | "public-api-lookups";
 
-// Fixed sub-nav (UX-DECISIONS §21): connector detail lives as a SUBPAGE under
-// Connectors, never as a nav item — the nav must not grow per connector.
-const INT_TABS: { key: IntTab; label: string; icon: "plug" | "code" }[] = [
+const INT_TABS: {
+  key: IntTab;
+  label: "Connectors" | "MCP servers" | "API public lookups";
+  icon: "plug" | "code" | "search";
+}[] = [
   { key: "connectors", label: "Connectors", icon: "plug" },
   { key: "mcp", label: "MCP servers", icon: "code" },
+  { key: "public-api-lookups", label: "API public lookups", icon: "search" },
 ];
 
 export function IntegrationsView() {
   const { t } = useI18n();
   const [tab, setTab] = useState<IntTab>("connectors");
-  // Sub-nav count: how many connectors exist. Polled so the badge stays live.
   const [connCount, setConnCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -30,8 +29,8 @@ export function IntegrationsView() {
       getConnectors().then((cs) => setConnCount(cs.length)).catch(() => {});
     };
     load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
   }, []);
 
   return (
@@ -54,7 +53,7 @@ export function IntegrationsView() {
               onClick={() => setTab(tabItem.key)}
             >
               <span className="flex items-center gap-2 min-w-0">
-                <Icon name={tabItem.icon} size={15} /> {t(tabItem.label as "Connectors" | "MCP servers")}
+                <Icon name={tabItem.icon} size={15} /> {t(tabItem.label)}
               </span>
               {tabItem.key === "connectors" && connCount != null && (
                 <span className={"text-[11px] shrink-0 " + (active ? "text-accent" : "text-faint")}>
@@ -76,13 +75,21 @@ export function IntegrationsView() {
               />
               <ConnectorsSection />
             </section>
-          ) : (
+          ) : tab === "mcp" ? (
             <section>
               <PanelHead
                 title={t("MCP servers")}
                 sub={t("External tool servers (stdio or HTTP), shared across all agents.")}
               />
               <McpTab />
+            </section>
+          ) : (
+            <section>
+              <PanelHead
+                title={t("API public lookups")}
+                sub={t("Built-in read-only Providers used by Skills and Agents. Free ones need no key; others you configure here.")}
+              />
+              <PublicApiLookupsSection />
             </section>
           )}
         </div>

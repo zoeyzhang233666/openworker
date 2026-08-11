@@ -69,7 +69,7 @@ test("the compacted divider renders mid-session and the transcript stays intact"
     timeout: 10_000,
   });
   await expect(
-    page.getByText("Context compacted — earlier turns were summarized").first(),
+    page.getByText("上下文已自动压缩（较早轮次已摘要）").first(),
   ).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("Compacting context…")).toHaveCount(0);
   await expect(

@@ -20,6 +20,10 @@ const remainingVisibleEnglish: Array<[file: string, text: string]> = [
     "components/IntegrationsView.tsx",
     "Apps and tools your coworkers can use. Connected ones come first.",
   ],
+  [
+    "components/IntegrationsView.tsx",
+    "Built-in read-only Providers used by Skills and Agents. Free ones need no key; others you configure here.",
+  ],
   ["components/AuditView.tsx", "No audit events yet."],
   ["components/ApprovalCard.tsx", "Always allow"],
   ["components/WorkspaceTrustPrompt.tsx", "Trust this workspace"],

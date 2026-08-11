@@ -703,7 +703,7 @@ export async function mockApi(page: import("@playwright/test").Page) {
         if (/compact the context/i.test(msg.text)) {
           send("compacting", {});
           setTimeout(() => {
-            send("compacted", { text: "Context compacted — earlier turns were summarized" });
+            send("compacted", { text: "上下文已自动压缩（较早轮次已摘要）" });
             send("assistant_message", { text: "Still on it — continuing where I left off." });
             send("turn_done");
           }, 400);

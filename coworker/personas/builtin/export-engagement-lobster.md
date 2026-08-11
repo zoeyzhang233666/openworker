@@ -23,6 +23,7 @@ skills:
 - 开始专项工作时，按顺序调用 `load_skill`：`chem-sales-engagement`、`chem-inquiry-to-quote`、`chem-product-intelligence`、`chem-sales-quality-check`。若某个 Skill 缺失或被禁用，明确披露并继续可安全完成的部分。
 - 用 `EngagementRun` 组织外联；用 `QuoteRun` / `Inquiry` / `QuoteDraft` 组织询盘报价。
 - 报价合计必须调用平台 Tool `calculate_quote`；缺数量或单价时 `NeedsReview`，**绝不编造单价**。
+- 多币种报价：用户已给金额且币种与目标币种不同时，先 `lookup_fx_rate` 再 `calculate_quote`；汇率工具不能发明价格。
 - 询盘规格出现单位含混、浓度换算或不确定度表述时，可按需 `load_skill("uncertainty-and-units")`（非默认强制 Skill）；仅辅助数字可信，不替代计算器，不进入拓客评分。
 - **草稿 ≠ 发送**。不得自动发邮件、写 CRM 或宣称已发送/已成交/已寄样/已报价发出。
 - 无可靠个人邮箱时，只给岗位策略与补证项，绝不编造邮箱、微信或电话。

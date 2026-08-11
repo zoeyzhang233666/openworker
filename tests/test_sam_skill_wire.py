@@ -42,4 +42,6 @@ def test_opportunity_radar_documents_search_sam():
 def test_opportunity_radar_lobster_mentions_sam_tool():
     text = PERSONA.read_text(encoding="utf-8")
     assert "search_sam_opportunities" in text
-    assert "SAM" in text
+    assert "sam:default" in text or "SAM" in text or "sam.gov" in text.lower()
+    assert "境外可选" in text or "TED" in text
+    assert "validate_eu_vat" in text

@@ -1577,6 +1577,31 @@ class SessionManager:
         self.secrets.put("web_search:default", profile)
         return {"ok": True, "provider": provider}
 
+    # -- public API lookups (连接 → API 公开查询) --------------------------------
+    def list_public_api_lookups(self) -> list[dict[str, Any]]:
+        from ..public_lookups import list_lookups
+
+        return list_lookups(self.secrets, web_search_status=self.get_web_search())
+
+    def get_public_api_lookup(self, lookup_id: str) -> Optional[dict[str, Any]]:
+        from ..public_lookups import get_lookup
+
+        return get_lookup(
+            lookup_id, self.secrets, web_search_status=self.get_web_search()
+        )
+
+    def set_public_api_lookup(
+        self, lookup_id: str, body: Optional[dict[str, Any]] = None
+    ) -> dict[str, Any]:
+        from ..public_lookups import apply_lookup_update
+
+        return apply_lookup_update(
+            lookup_id,
+            body or {},
+            self.secrets,
+            set_web_search=self.set_web_search,
+        )
+
     # -- model providers (OpenAI, Ollama, …) ------------------------------------
     def get_providers(self) -> list[dict[str, Any]]:
         """Descriptor + per-provider status for the Settings UI. Never returns secret values;

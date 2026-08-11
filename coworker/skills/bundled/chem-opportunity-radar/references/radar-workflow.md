@@ -8,14 +8,14 @@
 
 ## TED 招标信号（平台 Tool）
 
-- 调用 `search_tenders`（query / 可选 buyer_country / cpv）收集欧盟公开招标。
+- **默认路径**：调用 `search_tenders`（query / 可选 buyer_country / cpv）收集欧盟公开招标。
 - 返回行已是 `signal_type=tender` 与 `signal_id=ted:<publication-number>`；`source.url` 必须保留。
 - 不得改写或捏造 publication-number；empty/error 时进入补证或空清单 `complete`，不得假装有标。
 
 ## SAM.gov 招标信号（平台 Tool）
 
-- 调用 `search_sam_opportunities`（query / 可选 posted_from、posted_to、naics）；需配置 `sam:default` 的 `api_key`。
-- 返回行 `signal_id=sam:<noticeId>`；无 noticeId 的行不得编造；empty/error/未配置时如实披露。
+- **境外可选**：仅当用户明确要美国联邦标且已配置 `sam:default` 时调用 `search_sam_opportunities`。
+- 返回行 `signal_id=sam:<noticeId>`；无 noticeId 的行不得编造；empty/error/未配置时如实披露并改走 TED/网页搜索，不以申请密钥为刚需。
 
 ## 归一与相关
 

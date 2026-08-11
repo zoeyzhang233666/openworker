@@ -87,18 +87,19 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 4. 点击后注入创建意图；未连接 → 中文错误；已连接 → 审批卡，拒绝则不创建。
 5. 再确认客户清单页仍无 CRM 按钮。
 
-#### C. 商机雷达 · SAM（D-106，可选）
+#### C. 商机雷达 · SAM（D-106 / D-115，境外可选）
 
-1. 「智能体」启用「商机雷达龙虾」→ 新建对话选它。
-2. 发送：
+1. 打开 **连接 → API 公开查询**：SAM 卡片应标「境外可选」；未配时显示「未配置」；文案应提到可改用 EU TED。**不以拿到真 key 为通过条件**。
+2. 「智能体」启用「商机雷达龙虾」→ 新建对话选它。
+3. 发送：
 
 ```text
 请调用 search_sam_opportunities，关键词用 sodium benzoate，limit 3。
-若未配置密钥，用中文说明即可，不要编造 noticeId。
+若未配置密钥，用中文说明替代路径（TED）即可，不要编造 noticeId。
 ```
 
-3. **未配 `sam:default`**：中文提示缺密钥/未配置。
-4. **已配密钥**：结果 id 形如 `sam:<noticeId>`，带来源 URL；不得瞎编编号。
+4. **未配 `sam:default`**：中文提示未配置 + 提到 TED/替代路径（**算通过**）。
+5. **已配密钥（境外账号）**：结果 id 形如 `sam:<noticeId>`，带来源 URL；不得瞎编编号。
 
 #### D. 外贸拓客 · 海关 CSV（D-108）
 
@@ -133,11 +134,11 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 - [x] （可选 D-099）`ready_for_human_send` →「提交发送审批」→ 审批卡；拒绝不外发；Email 未连接时中文错误
 - [x] （可选 D-101）商机雷达可调用 `search_tenders`；结果带来源 URL，不伪造 TED 编号
 - [x] （可选 D-103）未配置 `comtrade:default` 时 `lookup_trade_flow` 中文提示；有密钥时返回汇总 + 非买家警告
-- [ ] （D-105）转化龙虾文案含 `ready_for_crm_write` 时有「提交 CRM 写入审批」；点后注入意图；`hubspot_log_note` 出现审批卡；拒绝不写入；未连接中文错误；清单页仍无 CRM 按钮
-- [ ] （可选 D-106）未配置 `sam:default` 时 `search_sam_opportunities` 中文提示；有密钥时返回 `sam:<noticeId>` + 来源 URL，不伪造 noticeId
+- [x] （D-105）转化龙虾文案含 `recommended_action: ready_for_crm_write` 时有「提交 CRM 写入审批」；点后注入意图；`hubspot_log_note` 出现审批卡；拒绝不写入；未连接中文错误；清单页仍无 CRM 按钮
+- [x] （可选 D-106）未配置 `sam:default` 时 `search_sam_opportunities` 中文提示；有密钥时返回 `sam:<noticeId>` + 来源 URL，不伪造 noticeId
 - [ ] （可选 D-108）工作区放入海关 CSV 后 `filter_customs_importers` 可筛货代；结果含非终端买家警告；缺列/缺文件中文错误；不把候选直接当 Qualified
 - [ ] （可选 D-110）工作区放入海关 XLSX 后同样可筛货代；与 CSV 同类结果；`.xls` 中文提示另存
-- [ ] （可选 D-109）文案含 `ready_for_crm_create_contact` 时有「提交创建联系人审批」；点后注入意图；`hubspot_create_contact` 出现审批卡；拒绝不创建；仅笔记门禁时不出现创建 CTA（或两门禁可并存）；清单页仍无 CRM 按钮
+- [ ] （可选 D-109）文案含 `recommended_action: ready_for_crm_create_contact` 时有「提交创建联系人审批」；点后注入意图；`hubspot_create_contact` 出现审批卡；拒绝不创建；仅笔记门禁时不出现创建 CTA（或两门禁可并存）；清单页仍无 CRM 按钮
 
 ### 点检结果记录
 
@@ -153,7 +154,18 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 | 2026-08-10 | 程序侧 | D-111 合集单包验收通过 | `uncertainty-and-units` vendor + wire：`tests/test_uncertainty_and_units_skill.py` 4 passed |
 | 2026-08-10 | 程序侧 | D-112 合集 Triage 落盘 | `HUAGONGSHE_SKILL_TRIAGE.md` + JSON；P0/P1 待用户确认 |
 | 2026-08-10 | 程序侧 | **点检操作清单 A–E 落盘**；工具复验 | `pytest` preflight+customs+sam **19 passed**；`npm` CRM CTA **4 passed**；用户侧勾选仍待按操作清单点完 |
+| 2026-08-10 | 用户 | **D-105 通过** | 转化龙虾：门禁行出「提交 CRM 写入审批」；未连 HubSpot 时中文引导「连接」；未宣称已写入。第二轮正文误提 `ready_for_crm_create_contact` 曾误出创建 CTA → 已收紧为仅匹配 `recommended_action:` 行（`npm` requestCrm* + Transcript **33 passed**） |
+| 2026-08-10 | 用户 | **D-106 通过** | 商机雷达：未配 SAM 时中文未配置说明、不伪造 noticeId；曾见 Request timed out（模型侧），最终结论正确 |
+| 2026-08-10 | 程序侧 | **D-113 API 公开查询** | 连接页第三栏；`pytest` public-api-lookups **5 passed**；`npm` PublicApiLookupsSection + audit **22 passed** |
+| 2026-08-10 | 程序侧 | **D-114 说明增强** | 每卡做什么/谁在用/如何配置 + 申请外链；`pytest` **6 passed**；组件测含 SAM signup href |
+| 2026-08-10 | 程序侧 | **D-115 境外可选** | SAM/Comtrade 卡片与未配置错误标明替代路径；商机/外贸龙虾默认 TED/海关文件 |
+| 2026-08-10 | 程序侧 | **D-116 VATComply** | `validate_eu_vat` + 公开查询卡片；探针见 `PUBLIC_API_PROBE_2026-08-10.md` |
+| 2026-08-10 | 程序侧 | **D-117 业务筛选接入** | Frankfurter `lookup_fx_rate` + Wikipedia `lookup_wikipedia` 接线 Skill/龙虾；CATALOG 门禁；延期 USAspending/World Bank |
+| 2026-08-10 | 程序侧 | **D-118 化工社只读** | `search_huagongshe` + `lookup_huagongshe_chemical`；可选 Token；公开查询卡片；不进 Lead 评分；不写反应 |
+| 2026-08-10 | 程序侧 | **D-119 化工社写反应** | `validate_huagongshe_reaction` + `create_huagongshe_reaction`（审批+幂等）；Skill `chem-huagongshe-reaction`；公开查询标明须 Token |
+| 2026-08-11 | 程序侧 | **D-120 化工社 SVG 落盘** | `fetch_huagongshe_svg` 公开 SVG→工作区产物、回包无正文；禁止 web_fetch；公开查询卡；压缩成功 notice 中文化 |
+| 2026-08-11 | 程序侧 | **D-121 压缩硬裁提示** | Trim 文案「已自动精简以继续」；摘要失败 warning + 二次 tight_span；GUI「正在精简上下文…」 |
 
-**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。D-105—D-112 程序侧通过（含合集单包与 Triage 表）。**2026-08-10**：已补「操作清单」A–E；程序侧复验含 `search_sam_opportunities` / `filter_customs_importers`（见上表）。**用户侧 D-105/106/108/109/110 勾选仍待你按操作清单点完后打钩。**
+**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。**用户侧 D-105 / D-106 已通过**；D-108/109/110 仍待按操作清单点完。重启本 worktree 后，在 **连接 → API 公开查询** 可填化工社 Token（只读可选；校验/保存须填）；亦可见 VAT/汇率/维基/**结构图 SVG** 等免密钥卡。
 
-点检通过后默认下一刀顺序（须再点名才实现）：**CRM 字段/任务 CTA** → **海关外部 API（确有在线数据需求时）** → **合集 P0 `scientific-critical-thinking`** → **内容重构 M3**。不顺手开化工社批量。
+点检通过后默认下一刀顺序（须再点名）：**CRM 字段/任务 CTA** → **合集 P0** → **内容重构 M3**。

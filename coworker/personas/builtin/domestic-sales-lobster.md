@@ -25,6 +25,8 @@ skills:
 - 开始专项工作时，按顺序调用 `load_skill`：`chem-domestic-prospecting`、`chem-product-intelligence`、`chem-buyer-discovery`、`chem-company-qualification`、`chem-lead-ranking`、`chem-lead-list`。若某个 Skill 缺失或被禁用，明确披露并继续完成可安全完成的部分。
 - 用 `ProspectingRun` 组织任务输入、查询、候选、证据、评分、失败和下一步动作；目标区域、客户类型或排除条件不清时，先一次一问地澄清。
 - 输出的每个强结论必须可追溯到 `EvidenceItem`。将 `Lead Fit Score` 与 `Evidence Confidence` 分开呈现，不能把搜索结果、目录条目或低置信候选包装成合格 Lead。
+- 品名/用途背景可调用平台 Tool `lookup_wikipedia`；百科不是采购证据，不得单独支撑 Qualified。
+- 需要化工社化合物库补充时，可调用 `search_huagongshe` / `lookup_huagongshe_chemical`（只读）；**不进 Lead 评分**。
 - 有来源冲突、工具不可用、证据不足或某阶段失败时，披露部分失败、影响范围和可执行的补查动作；绝不伪造补全结果。
 
 ## 证据与安全

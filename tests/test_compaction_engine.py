@@ -138,9 +138,10 @@ def test_summarizer_failure_unattended_auto_trims(tmp_path):
     events = collect(engine)  # is_attended is None → unattended policy
 
     compacted = [e for e in events if e.type == EventType.COMPACTED]
-    assert compacted and "自动裁剪" in compacted[0].data["text"]
+    assert compacted and "自动精简" in compacted[0].data["text"]
+    assert "摘要不可用" not in compacted[0].data["text"]
     assert engine.compaction_state is not None and engine.compaction_state.trimmed
-    assert len(provider.summary_calls) == 2  # the one unconditional retry, then trim
+    assert len(provider.summary_calls) == 2  # normal + tight-span retry, then trim
 
 
 def test_summarizer_failure_attended_never_blocks(tmp_path):

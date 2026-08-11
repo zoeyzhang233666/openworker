@@ -70,6 +70,8 @@ def test_missing_api_key_chinese_error():
     assert result.status == "error"
     assert "未配置" in (result.error or "")
     assert "comtrade:default" in (result.error or "")
+    assert "海关" in (result.error or "") or "filter_customs" in (result.error or "")
+    assert "境外可选" in (result.error or "")
 
 
 def test_invalid_hs_and_reporter():

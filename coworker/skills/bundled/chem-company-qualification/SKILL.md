@@ -9,7 +9,7 @@ description: "Use when 外贸拓客候选企业成为 Lead 前需要核验主体
 
 ## 主体解析
 
-可用只读平台 Tool `lookup_legal_entity`：GLEIF（LEI / 拉丁法律名）或国内登记（统一社会信用代码 / 中文名，需配置 `cn_registry:default`）。命中时将 LEI 或 USCC 与来源 URL 写入证据：`source.type=government_registry`，locator 使用 Provider 返回的 `source.url` 或 `source.record_id`，不得编造 LEI/USCC。返回 `ambiguous` / `not_found` / `error` 时保持主体未决或 `NeedsReview`，不得静默挑一条写成 resolved。网络请求只通过平台 Provider/Tool。不推断产品需求，不冒充法律或制裁结论。
+可用只读平台 Tool `lookup_legal_entity`：GLEIF（LEI / 拉丁法律名）或国内登记（统一社会信用代码 / 中文名，需配置 `cn_registry:default`）。命中时将 LEI 或 USCC 与来源 URL 写入证据：`source.type=government_registry`，locator 使用 Provider 返回的 `source.url` 或 `source.record_id`，不得编造 LEI/USCC。返回 `ambiguous` / `not_found` / `error` 时保持主体未决或 `NeedsReview`，不得静默挑一条写成 resolved。对欧盟客户还可调用免密钥平台 Tool `validate_eu_vat`（VATComply）核验 VAT 号；结果仅为登记辅助，不得冒充法律结论，也不得仅凭 VAT valid 就标 `Qualified`。网络请求只通过平台 Provider/Tool。不推断产品需求，不冒充法律或制裁结论。
 
 ## 最低门槛
 

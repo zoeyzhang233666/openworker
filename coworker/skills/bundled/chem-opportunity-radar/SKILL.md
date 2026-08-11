@@ -11,10 +11,10 @@ description: "Use when 用户要围绕化工 SKU 与市场约束，把有来源�
 
 - 输入：SKU 草稿或品名、市场/区域、关注的 `signal_type`、时间窗与排除条件。
 - 依次加载 `chem-product-intelligence`、`chem-company-qualification`、`chem-opportunity-scoring`。
-- 外部读取仅用已配置 Tool/Provider；欧盟公开招标可用平台 Tool `search_tenders`（TED）；美国联邦采购可用 `search_sam_opportunities`（SAM.gov，需配置 `sam:default`）；将返回的信号纳入 `signal_collect`；**不**在本 Skill 内嵌 TED/SAM 客户端。
+- 外部读取仅用已配置 Tool/Provider；**大陆默认**优先平台 Tool `search_tenders`（TED，免密钥）；美国联邦采购 `search_sam_opportunities`（SAM.gov）为**境外可选**，仅当已配置 `sam:default` 且用户明确需要时使用；欧盟 VAT 可用 `validate_eu_vat`；将返回的信号纳入 `signal_collect`；**不**在本 Skill 内嵌 TED/SAM/VAT 客户端。
 - 本 Skill **不**默认调用 `chem-newbiz-lead` / `chem-inquiry-feed`（MCP 依赖未纳入本包）。
 - 禁止把搜索摘要当作事件正文；无来源口述不得生成 `OpportunitySignal`，只能 `NeedsReview` 并请求补证。
-- **禁止伪造** TED `publication-number` / SAM `noticeId` / `signal_id`；`search_tenders` / `search_sam_opportunities` 失败或 empty 时披露，不得编造公告。
+- **禁止伪造** TED `publication-number` / SAM `noticeId` / `signal_id`；`search_tenders` / `search_sam_opportunities` 失败、empty 或未配置时披露并改走 TED/网页搜索，不得编造公告，也不要反复要求申请 SAM 密钥。
 - 默认只读；发送/CRM/付费调用须审批。
 
 ## 状态机

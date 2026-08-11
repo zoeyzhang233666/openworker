@@ -69,6 +69,8 @@ def test_missing_api_key_chinese_error():
     assert result.status == "error"
     assert "未配置" in (result.error or "")
     assert "sam:default" in (result.error or "")
+    assert "TED" in (result.error or "") or "search_tenders" in (result.error or "")
+    assert "境外可选" in (result.error or "")
 
 
 def test_empty_query_error():

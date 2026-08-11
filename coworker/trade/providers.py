@@ -160,8 +160,11 @@ class ComtradeProvider(TradeFlowProvider):
                 source=self._source(),
                 warnings=[_BUYER_WARNING],
                 error=(
-                    "UN Comtrade 数据源未配置。请在凭据中设置 comtrade:default "
-                    "（api_key 为订阅密钥），详见 comtradeplus.un.org / 开发者门户。"
+                    "UN Comtrade 数据源未配置（境外可选，非大陆刚需）。"
+                    "可改用工作区海关 CSV/XLSX（filter_customs_importers）或网页搜索找买家；"
+                    "贸易流也不是买家名单。"
+                    "若确需官方贸易流汇总且能申请密钥：在「连接 → API 公开查询」配置 "
+                    "comtrade:default（api_key）。"
                 ),
             )
 

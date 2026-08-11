@@ -11,6 +11,7 @@ description: "Use when 用户提供化工询盘文本或字段，需要解析为
 
 - 输入：询盘原文/附件摘要、SKU/品名、数量、单位、目标 Incoterm/币种、已知单价或成本字段（可缺）。
 - 加载 `chem-product-intelligence` 核验 SKU；用平台 Tool `calculate_quote` 做确定性合计。
+- 询盘币种与报价目标币种不一致、且用户已给出金额时，先调用免密钥平台 Tool `lookup_fx_rate`（Frankfurter）换算，再交给 `calculate_quote`；**不得**用汇率编造单价或数量。
 - 缺 `quantity` 或 `unit_price` 时状态 `NeedsReview`，列出 `missing_fields`，不得用模型记忆补价。
 - 当数量/浓度/规格单位含混、或检测不确定度影响报价表述时，可按需 `load_skill("uncertainty-and-units")` 做单位与不确定度核对；**不得**用其编造单价或数量，也**不得**替代 `calculate_quote`。
 - 不调用 `chem-inquiry-feed` / `chem-quote-monitor`（MCP 未纳入本包）；不发邮件、不写 CRM。

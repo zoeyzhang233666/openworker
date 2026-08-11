@@ -1,0 +1,9 @@
+{
+  "query": "NOMATCHXYZ",
+  "mode": "exact",
+  "page": 1,
+  "page_size": 10,
+  "total": 0,
+  "chemicals": [],
+  "reactions": []
+}

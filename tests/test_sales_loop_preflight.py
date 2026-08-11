@@ -20,6 +20,13 @@ SALES_LOBSTERS = (
 REQUIRED_TOOLS = (
     "lookup_chemical_identity",
     "lookup_legal_entity",
+    "validate_eu_vat",
+    "lookup_fx_rate",
+    "lookup_wikipedia",
+    "search_huagongshe",
+    "lookup_huagongshe_chemical",
+    "validate_huagongshe_reaction",
+    "create_huagongshe_reaction",
     "calculate_quote",
     "format_lead_list",
     "search_tenders",

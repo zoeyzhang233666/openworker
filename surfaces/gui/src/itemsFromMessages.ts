@@ -77,7 +77,7 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
             ? { kind: "notice", tone: "info", text: m.text || "Model switched" }
             : m.kind === "compacted"
               ? // The subtle "compacted here" divider (OPE-27) — the transcript itself is intact.
-                { kind: "notice", tone: "info", text: m.text || "Context compacted" }
+                { kind: "notice", tone: "info", text: m.text || "上下文已自动压缩（较早轮次已摘要）" }
               : { kind: "notice", tone: "warn", text: "Error: " + (m.text || "unknown"), retriable: true },
       );
     }

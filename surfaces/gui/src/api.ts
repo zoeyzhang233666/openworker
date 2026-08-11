@@ -605,6 +605,50 @@ export async function getConnectors(): Promise<Connector[]> {
   return (await res.json()).connectors ?? [];
 }
 
+export type PublicApiLookupKind = "free" | "secret" | "workspace_file" | "optional_secret";
+
+export interface PublicApiLookup {
+  id: string;
+  kind: PublicApiLookupKind;
+  label_zh: string;
+  label_en: string;
+  tool: string;
+  summary_zh: string;
+  summary_en: string;
+  purpose_zh?: string;
+  purpose_en?: string;
+  used_by_zh?: string;
+  used_by_en?: string;
+  setup_zh?: string;
+  setup_en?: string;
+  docs_url?: string;
+  signup_url?: string;
+  ready: boolean;
+  configured: boolean;
+  has_api_key: boolean;
+  provider?: string;
+  providers?: string[];
+  base_url?: string;
+}
+
+export async function listPublicApiLookups(): Promise<PublicApiLookup[]> {
+  const res = await fetch(`${httpBase()}/v1/public-api-lookups`);
+  if (!res.ok) throw new Error(`public-api-lookups ${res.status}`);
+  return res.json();
+}
+
+export async function setPublicApiLookup(
+  id: string,
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; error?: string; id?: string }> {
+  const res = await fetch(`${httpBase()}/v1/public-api-lookups/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
 export async function connectConnector(
   name: string,
   fields: Record<string, string>,

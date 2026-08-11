@@ -33,6 +33,10 @@ SUMMARY_MAX_TOKENS = 3_000
 # first casualty (huge and mostly stale — a file read 40 turns ago is better re-read).
 _SPAN_TOOL_RESULT_CLIP = 400
 _SPAN_BUDGET_CHARS = 400_000
+# Second summarizer attempt (after a failure): tighter clip so the summarizer call
+# itself is less likely to overflow or time out.
+_SPAN_TOOL_RESULT_CLIP_TIGHT = 120
+_SPAN_BUDGET_CHARS_TIGHT = 80_000
 # User messages preserved mechanically in the compacted block ("trimmed of pasted bulk").
 # The list is capped to the newest N across repeated compactions — otherwise it appends
 # forever and the block slowly reclaims the window it freed. Dropped ones stay counted
@@ -377,10 +381,16 @@ CONTINUATION_CONTRACT = (
 )
 
 
-def _render_span(span: list[dict[str, Any]], *, budget_chars: int = _SPAN_BUDGET_CHARS) -> str:
+def _render_span(
+    span: list[dict[str, Any]],
+    *,
+    budget_chars: int = _SPAN_BUDGET_CHARS,
+    tool_result_clip: int = _SPAN_TOOL_RESULT_CLIP,
+) -> str:
     """The summarized span as compact text for the summarizer. Tool results are clipped
     hard (first casualty); if the whole render still exceeds the budget, oldest lines are
     dropped — the newest context is the most load-bearing."""
+    clip = max(40, int(tool_result_clip))
     lines: list[str] = []
     for msg in span:
         role = msg.get("role")
@@ -391,8 +401,8 @@ def _render_span(span: list[dict[str, Any]], *, budget_chars: int = _SPAN_BUDGET
         if role == "tool":
             text = _text_of(msg.get("content"))
             text = " ".join(text.split())
-            if len(text) > _SPAN_TOOL_RESULT_CLIP:
-                text = text[: _SPAN_TOOL_RESULT_CLIP - 1] + "…"
+            if len(text) > clip:
+                text = text[: clip - 1] + "…"
             lines.append(f"[tool result] {text}")
             continue
         text = _text_of(msg.get("content"))
@@ -414,16 +424,29 @@ def _render_span(span: list[dict[str, Any]], *, budget_chars: int = _SPAN_BUDGET
 
 
 def summarizer_messages(
-    span: list[dict[str, Any]], *, prior_summary: str = ""
+    span: list[dict[str, Any]],
+    *,
+    prior_summary: str = "",
+    tight_span: bool = False,
 ) -> list[dict[str, Any]]:
     """The provider-ready messages for the summarizer call. On repeated compaction the
     previous summary is message zero of the new span — summarized along with the turns
-    since."""
-    body = _render_span(span)
+    since. `tight_span` uses a smaller tool-result/budget clip (retry after failure)."""
+    body = _render_span(
+        span,
+        budget_chars=_SPAN_BUDGET_CHARS_TIGHT if tight_span else _SPAN_BUDGET_CHARS,
+        tool_result_clip=(
+            _SPAN_TOOL_RESULT_CLIP_TIGHT if tight_span else _SPAN_TOOL_RESULT_CLIP
+        ),
+    )
     if prior_summary:
+        # On a tight retry, also clip a bloated prior summary so it cannot dominate.
+        prior = prior_summary
+        if tight_span and len(prior) > 8_000:
+            prior = prior[:7_999] + "…"
         body = (
             "[previous compaction summary — fold its still-relevant content into the new "
-            "summary]\n" + prior_summary + "\n\n[conversation since]\n" + body
+            "summary]\n" + prior + "\n\n[conversation since]\n" + body
         )
     return [
         {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
@@ -438,13 +461,16 @@ def summarize_span(
     *,
     prior_summary: str = "",
     max_tokens: int = SUMMARY_MAX_TOKENS,
+    tight_span: bool = False,
 ) -> str:
     """One summarizer round-trip (blocking — the engine runs it off-loop). Tools are
     disabled; the Settings model override is just a different `model` id. Raises on
     provider failure or an empty summary — the caller owns the retry/trim policy."""
     turn = provider.complete(
         model=model,
-        messages=summarizer_messages(span, prior_summary=prior_summary),
+        messages=summarizer_messages(
+            span, prior_summary=prior_summary, tight_span=tight_span
+        ),
         tools=None,
         max_tokens=max_tokens,
     )
@@ -464,10 +490,12 @@ def build_state(
     model: str,
     keep_tokens: int,
     prior: Optional[CompactionState] = None,
+    tight_span: bool = False,
 ) -> Optional[CompactionState]:
     """Summarize everything older than the picked boundary into a new CompactionState.
     On repeated compaction the prior summary heads the new span. Returns None when there
-    is nothing to compact; raises when the summarizer fails (caller applies policy)."""
+    is nothing to compact; raises when the summarizer fails (caller applies policy).
+    `tight_span=True` shrinks summarizer input (second attempt after a failure)."""
     boundary = pick_boundary(messages, keep_tokens=keep_tokens)
     if boundary is None or (prior is not None and boundary <= prior.boundary_index):
         return None
@@ -479,6 +507,7 @@ def build_state(
         model,
         span,
         prior_summary=prior.summary_text if prior is not None else "",
+        tight_span=tight_span,
     )
     users, dropped = _cap_user_messages(
         prior_users + extract_user_messages(span),

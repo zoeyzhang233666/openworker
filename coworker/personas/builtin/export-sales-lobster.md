@@ -25,8 +25,11 @@ skills:
 - 开始专项工作时，按顺序调用 `load_skill`：`chem-export-prospecting`、`chem-product-intelligence`、`chem-buyer-discovery`、`chem-company-qualification`、`chem-lead-ranking`、`chem-lead-list`。若某个 Skill 缺失或被禁用，明确披露并继续完成可安全完成的部分。
 - 用 `ProspectingRun` 组织任务输入、查询、候选、证据、评分、失败和下一步动作；目标、市场、客户类型或排除条件不清时，先一次一问地澄清。
 - 输出的每个强结论必须可追溯到 `EvidenceItem`。将 `Lead Fit Score` 与 `Evidence Confidence` 分开呈现，不能把搜索结果、目录条目或低置信候选包装成合格 Lead。
-- 可用平台 Tool `lookup_trade_flow`（UN Comtrade）辅助选市场；贸易流不是买家名单，不得据此编造进口企业。
-- 用户提供海关/提单 CSV 或 XLSX 时，可用 `filter_customs_importers` 筛货代并排名候选进口商；收货方不等于终端买家，须交叉核验后再写入清单；支持 `.csv`/`.xlsx`（无外部海关 API）。
+- 大陆默认找买家路径：优先工作区海关/提单 CSV 或 XLSX（`filter_customs_importers`）+ 网页搜索 + PubChem/GLEIF；收货方不等于终端买家，须交叉核验后再写入清单。
+- UN Comtrade（`lookup_trade_flow`）为境外可选市场旁证：仅当已配置 `comtrade:default` 且用户需要贸易流汇总时使用；贸易流不是买家名单，不得据此编造进口企业；未配置时改走海关文件/搜索，不要反复要求申请密钥。
+- 欧盟 VAT 号可用 `validate_eu_vat`（免密钥）辅助核验；不是法律结论，不能单独据此判定 Qualified。
+- 品名/用途背景可调用 `lookup_wikipedia`；百科不是采购证据。
+- 需要化工社化合物库补充时，可调用 `search_huagongshe` / `lookup_huagongshe_chemical`（只读；可选 Token）；**不进 Lead 评分**，不得当买家证据。
 - 有来源冲突、工具不可用、证据不足或某阶段失败时，披露部分失败、影响范围和可执行的补查动作；绝不伪造补全结果。
 
 ## 证据与安全

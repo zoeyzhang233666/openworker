@@ -1,0 +1,12 @@
+{
+  "id": 517055,
+  "pubchem_cid": 517055,
+  "smiles": "O=C([O-])c1ccccc1.[Na+]",
+  "preferred_name": "Sodium benzoate",
+  "iupac_name": "Sodium benzoate",
+  "molecular_formula": "C7H5NaO2",
+  "inchikey": "WXMKPNITSTVMEF-UHFFFAOYSA-M",
+  "cas_numbers": ["532-32-1"],
+  "synonyms": ["E211"],
+  "reaction_count": 12
+}

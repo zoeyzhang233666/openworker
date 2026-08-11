@@ -216,6 +216,15 @@ def test_summarizer_messages_clip_tool_results_and_fold_prior():
     assert msgs[0]["role"] == "system" and "Primary request and intent" in msgs[0]["content"]
 
 
+def test_summarizer_messages_tight_span_clips_harder():
+    span = [user("go"), *tool_turn("read_file", {"path": "big.txt"}, "huge " * 500)]
+    normal = summarizer_messages(span)[1]["content"]
+    tight = summarizer_messages(span, tight_span=True)[1]["content"]
+    assert len(tight) < len(normal)
+    # tool clip 120 chars → body stays very small
+    assert len(tight) < 800
+
+
 def test_summarize_span_passes_model_and_raises_on_empty():
     fake = FakeSummarizer(text="## ok")
     out = summarize_span(fake, "prov:model-x", [user("hi")])

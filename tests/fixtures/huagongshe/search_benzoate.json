@@ -1,0 +1,31 @@
+{
+  "query": "sodium benzoate",
+  "mode": "exact",
+  "canonical_smiles": null,
+  "page": 1,
+  "page_size": 2,
+  "total": 2,
+  "chemicals": [
+    {
+      "id": 517055,
+      "pubchem_cid": 517055,
+      "smiles": "O=C([O-])c1ccccc1.[Na+]",
+      "preferred_name": "Sodium benzoate",
+      "iupac_name": "Sodium benzoate",
+      "molecular_formula": "C7H5NaO2",
+      "inchikey": "WXMKPNITSTVMEF-UHFFFAOYSA-M",
+      "cas_numbers": ["532-32-1"]
+    },
+    {
+      "id": 23669229,
+      "pubchem_cid": 23669229,
+      "smiles": "Cn1c(=O)c2c(ncn2C)n(C)c1=O.O=C([O-])c1ccccc1.[Na+]",
+      "preferred_name": "Sodium caffeine benzoate",
+      "iupac_name": "Sodium benzoate caffeine",
+      "molecular_formula": "C15H15N4NaO4",
+      "inchikey": "JWBPVFVNISJVEM-UHFFFAOYSA-M",
+      "cas_numbers": ["8000-95-1"]
+    }
+  ],
+  "reactions": []
+}
