@@ -78,11 +78,15 @@ class InboxItem:
     tool_call_id: Optional[str] = None
     # Question metadata (ask_user): optional quick-reply choices + a free-text escape, mirroring
     # the structured-but-always-answerable shape of Claude Code's AskUserQuestion.
-    options: list[str] = field(default_factory=list)
+    # Options may be plain strings or rich {label, description, recommended, preview} dicts.
+    options: list = field(default_factory=list)
     allow_text: bool = (
         True  # accept a typed answer even when options exist (the "Other" escape)
     )
     multi: bool = False  # allow choosing more than one option
+    header: str = ""  # short chip label for the card / stepper
+    # Grouped ask_user: up to 4 questions in one call; empty for singular form / legacy items.
+    questions: list[dict] = field(default_factory=list)
     # Kind-specific payload (directory: suggested path/writable; plan: the plan text; …).
     data: dict[str, Any] = field(default_factory=dict)
 
@@ -126,6 +130,8 @@ class InboxStore:
         options=None,
         allow_text: bool = True,
         multi: bool = False,
+        header: str = "",
+        questions=None,
         tool_call_id: Optional[str] = None,
     ) -> InboxItem:
         # Idempotent by (session_id, tool_call_id): a durable resume re-raises the same prompt, and
@@ -146,6 +152,8 @@ class InboxStore:
             options=list(options or []),
             allow_text=bool(allow_text),
             multi=bool(multi),
+            header=str(header or ""),
+            questions=list(questions or []),
             tool_call_id=tool_call_id,
         )
         with self._lock:
@@ -194,6 +202,8 @@ class InboxStore:
         options=None,
         allow_text=True,
         multi=False,
+        header="",
+        questions=None,
         tool_call_id=None,
     ) -> InboxItem:
         return self.add(
@@ -206,6 +216,8 @@ class InboxStore:
             options=options,
             allow_text=allow_text,
             multi=multi,
+            header=header,
+            questions=questions,
             tool_call_id=tool_call_id,
         )
 

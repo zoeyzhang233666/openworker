@@ -982,6 +982,11 @@ class TurnEngine:
         from the Inbox when unattended), and return it as the tool result."""
         args = tool_call.arguments or {}
         question = str(args.get("question", "")).strip()
+        if not question:
+            for entry in args.get("questions") or []:
+                if isinstance(entry, dict) and str(entry.get("question", "")).strip():
+                    question = str(entry["question"]).strip()
+                    break
         if self.question_asker is None or not question:
             result: dict[str, Any] = {
                 "answer": "",
@@ -1003,7 +1008,7 @@ class TurnEngine:
                 "error": "no response",
             }
 
-        status = "ok" if result.get("answer") else "denied"
+        status = "ok" if (result.get("answer") or result.get("answers")) else "denied"
         self.messages.append(_tool_result_message(tool_call, result))
         self._audit(
             tool_call,
