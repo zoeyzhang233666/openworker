@@ -940,8 +940,8 @@ function CompactionCard() {
     getSettings()
       .then((s) => {
         setCfg({
-          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.95,
-          compaction_cap_tokens: s.compaction_cap_tokens ?? 2_000_000,
+          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.70,
+          compaction_cap_tokens: s.compaction_cap_tokens ?? 100_000,
           compaction_model: s.compaction_model ?? "",
         });
         setModels(s.models || []);
@@ -949,8 +949,8 @@ function CompactionCard() {
       })
       .catch(() =>
         setCfg({
-          compaction_threshold_pct: 0.95,
-          compaction_cap_tokens: 2_000_000,
+          compaction_threshold_pct: 0.70,
+          compaction_cap_tokens: 100_000,
           compaction_model: "",
         }),
       );
@@ -985,7 +985,7 @@ function CompactionCard() {
             onChange={(e) =>
               save({
                 compaction_threshold_pct:
-                  Math.max(10, Math.min(Number(e.target.value) || 95, 95)) / 100,
+                  Math.max(10, Math.min(Number(e.target.value) || 70, 95)) / 100,
               })
             }
           />
@@ -1005,7 +1005,7 @@ function CompactionCard() {
               save({
                 compaction_cap_tokens: Math.max(
                   10_000,
-                  Math.min(Number(e.target.value) || 2_000_000, 2_000_000),
+                  Math.min(Number(e.target.value) || 100_000, 2_000_000),
                 ),
               })
             }
@@ -1037,7 +1037,7 @@ function CompactionCard() {
       </div>
       <div className={FIELD_HELP}>
         {t(
-          "The summary is written by this model. The default follows whatever model the session is using.",
+          "The summary is written by this model. For better reliability, choose a stable non-reasoning model that returns normal text. A provider-prefixed model uses that provider's endpoint; the default follows the session model.",
         )}
       </div>
     </div>

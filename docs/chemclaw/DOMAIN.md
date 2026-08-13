@@ -234,6 +234,10 @@ bundled Skill（D-111）：K-Dense MIT，经化工社合集单包引入。辅助
 
 治理制品（D-112）：对 `D:\化工社skills合集` 158 个 K-Dense zip 分档 DONE/P0/P1/P2/Skip，见 `docs/chemclaw/HUAGONGSHE_SKILL_TRIAGE.md`。Triage **不等于**批量安装；P0/P1 须确认后逐包实现。
 
+### 内容策略词表（managed / user）
+
+`chem-content-policy` 确定性扫描用的禁词层（D-128）：官方 `references/lexicon/managed/`（含 `rule_version`）可随发版热升级；用户 `user.csv` 可增删/`suppress` 规则且永不被官方同步覆盖。扫描输出含 `rule_set:{id,version}`。
+
 ### Opportunity
 
 一个或多个 `OpportunitySignal` 经主体归一、产品相关性和确定性商机评分（`chem-opportunity-fit`）后形成的可跟进业务机会。状态含 Watch / NeedsReview / Actionable / Rejected；无主体或无事件日期不得标为 Actionable。
@@ -268,7 +272,23 @@ bundled Skill（D-111）：K-Dense MIT，经化工社合集单包引入。辅助
 
 ### CRM 创建联系人（`hubspot_create_contact`）
 
-复用 HubSpot 连接器创建联系人（`email` 必填）；`requires_approval=True`。须文案含 `ready_for_crm_create_contact` 且用户明确触发（对话或「提交创建联系人审批」CTA）；禁止编造邮箱/姓名；未开 `update_object` / `create_task` 产品 CTA。
+复用 HubSpot 连接器创建联系人（`email` 必填）；`requires_approval=True`。须文案含 `ready_for_crm_create_contact` 且用户明确触发（对话或「提交创建联系人审批」CTA）；禁止编造邮箱/姓名。客户清单页不显示 CRM 按钮。
+
+### `ready_for_crm_update_object`
+
+转化跟进可提交**人工更新 HubSpot 字段审批**的门禁标记（D-127）。不等于已调用 `hubspot_update_object`。须可靠 `object_type`/`object_id` 与非空 `properties`；与笔记/创建联系人/创建任务门禁并列。
+
+### CRM 字段更新（`hubspot_update_object`）
+
+复用 HubSpot 连接器更新已有记录属性；`requires_approval=True`。须文案含 `ready_for_crm_update_object` 且用户明确触发（对话或「提交 CRM 字段更新审批」CTA）；禁止编造对象 ID 或字段值。
+
+### `ready_for_crm_create_task`
+
+转化跟进可提交**人工创建 HubSpot 任务审批**的门禁标记（D-127）。不等于已调用 `hubspot_create_task`。须已确认跟进动作作 `title`；已知联系人写入 `notes`（工具不关联对象）。
+
+### CRM 任务创建（`hubspot_create_task`）
+
+复用 HubSpot 连接器创建跟进任务；`requires_approval=True`。须文案含 `ready_for_crm_create_task` 且用户明确触发（对话或「提交 CRM 任务创建审批」CTA）；禁止编造标题。
 
 ### `FollowupPlan`
 
@@ -379,7 +399,10 @@ ChemClaw 对话框与 2D 图谱并列联动的工作界面。对话检索可定�
 当出站上下文接近模型上下文上限时，把更老的部分用 LLM 摘要 + 机械提取状态替换；canonical 历史不改，只改变发给模型的消息。
 
 ### 上下文压缩失败降级
-压缩器摘要失败后不阻塞用户交互，改为自动 Trim 并继续。压缩后续跑依赖 OPE-27 `<compacted-history>`（摘要、机械 working_state、用户原话与近期原文）；Trim 硬裁几乎无叙事摘要时，模型应重读工作区产物或必要时重跑工具。侧栏 Progress/`todo_write` 仅供人看计划，不作为压缩记忆通道。
+压缩器摘要失败后不阻塞用户交互，也不弹 Retry 对话框。正常与紧缩摘要都失败时，先建立确定性 continuity ledger，机械保留最近 todo、产物路径、命令状态、MCP 查询、助手结论、用户原话与近期原文；只有该层也无法建立时才使用最小 Trim。压缩后续跑依赖 OPE-27 `<compacted-history>`，必要时重读工作区产物或重跑工具。侧栏 Progress/`todo_write` 仍是人看的计划 UI；压缩器只从 canonical tool record 机械提取其最近状态，不把侧栏本身作为独立记忆库。
+
+### 摘要预算
+摘要模型拥有独立于主聊触发阈值的输入预算。预算按摘要模型 context window 计算并预留输出与安全空间；未知模型使用保守窗口。摘要输入只包含受预算约束的用户意图、助手结论和工具摘要，不携带旧工具原文。`reasoning_content` 仅用于判断 reasoning-only 失败，不能直接成为后续对话记忆。
 
 ### 出站裁剪
 对出站视图中 `role="tool"` 的大回包统一按字符上限裁剪；溢出部分落盘到会话产物文件，并在出站内容中给出可读路径指针。

@@ -12,7 +12,9 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLED = ROOT / "coworker" / "skills" / "bundled"
 CORPUS = ROOT / "docs" / "chemclaw" / "platform-rewrite" / "corpus" / "cases"
-LEXICON = BUNDLED / "chem-content-policy" / "references" / "lexicon" / "base.csv"
+LEXICON = (
+    BUNDLED / "chem-content-policy" / "references" / "lexicon" / "managed" / "base.csv"
+)
 HOOK_SCHEMA = BUNDLED / "chem-hook-cta-pack" / "schemas" / "hook-cta-pack.schema.json"
 
 

@@ -82,6 +82,14 @@ import {
   crmCreateContactIntentMessage,
 } from "./requestCrmCreateContact";
 import {
+  REQUEST_CRM_UPDATE_OBJECT_EVENT,
+  crmUpdateObjectIntentMessage,
+} from "./requestCrmUpdateObject";
+import {
+  REQUEST_CRM_CREATE_TASK_EVENT,
+  crmCreateTaskIntentMessage,
+} from "./requestCrmCreateTask";
+import {
   REQUEST_LEAD_FOLLOWUP_EVENT,
   leadFollowupIntentMessage,
   type RequestLeadFollowupDetail,
@@ -1067,6 +1075,26 @@ export function App() {
     window.addEventListener(REQUEST_CRM_CREATE_CONTACT_EVENT, onCrmCreateContact);
     return () =>
       window.removeEventListener(REQUEST_CRM_CREATE_CONTACT_EVENT, onCrmCreateContact);
+  });
+  // D-127: «提交 CRM 字段更新审批» after ready_for_crm_update_object — still gated.
+  useEffect(() => {
+    const onCrmUpdateObject = () => {
+      if (running) return;
+      send(crmUpdateObjectIntentMessage());
+    };
+    window.addEventListener(REQUEST_CRM_UPDATE_OBJECT_EVENT, onCrmUpdateObject);
+    return () =>
+      window.removeEventListener(REQUEST_CRM_UPDATE_OBJECT_EVENT, onCrmUpdateObject);
+  });
+  // D-127: «提交 CRM 任务创建审批» after ready_for_crm_create_task — still gated.
+  useEffect(() => {
+    const onCrmCreateTask = () => {
+      if (running) return;
+      send(crmCreateTaskIntentMessage());
+    };
+    window.addEventListener(REQUEST_CRM_CREATE_TASK_EVENT, onCrmCreateTask);
+    return () =>
+      window.removeEventListener(REQUEST_CRM_CREATE_TASK_EVENT, onCrmCreateTask);
   });
   // D-102: lead-list «继续补查» / «重评» — inject chat intent only (no auto-run / send / CRM).
   useEffect(() => {

@@ -16,3 +16,5 @@
 - `ready_for_human_send` 仅表示可提交人工**发送**审批，不等于已调用 `email_send`
 - 另可在同一轮或后续轮助手文案中给出 `ready_for_crm_write`（HubSpot 笔记写入审批门禁，D-105）；不等于已调用 `hubspot_log_note`，且不替代发送门禁
 - 另可给出 `ready_for_crm_create_contact`（HubSpot 创建联系人审批门禁，D-109）；须已有可靠 email；不等于已调用 `hubspot_create_contact`
+- 另可给出 `ready_for_crm_update_object`（HubSpot 字段更新审批门禁，D-127）；须可靠对象 ID 与待更新字段；不等于已调用 `hubspot_update_object`
+- 另可给出 `ready_for_crm_create_task`（HubSpot 任务创建审批门禁，D-127）；须已确认跟进动作作标题；不等于已调用 `hubspot_create_task`

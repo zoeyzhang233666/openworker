@@ -19,6 +19,14 @@ import {
   REQUEST_CRM_CREATE_CONTACT_EVENT,
   isReadyForCrmCreateContact,
 } from "../requestCrmCreateContact";
+import {
+  REQUEST_CRM_UPDATE_OBJECT_EVENT,
+  isReadyForCrmUpdateObject,
+} from "../requestCrmUpdateObject";
+import {
+  REQUEST_CRM_CREATE_TASK_EVENT,
+  isReadyForCrmCreateTask,
+} from "../requestCrmCreateTask";
 
 // Long user pastes swallow the transcript (owner ask 2026-07-30): clamp past a generous
 // threshold with a more…/less… toggle. Normal typed messages never see the control; the
@@ -600,6 +608,46 @@ export function Transcript({
                     </button>
                     <p className="text-[11.5px] text-inkMuted m-0">
                       {t("crmCreateContact.hint")}
+                    </p>
+                  </div>
+                )}
+                {!running && isReadyForCrmUpdateObject(item.text) && (
+                  <div className="mt-2 flex flex-col gap-1 items-start">
+                    <button
+                      type="button"
+                      className="btn"
+                      data-testid="submit-crm-update-object"
+                      title={t("crmUpdateObject.hint")}
+                      onClick={() =>
+                        window.dispatchEvent(
+                          new CustomEvent(REQUEST_CRM_UPDATE_OBJECT_EVENT),
+                        )
+                      }
+                    >
+                      {t("crmUpdateObject.submit")}
+                    </button>
+                    <p className="text-[11.5px] text-inkMuted m-0">
+                      {t("crmUpdateObject.hint")}
+                    </p>
+                  </div>
+                )}
+                {!running && isReadyForCrmCreateTask(item.text) && (
+                  <div className="mt-2 flex flex-col gap-1 items-start">
+                    <button
+                      type="button"
+                      className="btn"
+                      data-testid="submit-crm-create-task"
+                      title={t("crmCreateTask.hint")}
+                      onClick={() =>
+                        window.dispatchEvent(
+                          new CustomEvent(REQUEST_CRM_CREATE_TASK_EVENT),
+                        )
+                      }
+                    >
+                      {t("crmCreateTask.submit")}
+                    </button>
+                    <p className="text-[11.5px] text-inkMuted m-0">
+                      {t("crmCreateTask.hint")}
                     </p>
                   </div>
                 )}

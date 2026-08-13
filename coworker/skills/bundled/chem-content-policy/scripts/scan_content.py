@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic lexicon scanner for chem-content-policy."""
+"""Deterministic lexicon scanner for chem-content-policy (M3: managed + user)."""
 
 from __future__ import annotations
 
@@ -11,24 +11,118 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_LEXICON = (
-    Path(__file__).resolve().parent.parent / "references" / "lexicon" / "base.csv"
+RULE_SET_ID = "chem-content-policy"
+
+_LEXICON_DIR = Path(__file__).resolve().parent.parent / "references" / "lexicon"
+DEFAULT_MANAGED_LEXICON = _LEXICON_DIR / "managed" / "base.csv"
+DEFAULT_USER_LEXICON = _LEXICON_DIR / "user.csv"
+DEFAULT_RULE_VERSION_FILE = _LEXICON_DIR / "managed" / "rule_version.txt"
+# Pre-M3 single-file layout (installed copies may still have this).
+_LEGACY_LEXICON = _LEXICON_DIR / "base.csv"
+
+_FIELDNAMES = (
+    "rule_id",
+    "term",
+    "platform",
+    "locale",
+    "category",
+    "severity",
+    "action",
+    "replacement_strategy",
+    "notes",
 )
+
+# Back-compat alias used by older callers / docs.
+DEFAULT_LEXICON = DEFAULT_MANAGED_LEXICON
 
 
 def load_lexicon(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        return []
     with path.open(encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
+
+
+def read_rule_version(version_file: Path | None = None, *, managed_csv: Path | None = None) -> str:
+    """Read managed rule_version.txt; fall back to sibling of managed CSV."""
+    candidates: list[Path] = []
+    if version_file is not None:
+        candidates.append(version_file)
+    if managed_csv is not None:
+        candidates.append(managed_csv.parent / "rule_version.txt")
+    candidates.append(DEFAULT_RULE_VERSION_FILE)
+    for path in candidates:
+        if path.is_file():
+            text = path.read_text(encoding="utf-8").strip()
+            if text:
+                return text
+    return "0.0.0"
+
+
+def resolve_managed_lexicon(lexicon_path: str | Path | None = None) -> Path:
+    if lexicon_path is not None:
+        return Path(lexicon_path)
+    if DEFAULT_MANAGED_LEXICON.is_file():
+        return DEFAULT_MANAGED_LEXICON
+    if _LEGACY_LEXICON.is_file():
+        return _LEGACY_LEXICON
+    return DEFAULT_MANAGED_LEXICON
+
+
+def merge_lexicon_rows(
+    managed_rows: list[dict[str, str]],
+    user_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Merge managed + user: same rule_id → user wins; action=suppress drops the rule."""
+    by_id: dict[str, dict[str, str]] = {}
+    extras: list[dict[str, str]] = []
+
+    for row in managed_rows:
+        rid = (row.get("rule_id") or "").strip()
+        if rid:
+            by_id[rid] = dict(row)
+        else:
+            extras.append(dict(row))
+
+    for row in user_rows:
+        rid = (row.get("rule_id") or "").strip()
+        action = (row.get("action") or "").strip().lower()
+        if action == "suppress":
+            if rid:
+                by_id.pop(rid, None)
+            continue
+        if rid:
+            by_id[rid] = dict(row)
+        else:
+            extras.append(dict(row))
+
+    return list(by_id.values()) + extras
 
 
 def scan_content(
     text: str,
     *,
     lexicon_path: str | Path | None = None,
+    lexicon_user: str | Path | None = None,
     platform: str | None = None,
+    rule_version: str | None = None,
 ) -> dict[str, Any]:
-    path = Path(lexicon_path) if lexicon_path else DEFAULT_LEXICON
-    rows = load_lexicon(path)
+    managed_path = resolve_managed_lexicon(lexicon_path)
+    if lexicon_user is not None:
+        user_path = Path(lexicon_user)
+    elif lexicon_path is not None:
+        # Explicit managed-only path (tests / one-off): do not auto-merge skill user.csv
+        # unless caller passes lexicon_user.
+        user_path = None
+    else:
+        user_path = DEFAULT_USER_LEXICON
+
+    managed_rows = load_lexicon(managed_path)
+    user_rows = load_lexicon(user_path) if user_path is not None else []
+    rows = merge_lexicon_rows(managed_rows, user_rows)
+
+    version = rule_version or read_rule_version(managed_csv=managed_path)
+
     hits: list[dict[str, str]] = []
     for row in rows:
         term = (row.get("term") or "").strip()
@@ -53,6 +147,7 @@ def scan_content(
     blocked = any(h.get("severity") == "block" for h in hits)
     return {
         "schema_version": "chemclaw.content-scan.v1",
+        "rule_set": {"id": RULE_SET_ID, "version": version},
         "hit_count": len(hits),
         "blocked": blocked,
         "hits": hits,
@@ -63,7 +158,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Scan text against content lexicon")
     parser.add_argument("--text", default="")
     parser.add_argument("--text-file", type=Path)
-    parser.add_argument("--lexicon", type=Path, default=DEFAULT_LEXICON)
+    parser.add_argument("--lexicon", type=Path, default=None)
+    parser.add_argument("--lexicon-user", type=Path, default=None)
     parser.add_argument("--platform", default="")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
@@ -78,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     result = scan_content(
         text,
         lexicon_path=args.lexicon,
+        lexicon_user=args.lexicon_user,
         platform=args.platform or None,
     )
     payload = json.dumps(result, ensure_ascii=False, indent=2)

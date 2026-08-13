@@ -1,6 +1,6 @@
 # ChemClaw 销售增长智能设计
 
-> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）、合集单包 uncertainty-and-units（D-111）、合集 Triage（D-112）已实现**；Close/买联系人/化工社批量安装/海关外部 API/CRM 字段任务 CTA 仍须单独批准  
+> 状态：已批准设计；**外贸（D-091）—Comtrade（D-103）、清单进阶（D-102）、HubSpot 笔记（D-105）+ 创建联系人（D-109）+ 字段更新/任务创建（D-127）、SAM.gov（D-106）、海关 CSV（D-108）+ XLSX（D-110）、合集单包 uncertainty-and-units（D-111）、合集 Triage（D-112）已实现**；Close/买联系人/化工社批量安装/海关外部 API 仍须单独批准  
 
 
 
@@ -358,7 +358,9 @@ API 客户端属于平台 Tool/Provider，不写进 Skill。Skill 只表达业�
 
 **D-105 已实现（对话内）**：助手文本含 `ready_for_crm_write` 时显示「提交 CRM 写入审批」；复用 `hubspot_log_note` + 审批卡；客户清单页仍无 CRM 按钮；不自动写 CRM。
 
-**D-109 已实现（对话内）**：助手文本含 `ready_for_crm_create_contact` 时显示「提交创建联系人审批」；复用 `hubspot_create_contact` + 审批卡；须可靠 email；未开 update/task 产品 CTA。
+**D-109 已实现（对话内）**：助手文本含 `ready_for_crm_create_contact` 时显示「提交创建联系人审批」；复用 `hubspot_create_contact` + 审批卡；须可靠 email。
+
+**D-127 已实现（对话内）**：助手文本含 `ready_for_crm_update_object` 时显示「提交 CRM 字段更新审批」→ `hubspot_update_object`；含 `ready_for_crm_create_task` 时显示「提交 CRM 任务创建审批」→ `hubspot_create_task`；均审批卡；须可靠对象 ID / 已确认跟进动作；清单页仍无 CRM 按钮。
 
 ### 10.5 销售状态
 
@@ -594,7 +596,9 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 **（2026-08-10 D-105）已交付 HubSpot CRM 笔记审批首包**：复用 `hubspot_log_note` + 中文未连接错误 + 对话「提交 CRM 写入审批」CTA；门禁 `ready_for_crm_write`；清单页无 CRM 按钮；不自动写。
 
-**（2026-08-10 D-109）已交付 HubSpot 创建联系人审批**：复用 `hubspot_create_contact` +「提交创建联系人审批」CTA；门禁 `ready_for_crm_create_contact`；**尚未** update_object / create_task 产品 CTA。
+**（2026-08-10 D-109）已交付 HubSpot 创建联系人审批**：复用 `hubspot_create_contact` +「提交创建联系人审批」CTA；门禁 `ready_for_crm_create_contact`。
+
+**（2026-08-12 D-127）已交付 HubSpot 字段更新与任务创建审批 CTA**：`ready_for_crm_update_object` → `hubspot_update_object`；`ready_for_crm_create_task` → `hubspot_create_task`；与笔记/创建联系人门禁并列；不扩任务关联 API；清单页无 CRM 按钮；不自动写。
 
 ### 17.5 阶段 4：内贸拓客
 
@@ -628,6 +632,6 @@ V3.2 的 35 条 Eval 保留为场景种子，但现有 `must_include` / `must_no
 
 ## 18. 后续设计与实施门禁
 
-本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-112（含 Comtrade、HubSpot 笔记/创建联系人审批、SAM.gov、海关 CSV/XLSX、合集 `uncertainty-and-units` 试点、合集 Triage）。
+本规格批准不等于批准全部实现。**已单独授权并完成**：D-091—D-103、D-105—D-112、D-127（含 Comtrade、HubSpot 笔记/创建联系人/字段更新/任务创建审批、SAM.gov、海关 CSV/XLSX、合集 `uncertainty-and-units` 试点、合集 Triage）。
 
-尚未自动批准：Close/买联系人、化工社批量内置、P0/P1 未确认前的合集实现、CRM 字段更新/任务创建 CTA、海关外部 API、官方反应发布 API。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。
+尚未自动批准：Close/买联系人、化工社批量内置、P0/P1 未确认前的合集实现、海关外部 API、官方反应发布 API、任务关联对象的工具扩展。队列计划已落盘。每一项仍须独立小任务计划、测试与用户确认；不得一次铺开全部 Agent/Skill/Provider。

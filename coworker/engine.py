@@ -500,6 +500,15 @@ class TurnEngine:
             * _compaction.trigger_tokens(window, threshold_pct=pct, cap_tokens=cap)
         )
         model = str(cfg.get("model") or "") or self.model
+        from .providers.matrix import model_context_windows
+
+        summary_context_window = (
+            cfg.get("summary_context_window")
+            or model_context_windows().get(model)
+            or _compaction.SUMMARY_UNKNOWN_CONTEXT_WINDOW
+        )
+        input_override = int(cfg.get("summary_input_tokens") or 0) or None
+        timeout_seconds = float(cfg.get("timeout_seconds") or 90)
 
         state: Optional[_compaction.CompactionState] = None
         failed = False
@@ -507,9 +516,16 @@ class TurnEngine:
         # to overflow/timeout the summarizer itself). Then Trim — never block the turn.
         for attempt in range(2):
             tight = attempt > 0
+            budget = _compaction.summary_budget(
+                summary_context_window,
+                tight=tight,
+                input_override=input_override,
+            )
 
             def _build_attempt(
-                *, _tight: bool = tight
+                *,
+                _tight: bool = tight,
+                _budget: _compaction.SummaryBudget = budget,
             ) -> Optional[_compaction.CompactionState]:
                 return _compaction.build_state(
                     self.messages,
@@ -518,27 +534,68 @@ class TurnEngine:
                     keep_tokens=keep,
                     prior=self.compaction_state,
                     tight_span=_tight,
+                    budget=_budget,
                 )
 
+            started = time.monotonic()
+            caught: Optional[Exception] = None
             try:
-                state = await asyncio.to_thread(_build_attempt)
+                state = await asyncio.wait_for(
+                    asyncio.to_thread(_build_attempt),
+                    timeout=timeout_seconds,
+                )
                 failed = False
                 break
-            except Exception as exc:
-                failed = True
-                _log.warning(
-                    "context summarizer failed (attempt %s/2, tight_span=%s): %s: %s",
-                    attempt + 1,
-                    tight,
-                    type(exc).__name__,
-                    str(exc)[:240] or "(empty message)",
+            except asyncio.TimeoutError:
+                caught = _compaction.SummaryFailure(
+                    "timeout",
+                    input_tokens=budget.input_tokens,
+                    cause_type="TimeoutError",
                 )
+            except Exception as exc:
+                caught = exc
+            failed = True
+            assert caught is not None
+            failure = caught if isinstance(caught, _compaction.SummaryFailure) else None
+            _log.warning(
+                "context summarizer failed attempt=%s/2 tight=%s model=%s "
+                "reason=%s input_budget_tokens=%s input_tokens=%s input_chars=%s "
+                "elapsed_ms=%s finish_reason=%s text_chars=%s reasoning_chars=%s "
+                "error_type=%s",
+                attempt + 1,
+                tight,
+                model,
+                failure.reason if failure is not None else "provider_error",
+                budget.input_tokens,
+                failure.input_tokens if failure is not None else 0,
+                failure.input_chars if failure is not None else 0,
+                int((time.monotonic() - started) * 1000),
+                failure.finish_reason if failure is not None else "",
+                failure.text_chars if failure is not None else 0,
+                failure.reasoning_chars if failure is not None else 0,
+                failure.cause_type if failure is not None else type(caught).__name__,
+            )
+            if attempt == 0 and failure is not None and failure.reason == "rate_limited":
+                await asyncio.sleep(0.1)
         if state is not None:
             self.compaction_state = state
             self._last_context_tokens = None  # stale once the outbound view shrank
             return "上下文已自动压缩（较早轮次已摘要）"
         if failed or force:
-            trimmed = _compaction.trim_state(self.messages, prior=self.compaction_state)
+            try:
+                trimmed = _compaction.build_deterministic_state(
+                    self.messages,
+                    keep_tokens=keep,
+                    prior=self.compaction_state,
+                )
+            except Exception as exc:
+                _log.warning(
+                    "deterministic compaction failed error_type=%s",
+                    type(exc).__name__,
+                )
+                trimmed = _compaction.trim_state(
+                    self.messages, prior=self.compaction_state
+                )
             if trimmed is not None:
                 self.compaction_state = trimmed
                 self._last_context_tokens = None
@@ -1060,15 +1117,30 @@ class TurnEngine:
         source_messages = _compaction.apply_to_outbound(
             self.messages, self.compaction_state
         )
-        out = [
-            (
-                {k: v for k, v in msg.items() if k not in _SIDECARS}
-                if any(s in msg for s in _SIDECARS)
-                else msg
-            )
-            for msg in source_messages
-            if msg.get("role") != "notice"
-        ]
+        out: list[dict[str, Any]] = []
+        for msg in source_messages:
+            if msg.get("role") == "notice":
+                continue
+            prepared = msg
+            if msg.get("role") == "assistant":
+                reasoning = msg.get("reasoning")
+                openai_sc = msg.get("_openai") or {}
+                if (
+                    isinstance(reasoning, str)
+                    and reasoning
+                    and not openai_sc.get("reasoning_content")
+                ):
+                    prepared = dict(msg)
+                    prepared["_openai"] = {
+                        **openai_sc,
+                        "reasoning_content": reasoning,
+                    }
+            if any(s in prepared for s in _SIDECARS):
+                out.append(
+                    {k: v for k, v in prepared.items() if k not in _SIDECARS}
+                )
+            else:
+                out.append(prepared)
         # PDF attachments (stored as `file` parts) are adapted to the ACTIVE model right
         # here — never in the persisted history — so a mid-session model switch always
         # re-decides: native PDF models get the real document, the rest get the local

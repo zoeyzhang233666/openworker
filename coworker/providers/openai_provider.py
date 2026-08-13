@@ -66,21 +66,54 @@ def _delta_reasoning(obj: Any) -> Optional[str]:
     return value if isinstance(value, str) and value else None
 
 
-def _strip_foreign_sidecars(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop provider-private message sidecars (underscore-prefixed keys, e.g. `_gemini`
-    thought signatures — see providers/base.py): they belong to other providers, and the
-    OpenAI wire (and its compat servers) rejects unknown message fields."""
-    return [
-        (
-            {k: v for k, v in m.items() if not k.startswith("_")}
-            if any(k.startswith("_") for k in m)
-            else m
-        )
-        for m in messages
-    ]
+def _reasoning_extras(reasoning: Optional[str]) -> dict[str, Any]:
+    """Persist thinking text for DeepSeek-style replay (`reasoning_content` on the wire)."""
+    return {"_openai": {"reasoning_content": reasoning}} if reasoning else {}
+
+
+def _replay_reasoning(message: dict[str, Any]) -> Optional[str]:
+    """Thinking text to send back on the Chat Completions wire."""
+    sidecar = (message.get("_openai") or {}).get("reasoning_content")
+    if isinstance(sidecar, str) and sidecar:
+        return sidecar
+    legacy = message.get("reasoning")
+    return legacy if isinstance(legacy, str) and legacy else None
+
+
+def _prepare_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """OpenAI-chat history → wire-safe messages for `/v1/chat/completions`.
+
+    DeepSeek thinking mode requires prior assistant `reasoning_content` on follow-up
+    turns (especially with tools). Replay from the `_openai` sidecar, with a fallback
+    to the display-only `reasoning` sidecar for older sessions. Strip underscore-prefixed
+    provider keys and display sidecars before the HTTP call.
+    """
+    _DISPLAY = frozenset({"reasoning"})
+    prepared: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") == "assistant":
+            replay = _replay_reasoning(message)
+            if replay or any(
+                k.startswith("_") or k in _DISPLAY for k in message
+            ):
+                wire = {
+                    k: v
+                    for k, v in message.items()
+                    if not k.startswith("_") and k not in _DISPLAY
+                }
+                if replay:
+                    wire["reasoning_content"] = replay
+                prepared.append(wire)
+                continue
+        if any(k.startswith("_") for k in message):
+            prepared.append({k: v for k, v in message.items() if not k.startswith("_")})
+        else:
+            prepared.append(message)
+    return prepared
 
 
 _MAX_TOKENS_ERROR = "'max_tokens' is not supported"
+_UNSUPPORTED_PARAM = re.compile(r"unsupported (?:parameter|value)s?:?\s*'([^']+)'")
 
 
 def _param_fix_retry(kwargs: dict[str, Any], exc: Exception) -> dict[str, Any]:
@@ -103,6 +136,13 @@ def _param_fix_retry(kwargs: dict[str, Any], exc: Exception) -> dict[str, Any]:
         fixed = dict(kwargs)
         fixed.pop("stream_options")
         return fixed
+    match = _UNSUPPORTED_PARAM.search(msg)
+    if match:
+        param = match.group(1).split(".", 1)[0].split("[", 1)[0]
+        if param in kwargs and param not in ("model", "messages"):
+            fixed = dict(kwargs)
+            fixed.pop(param, None)
+            return fixed
     raise exc
 
 
@@ -192,7 +232,7 @@ class OpenAIProvider(ProviderClient):
     ) -> AssistantTurn:
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _strip_foreign_sidecars(messages),
+            "messages": _prepare_messages(messages),
             **settings,
         }
         if tools:
@@ -214,12 +254,14 @@ class OpenAIProvider(ProviderClient):
         text = getattr(message, "content", None)
         tool_calls = _parse_tool_calls(getattr(message, "tool_calls", None))
         text, tool_calls = _maybe_salvage_tool_calls(text, tool_calls, tools=tools)
+        reasoning = _delta_reasoning(message)
         return AssistantTurn(
             text=text,
             tool_calls=tool_calls,
             finish_reason=getattr(choice, "finish_reason", None),
             raw=response,
-            reasoning=_delta_reasoning(message),
+            reasoning=reasoning,
+            extras=_reasoning_extras(reasoning),
             usage=_usage_from(getattr(response, "usage", None)),
         )
 
@@ -236,7 +278,7 @@ class OpenAIProvider(ProviderClient):
     ):
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _strip_foreign_sidecars(messages),
+            "messages": _prepare_messages(messages),
             "stream": True,
             # Usage on the final chunk (empty choices). Compat servers that reject
             # the option get a one-shot retry without it (_param_fix_retry).
@@ -384,13 +426,15 @@ def _collect_stream_chunks(
     text, tool_calls = _maybe_salvage_tool_calls(
         "".join(text_parts) or None, tool_calls, tools=tools
     )
+    reasoning = "".join(reasoning_parts) or None
     out.append(
         StreamChunk(
             turn=AssistantTurn(
                 text=text,
                 tool_calls=tool_calls,
                 finish_reason=finish_reason,
-                reasoning="".join(reasoning_parts) or None,
+                reasoning=reasoning,
+                extras=_reasoning_extras(reasoning),
                 usage=usage,
             )
         )

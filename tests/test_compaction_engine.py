@@ -3,6 +3,8 @@ failure policy (attended prompt / unattended auto-trim), raw-overflow routing, a
 session persistence round-trip. Scripted providers, tiny forced windows, no network."""
 
 import asyncio
+import logging
+import time
 
 from coworker.engine import TurnEngine
 from coworker.events import EventType
@@ -50,6 +52,27 @@ class CompactingProvider(ProviderClient):
 
     def capabilities(self, model):
         return ModelCapabilities()
+
+
+class ReasoningOnlySummarizer(CompactingProvider):
+    def complete(self, *, model, messages, tools=None, **settings):
+        if messages and "compacting an AI coworker" in str(messages[0].get("content", "")):
+            self.summary_calls.append({"model": model, "messages": messages, **settings})
+            return AssistantTurn(
+                text=None,
+                reasoning="private reasoning that must not be logged",
+                finish_reason="length",
+            )
+        return super().complete(model=model, messages=messages, tools=tools, **settings)
+
+
+class SlowSummarizer(CompactingProvider):
+    def complete(self, *, model, messages, tools=None, **settings):
+        if messages and "compacting an AI coworker" in str(messages[0].get("content", "")):
+            self.summary_calls.append({"model": model, "messages": messages, **settings})
+            time.sleep(0.08)
+            return AssistantTurn(text=SUMMARY, finish_reason="stop")
+        return super().complete(model=model, messages=messages, tools=tools, **settings)
 
 
 def long_history(turns=8, bulk=1500):
@@ -163,6 +186,66 @@ def test_summarizer_failure_attended_never_blocks(tmp_path):
     assert engine.compaction_state is not None and engine.compaction_state.trimmed
 
 
+def test_reasoning_only_is_classified_without_logging_private_content(tmp_path, caplog):
+    provider = ReasoningOnlySummarizer(
+        [AssistantTurn(text="done", finish_reason="stop")]
+    )
+    messages = long_history()
+    messages[1]["content"] = "TOP-SECRET-USER-TEXT"
+    engine = make_engine(tmp_path, provider, messages=messages, cap=400)
+
+    with caplog.at_level(logging.WARNING, logger="coworker.engine"):
+        collect(engine)
+
+    assert len(provider.summary_calls) == 2
+    assert engine.compaction_state is not None and engine.compaction_state.trimmed
+    log_text = caplog.text
+    assert "reason=reasoning_only" in log_text
+    assert "reasoning_chars=41" in log_text
+    assert "private reasoning" not in log_text
+    assert "TOP-SECRET-USER-TEXT" not in log_text
+
+
+def test_summarizer_timeout_retries_then_uses_deterministic_state(tmp_path):
+    provider = SlowSummarizer([AssistantTurn(text="done", finish_reason="stop")])
+    messages = long_history()
+    messages.insert(
+        3,
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "todo-1",
+                    "type": "function",
+                    "function": {
+                        "name": "todo_write",
+                        "arguments": '{"todos":[{"content":"继续报告","status":"in_progress"}]}',
+                    },
+                }
+            ],
+        },
+    )
+    messages.insert(4, {"role": "tool", "tool_call_id": "todo-1", "content": '{"count":1}'})
+    engine = make_engine(tmp_path, provider, messages=messages, cap=400)
+    engine.compaction_settings = lambda: {
+        "cap_tokens": 400,
+        "threshold_pct": 0.8,
+        "context_window": 100_000,
+        "timeout_seconds": 0.01,
+    }
+
+    events = collect(engine)
+
+    assert len(provider.summary_calls) == 2
+    assert engine.compaction_state is not None and engine.compaction_state.trimmed
+    assert "继续报告 [in_progress]" in engine.compaction_state.working_state
+    assert any(
+        event.type == EventType.COMPACTED and "自动精简" in event.data["text"]
+        for event in events
+    )
+
+
 def test_raw_overflow_routes_into_compaction_and_retries(tmp_path):
     # Trigger never fires (huge cap) — the provider 400 is the only signal. The engine
     # must compact (force) and retry the call instead of surfacing the error.
@@ -202,18 +285,28 @@ def test_set_compaction_settings_validates_and_round_trips(tmp_path):
 
     mgr = SessionManager(workspace=tmp_path, provider=Provider())
     out = mgr.set_compaction_settings(
-        threshold_pct=0.5, cap_tokens=100_000, model="gpt-4o-mini"
+        threshold_pct=0.5,
+        cap_tokens=100_000,
+        model="gpt-4o-mini",
+        timeout_seconds=75,
+        summary_input_tokens=12_000,
     )
     assert out["ok"] and out["threshold_pct"] == 0.5 and out["cap_tokens"] == 100_000
     assert mgr.compaction_settings()["model"] == "gpt-4o-mini"
+    assert mgr.compaction_settings()["timeout_seconds"] == 75
+    assert mgr.compaction_settings()["summary_input_tokens"] == 12_000
     # validation: out-of-range % and non-numeric cap are rejected, tiny caps clamp up
     assert mgr.set_compaction_settings(threshold_pct=0.05)["ok"] is False
     assert mgr.set_compaction_settings(cap_tokens="lots")["ok"] is False
     assert mgr.set_compaction_settings(cap_tokens=1)["cap_tokens"] == 10_000
+    assert mgr.set_compaction_settings(timeout_seconds=3)["ok"] is False
+    assert mgr.set_compaction_settings(summary_input_tokens="many")["ok"] is False
     # the flat /v1/settings names
     payload = mgr.compaction_settings_payload()
     assert payload["compaction_threshold_pct"] == 0.5
     assert payload["compaction_model"] == "gpt-4o-mini"
+    assert payload["compaction_timeout_seconds"] == 75
+    assert payload["compaction_summary_input_tokens"] == 12_000
 
 
 def test_compaction_state_survives_save_and_rebuild(tmp_path):
@@ -231,7 +324,7 @@ def test_compaction_state_survives_save_and_rebuild(tmp_path):
     sid = "compact-persist"
     engine = mgr.get_engine(sid, agent="cowork", workspace=str(tmp_path))
     assert callable(engine.compaction_settings)  # live Settings getter is wired
-    assert engine.compaction_settings()["threshold_pct"] == 0.95
+    assert engine.compaction_settings()["threshold_pct"] == 0.70
 
     engine.messages += long_history(turns=3)[1:]
     engine.compaction_state = CompactionState(

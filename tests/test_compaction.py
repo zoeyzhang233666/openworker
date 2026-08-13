@@ -9,9 +9,13 @@ from coworker.compaction import (
     CompactionState,
     DEFAULT_CAP_TOKENS,
     DEFAULT_CONTEXT_WINDOW,
+    SummaryBudget,
+    SummaryFailure,
     apply_to_outbound,
+    build_deterministic_state,
     build_state,
     compacted_block,
+    estimate_summary_tokens,
     estimate_tokens,
     extract_user_messages,
     extract_working_state,
@@ -20,6 +24,7 @@ from coworker.compaction import (
     should_compact,
     summarize_span,
     summarizer_messages,
+    summary_budget,
     trigger_tokens,
     trim_state,
 )
@@ -78,9 +83,18 @@ def convo(turns=6, bulk=2000):
 
 
 class FakeSummarizer:
-    def __init__(self, text="## Summary\nall good", fail_times=0):
+    def __init__(
+        self,
+        text="## Summary\nall good",
+        fail_times=0,
+        *,
+        reasoning=None,
+        finish_reason="stop",
+    ):
         self.text = text
         self.fail_times = fail_times
+        self.reasoning = reasoning
+        self.finish_reason = finish_reason
         self.calls = []
 
     def complete(self, *, model, messages, tools=None, **settings):
@@ -94,6 +108,8 @@ class FakeSummarizer:
 
         t = Turn()
         t.text = self.text
+        t.reasoning = self.reasoning
+        t.finish_reason = self.finish_reason
         return t
 
 
@@ -101,17 +117,17 @@ class FakeSummarizer:
 
 
 def test_trigger_is_min_of_pct_and_cap():
-    assert trigger_tokens(100_000) == 95_000
-    assert trigger_tokens(10_000_000) == DEFAULT_CAP_TOKENS  # the 2M cap wins
-    assert trigger_tokens(None) == int(0.95 * DEFAULT_CONTEXT_WINDOW)
+    assert trigger_tokens(100_000) == 70_000
+    assert trigger_tokens(10_000_000) == DEFAULT_CAP_TOKENS  # the 100k cap wins
+    assert trigger_tokens(None) == int(0.70 * DEFAULT_CONTEXT_WINDOW)
     # both knobs are user-overridable
     assert trigger_tokens(100_000, threshold_pct=0.5, cap_tokens=40_000) == 40_000
     assert trigger_tokens(100_000, threshold_pct=0.5, cap_tokens=999_999) == 50_000
 
 
 def test_should_compact_crosses_threshold():
-    assert not should_compact(94_999, 100_000)
-    assert should_compact(95_000, 100_000)
+    assert not should_compact(69_999, 100_000)
+    assert should_compact(70_000, 100_000)
 
 
 def test_estimate_tokens_is_chars_over_four():
@@ -190,6 +206,63 @@ def test_working_state_empty_span():
     assert extract_working_state([user("hi"), assistant("yo")]) == ""
 
 
+def test_deterministic_state_keeps_todo_artifact_and_recent_conclusion():
+    msgs = [{"role": "system", "content": "s"}, user("完成报告")]
+    msgs += tool_turn(
+        "todo_write",
+        {
+            "todos": [
+                {"content": "读取数据", "status": "done"},
+                {"content": "生成报告", "status": "in_progress"},
+            ]
+        },
+        {"count": 2},
+    )
+    msgs += tool_turn(
+        "publish_report",
+        {"title": "月报"},
+        {"ok": True, "artifact_path": "reports/monthly.md"},
+    )
+    msgs += [assistant("已完成数据清洗，正在生成最终报告。")]
+    for index in range(5):
+        msgs += [user(f"follow {index}"), assistant("tail " + "x" * 600)]
+
+    original = json.loads(json.dumps(msgs))
+    state = build_deterministic_state(
+        msgs,
+        keep_tokens=estimate_tokens(msgs[-4:]) + 10,
+    )
+
+    assert state is not None and state.trimmed
+    assert "生成报告 [in_progress]" in state.working_state
+    assert "reports/monthly.md" in state.working_state
+    assert "已完成数据清洗" in state.working_state
+    assert "确定性精简" in state.summary_text
+    assert msgs == original  # canonical history is untouched
+
+
+def test_repeated_deterministic_state_keeps_continuity_blocks_bounded():
+    msgs = convo(turns=8, bulk=1_000)
+    prior = CompactionState(
+        boundary_index=3,
+        summary_text="old summary " * 2_000,
+        working_state="old state " * 3_000,
+        user_messages=["old request"],
+        trimmed=True,
+    )
+
+    state = build_deterministic_state(
+        msgs,
+        keep_tokens=estimate_tokens(msgs[-4:]) + 10,
+        prior=prior,
+    )
+
+    assert state is not None
+    assert len(state.summary_text) <= 12_000
+    assert len(state.working_state) <= 12_000
+    assert state.summary_text.count("确定性精简") == 1
+
+
 def test_user_messages_extracted_verbatim_and_clipped():
     span = [
         user("first ask"),
@@ -205,6 +278,74 @@ def test_user_messages_extracted_verbatim_and_clipped():
 
 
 # -- summarizer seam ----------------------------------------------------------
+
+
+def test_summary_budget_reserves_output_and_uses_conservative_caps():
+    small = summary_budget(16_000)
+    normal = summary_budget(32_000)
+    large = summary_budget(128_000)
+    unknown = summary_budget(None)
+    tight = summary_budget(128_000, tight=True)
+
+    assert small == SummaryBudget(16_000, 11_000, 3_000, 2_000, False)
+    assert normal.input_tokens == 24_000
+    assert large.input_tokens == 24_000
+    assert unknown.context_window == 32_000 and unknown.input_tokens == 24_000
+    assert tight.input_tokens == 8_000 and tight.tight
+    for budget in (small, normal, large, unknown, tight):
+        assert budget.input_tokens + budget.output_tokens + budget.safety_tokens <= budget.context_window
+
+
+def test_summarizer_projection_counts_chinese_and_stays_within_input_budget():
+    budget = SummaryBudget(8_000, 1_600, 3_000, 2_000)
+    span = [
+        user("中文约束" * 1_000),
+        *tool_turn("read_file", {"path": "huge.json"}, "数据" * 4_000),
+        assistant("最近结论" * 800),
+    ]
+
+    messages = summarizer_messages(span, budget=budget)
+    projected = "\n".join(str(message.get("content", "")) for message in messages)
+
+    assert estimate_summary_tokens(projected) <= budget.input_tokens
+    assert "最近结论" in messages[1]["content"]
+    assert len(messages[1]["content"]) < 10_000
+
+
+def test_summary_budget_projection_keeps_tool_call_and_result_together():
+    budget = SummaryBudget(8_000, 1_200, 3_000, 2_000)
+    span = [user("start")]
+    for index in range(8):
+        span += tool_turn(
+            "read_file",
+            {"path": f"file-{index}.txt"},
+            f"result-{index} " + "x" * 800,
+        )
+
+    body = summarizer_messages(span, budget=budget)[1]["content"]
+    for index in range(8):
+        call_present = f"file-{index}.txt" in body
+        result_present = f"result-{index}" in body
+        assert call_present == result_present
+
+
+def test_oversized_tool_unit_drops_assistant_bulk_before_splitting_pair():
+    budget = SummaryBudget(8_000, 1_000, 3_000, 2_000)
+    call = assistant(
+        "assistant bulk " + "z" * 20_000,
+        tool_calls=[("read_file", {"path": "paired.txt"})],
+    )
+    span = [
+        user("inspect"),
+        call,
+        tool(call["tool_calls"][0]["id"], "paired-result " + "x" * 1_000),
+    ]
+
+    body = summarizer_messages(span, budget=budget)[1]["content"]
+
+    assert "paired.txt" in body
+    assert "paired-result" in body
+    assert len(body) < 4_000
 
 
 def test_summarizer_messages_clip_tool_results_and_fold_prior():
@@ -231,9 +372,38 @@ def test_summarize_span_passes_model_and_raises_on_empty():
     assert out == "## ok"
     assert fake.calls[0]["model"] == "prov:model-x"
     assert fake.calls[0]["tools"] is None
+    assert fake.calls[0]["reasoning_effort"] == "none"
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SummaryFailure) as empty:
         summarize_span(FakeSummarizer(text="  "), "m", [user("hi")])
+    assert empty.value.reason == "empty_response"
+
+
+def test_summarize_span_classifies_reasoning_only_without_exposing_reasoning():
+    fake = FakeSummarizer(text=None, reasoning="private chain of thought")
+
+    with pytest.raises(SummaryFailure) as caught:
+        summarize_span(fake, "m", [user("sensitive user text")])
+
+    failure = caught.value
+    assert failure.reason == "reasoning_only"
+    assert failure.text_chars == 0
+    assert failure.reasoning_chars == len("private chain of thought")
+    assert "private chain" not in str(failure)
+    assert "sensitive user text" not in str(failure)
+
+
+def test_summarize_span_rejects_length_truncated_output():
+    fake = FakeSummarizer(
+        text="## Primary request and intent\npartial",
+        finish_reason="length",
+    )
+
+    with pytest.raises(SummaryFailure) as caught:
+        summarize_span(fake, "m", [user("hi")])
+
+    assert caught.value.reason == "incomplete_output"
+    assert caught.value.finish_reason == "length"
 
 
 # -- build + repeated compaction ----------------------------------------------

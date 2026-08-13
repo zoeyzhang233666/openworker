@@ -1608,6 +1608,8 @@ def create_app(manager: SessionManager) -> FastAPI:
             threshold_pct=b.get("compaction_threshold_pct"),
             cap_tokens=b.get("compaction_cap_tokens"),
             model=b.get("compaction_model"),
+            timeout_seconds=b.get("compaction_timeout_seconds"),
+            summary_input_tokens=b.get("compaction_summary_input_tokens"),
         )
 
     @app.post("/v1/attachments/inspect-pdf")
@@ -2054,7 +2056,11 @@ def create_app(manager: SessionManager) -> FastAPI:
                     await claim_turn(retry=True)
                 elif kind == "set_mode":
                     try:
-                        engine.permissions.mode = Mode(message.get("mode"))
+                        new_mode = Mode(message.get("mode"))
+                        engine.permissions.mode = new_mode
+                        manager.mode = new_mode
+                        manager._prefs["default_mode"] = new_mode.value
+                        manager._save_prefs()
                     except (TypeError, ValueError):
                         pass
                 elif kind == "set_model":

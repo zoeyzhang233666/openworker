@@ -88,7 +88,9 @@ def test_rewrite_brief_schema_accepts_minimal_fixture() -> None:
 
 def test_scan_content_flags_blocked_terms() -> None:
     scan = _load_script("chem-content-policy", "scan_content.py")
-    lexicon = BUNDLED / "chem-content-policy" / "references" / "lexicon" / "base.csv"
+    lexicon = (
+        BUNDLED / "chem-content-policy" / "references" / "lexicon" / "managed" / "base.csv"
+    )
     text = "本产品为国家级第一品牌，包过检测，绝对安全，100%无风险。"
     result = scan.scan_content(text, lexicon_path=lexicon)
     terms = {hit["term"] for hit in result["hits"]}
@@ -96,6 +98,37 @@ def test_scan_content_flags_blocked_terms() -> None:
         assert expected in terms
     assert result["blocked"] is True
     assert any(h["severity"] == "block" for h in result["hits"])
+    assert result["rule_set"]["id"] == "chem-content-policy"
+    assert result["rule_set"]["version"] == "1.0.0"
+
+
+def test_scan_content_merges_user_override_and_suppress(tmp_path: Path) -> None:
+    scan = _load_script("chem-content-policy", "scan_content.py")
+    managed = (
+        BUNDLED / "chem-content-policy" / "references" / "lexicon" / "managed" / "base.csv"
+    )
+    user = tmp_path / "user.csv"
+    user.write_text(
+        "rule_id,term,platform,locale,category,severity,action,replacement_strategy,notes\n"
+        "safety-absolute,,,zh-CN,safety,block,suppress,,关掉绝对安全\n"
+        "custom-ban,私自加禁词,all,zh-CN,custom,block,rewrite,删除,用户新增\n",
+        encoding="utf-8",
+    )
+    text = "绝对安全，另有私自加禁词。"
+    result = scan.scan_content(text, lexicon_path=managed, lexicon_user=user)
+    terms = {hit["term"] for hit in result["hits"]}
+    assert "绝对安全" not in terms
+    assert "私自加禁词" in terms
+    assert result["blocked"] is True
+    assert result["rule_set"]["version"] == "1.0.0"
+
+
+def test_scan_content_default_paths_include_rule_set() -> None:
+    scan = _load_script("chem-content-policy", "scan_content.py")
+    result = scan.scan_content("绝对安全")
+    assert result["rule_set"]["id"] == "chem-content-policy"
+    assert result["rule_set"]["version"]
+    assert result["blocked"] is True
 
 
 def test_check_content_blocks_on_policy_and_fact_drift() -> None:
@@ -151,7 +184,21 @@ def test_check_content_passes_clean_rewrite() -> None:
 
 
 def test_lexicon_csv_has_required_columns() -> None:
-    path = BUNDLED / "chem-content-policy" / "references" / "lexicon" / "base.csv"
+    path = (
+        BUNDLED / "chem-content-policy" / "references" / "lexicon" / "managed" / "base.csv"
+    )
+    version = (
+        BUNDLED
+        / "chem-content-policy"
+        / "references"
+        / "lexicon"
+        / "managed"
+        / "rule_version.txt"
+    )
+    user = BUNDLED / "chem-content-policy" / "references" / "lexicon" / "user.csv"
+    assert version.is_file()
+    assert version.read_text(encoding="utf-8").strip() == "1.0.0"
+    assert user.is_file()
     with path.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     assert rows
@@ -168,6 +215,22 @@ def test_lexicon_csv_has_required_columns() -> None:
     }
     assert required <= set(rows[0].keys())
     assert any(r["term"] == "绝对安全" and r["severity"] == "block" for r in rows)
+
+
+def test_content_scan_schema_requires_rule_set() -> None:
+    schema = json.loads(
+        (
+            BUNDLED
+            / "chem-content-policy"
+            / "schemas"
+            / "content-scan-output.schema.json"
+        ).read_text(encoding="utf-8")
+    )
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    scan = _load_script("chem-content-policy", "scan_content.py")
+    result = scan.scan_content("绝对安全")
+    validator.validate(result)
 
 
 def test_platform_references_exist() -> None:

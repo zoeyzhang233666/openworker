@@ -316,8 +316,10 @@ def test_reasoning_streams_persists_and_never_reaches_providers(tmp_path):
     assert final.data["reasoning"] == "hmm, let me think"
     persisted = engine.messages[-1]
     assert persisted["reasoning"] == "hmm, let me think"
-    # Display-only: stripped from every provider feed.
-    assert all("reasoning" not in m for m in engine._outbound_messages())
+    outbound = engine._outbound_messages()[-1]
+    # Display-only `reasoning` is stripped; replay rides the `_openai` sidecar instead.
+    assert "reasoning" not in outbound
+    assert outbound["_openai"] == {"reasoning_content": "hmm, let me think"}
 
 
 def test_stop_during_thinking_keeps_partial_reasoning(tmp_path):

@@ -87,6 +87,25 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 4. 点击后注入创建意图；未连接 → 中文错误；已连接 → 审批卡，拒绝则不创建。
 5. 再确认客户清单页仍无 CRM 按钮。
 
+#### B2. 外贸转化 · 字段更新 / 任务创建（D-127）
+
+1. 仍在外贸转化龙虾对话。
+2. 分别发送（可两轮）：
+
+```text
+请只输出简短中文，并在文末写：recommended_action: ready_for_crm_update_object
+假设已有 contacts 对象 ID 123。不要调用工具。
+```
+
+```text
+请只输出简短中文，并在文末写：recommended_action: ready_for_crm_create_task
+跟进动作为「下周电话确认规格」。不要调用工具。
+```
+
+3. 应分别出现 **「提交 CRM 字段更新审批」** / **「提交 CRM 任务创建审批」**。
+4. 点击后注入对应意图；未连接 → 中文错误；已连接 → 审批卡，拒绝则不写入/不创建。
+5. 清单页仍无 CRM 按钮。
+
 #### C. 商机雷达 · SAM（D-106 / D-115，境外可选）
 
 1. 打开 **连接 → API 公开查询**：SAM 卡片应标「境外可选」；未配时显示「未配置」；文案应提到可改用 EU TED。**不以拿到真 key 为通过条件**。
@@ -139,6 +158,8 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 - [ ] （可选 D-108）工作区放入海关 CSV 后 `filter_customs_importers` 可筛货代；结果含非终端买家警告；缺列/缺文件中文错误；不把候选直接当 Qualified
 - [ ] （可选 D-110）工作区放入海关 XLSX 后同样可筛货代；与 CSV 同类结果；`.xls` 中文提示另存
 - [ ] （可选 D-109）文案含 `recommended_action: ready_for_crm_create_contact` 时有「提交创建联系人审批」；点后注入意图；`hubspot_create_contact` 出现审批卡；拒绝不创建；仅笔记门禁时不出现创建 CTA（或两门禁可并存）；清单页仍无 CRM 按钮
+- [ ] （可选 D-127）文案含 `recommended_action: ready_for_crm_update_object` 时有「提交 CRM 字段更新审批」；点后注入意图；`hubspot_update_object` 出现审批卡；拒绝不更新；禁止编造 object_id/字段值
+- [ ] （可选 D-127）文案含 `recommended_action: ready_for_crm_create_task` 时有「提交 CRM 任务创建审批」；点后注入意图；`hubspot_create_task` 出现审批卡；拒绝不创建；已知联系人写入 notes
 
 ### 点检结果记录
 
@@ -165,7 +186,9 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 | 2026-08-10 | 程序侧 | **D-119 化工社写反应** | `validate_huagongshe_reaction` + `create_huagongshe_reaction`（审批+幂等）；Skill `chem-huagongshe-reaction`；公开查询标明须 Token |
 | 2026-08-11 | 程序侧 | **D-120 化工社 SVG 落盘** | `fetch_huagongshe_svg` 公开 SVG→工作区产物、回包无正文；禁止 web_fetch；公开查询卡；压缩成功 notice 中文化 |
 | 2026-08-11 | 程序侧 | **D-121 压缩硬裁提示** | Trim 文案「已自动精简以继续」；摘要失败 warning + 二次 tight_span；GUI「正在精简上下文…」 |
+| 2026-08-12 | 程序侧 | **D-127 HubSpot 字段更新/任务创建 CTA** | `ready_for_crm_update_object` / `ready_for_crm_create_task` + 审批意图；Skill/龙虾接线；用户侧勾选待点 |
+| 2026-08-12 | 程序侧 | **D-128 内容重构 M3** | managed/user 词表 + `sync_managed_lexicon` + `rule_set`；pytest 38 passed；NSIS frozen 补验待确认打安装包 |
 
-**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。**用户侧 D-105 / D-106 已通过**；D-108/109/110 仍待按操作清单点完。重启本 worktree 后，在 **连接 → API 公开查询** 可填化工社 Token（只读可选；校验/保存须填）；亦可见 VAT/汇率/维基/**结构图 SVG** 等免密钥卡。
+**当前状态：** 销售主线本机点检（D-091—D-103）已关闭。**用户侧 D-105 / D-106 已通过**；D-108/109/110/127 仍待按操作清单点完。重启本 worktree 后，在 **连接 → API 公开查询** 可填化工社 Token（只读可选；校验/保存须填）；亦可见 VAT/汇率/维基/**结构图 SVG** 等免密钥卡。
 
-点检通过后默认下一刀顺序（须再点名）：**CRM 字段/任务 CTA** → **合集 P0** → **内容重构 M3**。
+点检通过后默认下一刀顺序（须再点名）：**合集 P0**；可选再确认打安装包以补验 M3 frozen `load_skill`。

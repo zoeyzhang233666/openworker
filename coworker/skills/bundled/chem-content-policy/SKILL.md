@@ -7,18 +7,29 @@ description: "Use when 需要对化工平台文案做敏感词/广告法绝对�
 
 对改写稿（及可选原文）做确定性敏感表达扫描。不发帖、不登录平台。
 
+## 词表层（M3）
+
+- **官方 managed**：`references/lexicon/managed/base.csv` + `managed/rule_version.txt` — 发版可热升级；**不要**手改。
+- **用户覆盖**：`references/lexicon/user.csv` — 自定义禁词、改 severity，或用 `action=suppress` 关掉某条 `rule_id`；官方升级**不会**覆盖此文件。
+
 ## 载入后
 
-用绝对 `resources_path` 执行：
+用绝对 `resources_path` 执行（默认合并 managed + user）：
 
 ```powershell
-python "$resources_path/scripts/scan_content.py" --text-file draft.txt --lexicon "$resources_path/references/lexicon/base.csv" --output scan.json
+python "$resources_path/scripts/scan_content.py" --text-file draft.txt --output scan.json
 ```
 
-或把文本经 stdin / `--text` 传入。规则见 `references/general-claims.md`、`references/chemical-claims.md`。
+或显式指定：
+
+```powershell
+python "$resources_path/scripts/scan_content.py" --text-file draft.txt --lexicon "$resources_path/references/lexicon/managed/base.csv" --lexicon-user "$resources_path/references/lexicon/user.csv" --output scan.json
+```
+
+规则说明见 `references/general-claims.md`、`references/chemical-claims.md`。
 
 ## 输出
 
-JSON：`hits[]`（rule_id / term / severity / action）、`blocked` 布尔。`severity=block` 命中时不得直接宣称可发布。
+JSON：`rule_set`（`id` / `version`）、`hits[]`（rule_id / term / severity / action）、`blocked` 布尔。`severity=block` 命中时不得直接宣称可发布。
 
 平台经验规则与法律/监管口径必须在说明中区分，不要一律叫「违规」。

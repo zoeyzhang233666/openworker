@@ -13,4 +13,4 @@ description: "Use when 需要在发送前对化工外贸开发信/跟进草稿�
 python "$resources_path/scripts/check_outreach.py" draft.json --output gate.json
 ```
 
-规则集 `chem-sales-quality@1.0.0`。通过才输出 `ready_for_human_send`；否则 `blocked` 并列出违规项。`ready_for_human_send` 仅表示可提交人工发送审批，**不等于**已调用 `email_send` 或已外发。需要落 HubSpot 跟进笔记时，可另给 `ready_for_crm_write`（≠ 已调用 `hubspot_log_note`）。需要新建联系人且已有可靠邮箱时，可另给 `ready_for_crm_create_contact`（≠ 已调用 `hubspot_create_contact`）。详见 `references/quality-rules.md`。
+规则集 `chem-sales-quality@1.0.0`。通过才输出 `ready_for_human_send`；否则 `blocked` 并列出违规项。`ready_for_human_send` 仅表示可提交人工发送审批，**不等于**已调用 `email_send` 或已外发。需要落 HubSpot 跟进笔记时，可另给 `ready_for_crm_write`（≠ 已调用 `hubspot_log_note`）。需要新建联系人且已有可靠邮箱时，可另给 `ready_for_crm_create_contact`（≠ 已调用 `hubspot_create_contact`）。需要更新已有记录字段时，可另给 `ready_for_crm_update_object`（≠ 已调用 `hubspot_update_object`）。需要创建跟进任务时，可另给 `ready_for_crm_create_task`（≠ 已调用 `hubspot_create_task`）。详见 `references/quality-rules.md`。

@@ -34,6 +34,8 @@
         "ready_for_human_send",
         "ready_for_crm_write",
         "ready_for_crm_create_contact",
+        "ready_for_crm_update_object",
+        "ready_for_crm_create_task",
         "revise_draft"
       ]
     }

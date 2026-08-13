@@ -14,14 +14,15 @@ footprint to a few lines and makes every policy testable without a provider.
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 # Trigger: min(threshold_pct × context_window, cap_tokens). The cap exists so 1M-context
 # models compact early — quality and latency degrade well before the nominal limit.
-DEFAULT_THRESHOLD_PCT = 0.95
-DEFAULT_CAP_TOKENS = 2_000_000
+DEFAULT_THRESHOLD_PCT = 0.70
+DEFAULT_CAP_TOKENS = 100_000
 # Models without a verified context_window entry in the matrix.
 DEFAULT_CONTEXT_WINDOW = 128_000
 # The newest slice kept verbatim, as a fraction of the trigger (a token budget, not a
@@ -29,6 +30,12 @@ DEFAULT_CONTEXT_WINDOW = 128_000
 KEEP_RECENT_FRACTION = 0.25
 # The summarizer call itself: tools off, modest ceiling.
 SUMMARY_MAX_TOKENS = 3_000
+# The summarizer is a separate call with its own, deliberately conservative budget.
+# Unknown aliases are treated as 32k models until the matrix proves otherwise.
+SUMMARY_UNKNOWN_CONTEXT_WINDOW = 32_000
+SUMMARY_INPUT_CAP_TOKENS = 24_000
+SUMMARY_INPUT_CAP_TOKENS_TIGHT = 8_000
+SUMMARY_SAFETY_TOKENS = 2_000
 # Per-message clip when rendering the span for the summarizer; tool results are the
 # first casualty (huge and mostly stale — a file read 40 turns ago is better re-read).
 _SPAN_TOOL_RESULT_CLIP = 400
@@ -44,6 +51,84 @@ _SPAN_BUDGET_CHARS_TIGHT = 80_000
 _USER_MESSAGE_CLIP = 600
 _USER_MESSAGES_MAX = 40
 _TRIM_FRACTION = 0.10
+_CONTINUITY_BLOCK_MAX_CHARS = 12_000
+_DETERMINISTIC_NOTE = (
+    "（较早轮次已做确定性精简；LLM 摘要未成功。"
+    "请依据 working_state、用户原话与近期原文继续；"
+    "必要时重新读取工作区产物或重跑工具。）"
+)
+
+
+@dataclass(frozen=True)
+class SummaryBudget:
+    """Hard request budget for one summarizer call (prompt included)."""
+
+    context_window: int
+    input_tokens: int
+    output_tokens: int
+    safety_tokens: int
+    tight: bool = False
+
+
+def summary_budget(
+    context_window: Optional[int],
+    *,
+    max_output_tokens: int = SUMMARY_MAX_TOKENS,
+    tight: bool = False,
+    input_override: Optional[int] = None,
+) -> SummaryBudget:
+    """Return a conservative budget that always reserves output and safety headroom."""
+    window = max(1, int(context_window or SUMMARY_UNKNOWN_CONTEXT_WINDOW))
+    output = max(1, int(max_output_tokens))
+    safety = min(SUMMARY_SAFETY_TOKENS, max(0, window - output - 1))
+    cap = SUMMARY_INPUT_CAP_TOKENS_TIGHT if tight else SUMMARY_INPUT_CAP_TOKENS
+    if input_override is not None:
+        cap = min(cap, max(1, int(input_override)))
+    available = max(1, window - output - safety)
+    return SummaryBudget(window, min(cap, available), output, safety, tight)
+
+
+def estimate_summary_tokens(text: str) -> int:
+    """Conservative text estimate: ASCII≈4/token, non-ASCII at least 1/token."""
+    units = sum(1 if ord(char) < 128 else 4 for char in str(text))
+    return max(0, math.ceil(units / 4))
+
+
+class SummaryFailure(RuntimeError):
+    """Safe, classified summarizer failure. Never stores prompt or response text."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        input_tokens: int = 0,
+        input_chars: int = 0,
+        finish_reason: str = "",
+        text_chars: int = 0,
+        reasoning_chars: int = 0,
+        cause_type: str = "",
+    ) -> None:
+        self.reason = reason
+        self.input_tokens = int(input_tokens)
+        self.input_chars = int(input_chars)
+        self.finish_reason = str(finish_reason or "")
+        self.text_chars = int(text_chars)
+        self.reasoning_chars = int(reasoning_chars)
+        self.cause_type = str(cause_type or "")
+        super().__init__(
+            "summarizer failure "
+            f"reason={self.reason} input_tokens={self.input_tokens} "
+            f"input_chars={self.input_chars} finish_reason={self.finish_reason or '-'} "
+            f"text_chars={self.text_chars} reasoning_chars={self.reasoning_chars} "
+            f"cause_type={self.cause_type or '-'}"
+        )
+
+
+def _bounded_continuity_text(text: str, *, limit: int = _CONTINUITY_BLOCK_MAX_CHARS) -> str:
+    if len(text) <= limit:
+        return text
+    marker = "（更早的确定性状态已省略）\n"
+    return marker + text[-(limit - len(marker)) :]
 
 
 # -- token math ---------------------------------------------------------------
@@ -243,7 +328,9 @@ def _mcp_result_preview(result: Any, *, limit: int = 240) -> str:
     return text[: limit - 1] + "…"
 
 
-def extract_working_state(span: list[dict[str, Any]]) -> str:
+def extract_working_state(
+    span: list[dict[str, Any]], *, include_assistant_conclusions: bool = False
+) -> str:
     """The mechanical block appended to the summary by CODE, from the span's tool-call
     records: files written, recent commands (+ exit status), artifacts, MCP queries,
     tools used."""
@@ -252,6 +339,7 @@ def extract_working_state(span: list[dict[str, Any]]) -> str:
     artifacts: list[str] = []
     mcp_lines: list[str] = []
     tools: list[str] = []
+    latest_todos: Optional[list[dict[str, Any]]] = None
     for name, args, result in _iter_tool_calls(span):
         if name and name not in tools:
             tools.append(name)
@@ -267,6 +355,22 @@ def extract_working_state(span: list[dict[str, Any]]) -> str:
             location = args.get("url") or args.get("path") or args.get("title")
             if location:
                 artifacts.append(str(location))
+        if lowered == "todo_write":
+            raw_todos = args.get("todos") or args.get("items")
+            if isinstance(raw_todos, list):
+                latest_todos = [item for item in raw_todos if isinstance(item, dict)]
+        if isinstance(result, str):
+            try:
+                parsed_result = json.loads(result)
+            except (ValueError, TypeError):
+                parsed_result = None
+            if isinstance(parsed_result, dict):
+                artifact_path = parsed_result.get("artifact_path")
+                if artifact_path:
+                    artifacts.append(str(artifact_path))
+                artifact_paths = parsed_result.get("artifact_paths")
+                if isinstance(artifact_paths, list):
+                    artifacts.extend(str(path) for path in artifact_paths if path)
         if name.startswith("mcp__"):
             query = _mcp_query_from_args(args if isinstance(args, dict) else {})
             preview = _mcp_result_preview(result)
@@ -292,6 +396,13 @@ def extract_working_state(span: list[dict[str, Any]]) -> str:
         return seen
 
     lines = ["## Working state (extracted mechanically from tool records)"]
+    if latest_todos is not None:
+        lines.append("Latest todos:")
+        for item in latest_todos[-20:]:
+            content = " ".join(str(item.get("content", "")).split())[:240]
+            status = str(item.get("status") or "pending")
+            if content:
+                lines.append(f"- {content} [{status}]")
     written = _dedupe_recent_first(files, 20)
     if written:
         lines.append("Files written/edited (most recent first):")
@@ -310,6 +421,23 @@ def extract_working_state(span: list[dict[str, Any]]) -> str:
         lines += [f"- {m}" for m in recent_mcp]
     if tools:
         lines.append("Tools used in the summarized span: " + ", ".join(sorted(tools)))
+    if include_assistant_conclusions:
+        conclusions: list[str] = []
+        for message in reversed(span):
+            if message.get("role") != "assistant":
+                continue
+            conclusion = " ".join(_text_of(message.get("content")).split())
+            if not conclusion:
+                continue
+            if len(conclusion) > 400:
+                conclusion = conclusion[:399] + "…"
+            if conclusion not in conclusions:
+                conclusions.append(conclusion)
+            if len(conclusions) >= 3:
+                break
+        if conclusions:
+            lines.append("Recent assistant conclusions (most recent first):")
+            lines += [f"- {conclusion}" for conclusion in conclusions]
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
@@ -364,10 +492,9 @@ Produce ALL of the following sections, in this order, each as a markdown heading
 2. **Key concepts and decisions** — domain facts, technical choices, and rationale established so far. Include the WHY, not just the what — a decision without its reason gets relitigated.
 3. **Artifacts and files** — every file/deliverable created, modified, or read that still matters: path, its role, and a short excerpt of load-bearing content only.
 4. **Errors and fixes** — problems hit and how they were resolved, including user corrections ("no, do it this way") — those are feedback with lasting force.
-5. **All user messages** — a chronological list of every user message (trimmed of pasted bulk). This is the intent audit-trail.
-6. **Pending tasks** — explicitly incomplete items, promised follow-ups, things the user said "later" about.
-7. **Current work** — precisely what was in progress at this point: which step, which file, what state.
-8. **Next step** — the immediate next action, justified by the user's request.
+5. **Pending tasks** — explicitly incomplete items, promised follow-ups, things the user said "later" about.
+6. **Current work** — precisely what was in progress at this point: which step, which file, what state.
+7. **Next step** — the immediate next action, justified by the user's request.
 
 Rules:
 - Do NOT carry full file contents as truth. Note THAT a file was read/edited; the coworker re-reads if it needs the content again. Stale memory of a file is worse than no memory.
@@ -381,32 +508,55 @@ CONTINUATION_CONTRACT = (
 )
 
 
-def _render_span(
+def _summary_input_text(messages: list[dict[str, Any]]) -> str:
+    return "\n".join(str(message.get("content", "")) for message in messages)
+
+
+def _truncate_summary_text(text: str, token_limit: int) -> str:
+    """Newest suffix within `token_limit`, with an explicit elision marker."""
+    text = str(text)
+    if estimate_summary_tokens(text) <= token_limit:
+        return text
+    marker = "(…older content elided…)\n"
+    if estimate_summary_tokens(marker) >= token_limit:
+        return ""
+    lo, hi = 0, len(text)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        candidate = marker + text[-mid:]
+        if estimate_summary_tokens(candidate) <= token_limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    return marker + text[-lo:] if lo else marker.rstrip()
+
+
+def _render_units(
     span: list[dict[str, Any]],
     *,
-    budget_chars: int = _SPAN_BUDGET_CHARS,
     tool_result_clip: int = _SPAN_TOOL_RESULT_CLIP,
-) -> str:
-    """The summarized span as compact text for the summarizer. Tool results are clipped
-    hard (first casualty); if the whole render still exceeds the budget, oldest lines are
-    dropped — the newest context is the most load-bearing."""
+) -> list[str]:
+    """Render complete semantic units; assistant tool calls stay with their results."""
     clip = max(40, int(tool_result_clip))
-    lines: list[str] = []
-    for msg in span:
+    units: list[str] = []
+    index = 0
+    while index < len(span):
+        msg = span[index]
         role = msg.get("role")
-        if role == "system":
-            continue
-        if role == "notice":
+        if role in ("system", "notice"):
+            index += 1
             continue
         if role == "tool":
-            text = _text_of(msg.get("content"))
-            text = " ".join(text.split())
+            # Orphan tool results are legal persisted history, but stay an atomic unit.
+            text = " ".join(_text_of(msg.get("content")).split())
             if len(text) > clip:
                 text = text[: clip - 1] + "…"
-            lines.append(f"[tool result] {text}")
+            units.append(f"[tool result] {text}")
+            index += 1
             continue
         text = _text_of(msg.get("content"))
         if role == "assistant":
+            lines: list[str] = []
             for tc in msg.get("tool_calls") or []:
                 fn = tc.get("function") or {}
                 args = " ".join(str(fn.get("arguments", "")).split())
@@ -415,12 +565,61 @@ def _render_span(
                 lines.append(f"[assistant → {fn.get('name')}] {args}")
             if text:
                 lines.append(f"[assistant] {text}")
+            cursor = index + 1
+            while cursor < len(span) and span[cursor].get("role") == "tool":
+                result = " ".join(_text_of(span[cursor].get("content")).split())
+                if len(result) > clip:
+                    result = result[: clip - 1] + "…"
+                lines.append(f"[tool result] {result}")
+                cursor += 1
+            if lines:
+                units.append("\n".join(lines))
+            index = cursor
+            continue
         elif role == "user":
-            lines.append(f"[user] {text}")
-    rendered = "\n".join(lines)
-    if len(rendered) > budget_chars:
-        rendered = "(…oldest turns elided…)\n" + rendered[-budget_chars:]
-    return rendered
+            units.append(f"[user] {text}")
+        index += 1
+    return units
+
+
+def _render_span(
+    span: list[dict[str, Any]],
+    *,
+    budget_tokens: int,
+    tool_result_clip: int = _SPAN_TOOL_RESULT_CLIP,
+) -> str:
+    """Pack newest complete units into a hard token budget."""
+    units = _render_units(span, tool_result_clip=tool_result_clip)
+    selected: list[str] = []
+    remaining = max(1, int(budget_tokens))
+    for unit in reversed(units):
+        needed = estimate_summary_tokens(unit + "\n")
+        if needed <= remaining:
+            selected.append(unit)
+            remaining -= needed
+            continue
+        if not selected:
+            unit_lines = unit.splitlines()
+            has_tool_pair = any(
+                line.startswith("[assistant →") for line in unit_lines
+            ) and any(line.startswith("[tool result]") for line in unit_lines)
+            if has_tool_pair:
+                critical = "\n".join(
+                    line
+                    for line in unit_lines
+                    if line.startswith("[assistant →") or line.startswith("[tool result]")
+                )
+                clipped = critical if estimate_summary_tokens(critical) <= remaining else ""
+            else:
+                clipped = _truncate_summary_text(unit, remaining)
+            if clipped:
+                selected.append(clipped)
+        break
+    selected.reverse()
+    body = "\n".join(selected)
+    if len(selected) < len(units):
+        body = "(…oldest turns elided…)\n" + body
+    return _truncate_summary_text(body, budget_tokens)
 
 
 def summarizer_messages(
@@ -428,26 +627,34 @@ def summarizer_messages(
     *,
     prior_summary: str = "",
     tight_span: bool = False,
+    budget: Optional[SummaryBudget] = None,
 ) -> list[dict[str, Any]]:
     """The provider-ready messages for the summarizer call. On repeated compaction the
     previous summary is message zero of the new span — summarized along with the turns
     since. `tight_span` uses a smaller tool-result/budget clip (retry after failure)."""
+    active_budget = budget or summary_budget(None, tight=tight_span)
+    system_tokens = estimate_summary_tokens(SUMMARY_SYSTEM_PROMPT)
+    body_budget = max(1, active_budget.input_tokens - system_tokens - 32)
+    prior = ""
+    if prior_summary:
+        prior_budget = min(max(256, body_budget // 3), 4_000)
+        prior = _truncate_summary_text(
+            "[previous compaction summary — fold its still-relevant content into the new "
+            "summary]\n" + prior_summary,
+            prior_budget,
+        )
+        body_budget = max(1, body_budget - estimate_summary_tokens(prior) - 8)
     body = _render_span(
         span,
-        budget_chars=_SPAN_BUDGET_CHARS_TIGHT if tight_span else _SPAN_BUDGET_CHARS,
+        budget_tokens=body_budget,
         tool_result_clip=(
-            _SPAN_TOOL_RESULT_CLIP_TIGHT if tight_span else _SPAN_TOOL_RESULT_CLIP
+            _SPAN_TOOL_RESULT_CLIP_TIGHT if active_budget.tight or tight_span
+            else _SPAN_TOOL_RESULT_CLIP
         ),
     )
-    if prior_summary:
-        # On a tight retry, also clip a bloated prior summary so it cannot dominate.
-        prior = prior_summary
-        if tight_span and len(prior) > 8_000:
-            prior = prior[:7_999] + "…"
-        body = (
-            "[previous compaction summary — fold its still-relevant content into the new "
-            "summary]\n" + prior + "\n\n[conversation since]\n" + body
-        )
+    if prior:
+        body = prior + "\n\n[conversation since]\n" + body
+    body = _truncate_summary_text(body, active_budget.input_tokens - system_tokens - 8)
     return [
         {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
         {"role": "user", "content": body},
@@ -462,21 +669,68 @@ def summarize_span(
     prior_summary: str = "",
     max_tokens: int = SUMMARY_MAX_TOKENS,
     tight_span: bool = False,
+    budget: Optional[SummaryBudget] = None,
 ) -> str:
     """One summarizer round-trip (blocking — the engine runs it off-loop). Tools are
     disabled; the Settings model override is just a different `model` id. Raises on
     provider failure or an empty summary — the caller owns the retry/trim policy."""
-    turn = provider.complete(
-        model=model,
-        messages=summarizer_messages(
-            span, prior_summary=prior_summary, tight_span=tight_span
-        ),
-        tools=None,
-        max_tokens=max_tokens,
+    active_budget = budget or summary_budget(
+        None, max_output_tokens=max_tokens, tight=tight_span
     )
+    request_messages = summarizer_messages(
+        span,
+        prior_summary=prior_summary,
+        tight_span=tight_span,
+        budget=active_budget,
+    )
+    input_text = _summary_input_text(request_messages)
+    input_tokens = estimate_summary_tokens(input_text)
+    input_chars = len(input_text)
+    try:
+        turn = provider.complete(
+            model=model,
+            messages=request_messages,
+            tools=None,
+            max_tokens=active_budget.output_tokens,
+            # Best-effort visible-text contract. Providers without this knob either
+            # filter it or the OpenAI compat adapter drops it on an explicit 400.
+            reasoning_effort="none",
+        )
+    except Exception as exc:
+        lowered = str(exc).lower()
+        if is_context_overflow(exc):
+            reason = "context_overflow"
+        elif "429" in lowered or "rate limit" in lowered:
+            reason = "rate_limited"
+        else:
+            reason = "provider_error"
+        raise SummaryFailure(
+            reason,
+            input_tokens=input_tokens,
+            input_chars=input_chars,
+            cause_type=type(exc).__name__,
+        ) from exc
     text = (getattr(turn, "text", None) or "").strip()
+    reasoning = (getattr(turn, "reasoning", None) or "").strip()
+    finish_reason = str(getattr(turn, "finish_reason", None) or "")
     if not text:
-        raise RuntimeError("summarizer returned an empty summary")
+        raise SummaryFailure(
+            "reasoning_only" if reasoning else "empty_response",
+            input_tokens=input_tokens,
+            input_chars=input_chars,
+            finish_reason=finish_reason,
+            text_chars=0,
+            reasoning_chars=len(reasoning),
+        )
+    if finish_reason == "length":
+        raise SummaryFailure(
+            "incomplete_output",
+            input_tokens=input_tokens,
+            input_chars=input_chars,
+            finish_reason=finish_reason,
+            text_chars=len(text),
+            reasoning_chars=len(reasoning),
+        )
     return text
 
 
@@ -491,6 +745,7 @@ def build_state(
     keep_tokens: int,
     prior: Optional[CompactionState] = None,
     tight_span: bool = False,
+    budget: Optional[SummaryBudget] = None,
 ) -> Optional[CompactionState]:
     """Summarize everything older than the picked boundary into a new CompactionState.
     On repeated compaction the prior summary heads the new span. Returns None when there
@@ -508,6 +763,7 @@ def build_state(
         span,
         prior_summary=prior.summary_text if prior is not None else "",
         tight_span=tight_span,
+        budget=budget,
     )
     users, dropped = _cap_user_messages(
         prior_users + extract_user_messages(span),
@@ -521,6 +777,43 @@ def build_state(
         user_messages_dropped=dropped,
         created_at=time.time(),
         model_used=model,
+    )
+
+
+def build_deterministic_state(
+    messages: list[dict[str, Any]],
+    *,
+    keep_tokens: int,
+    prior: Optional[CompactionState] = None,
+) -> Optional[CompactionState]:
+    """No-LLM continuity checkpoint before the final minimal Trim fallback."""
+    boundary = pick_boundary(messages, keep_tokens=keep_tokens)
+    if boundary is None or (prior is not None and boundary <= prior.boundary_index):
+        return trim_state(messages, prior=prior)
+    span_start = prior.boundary_index if prior is not None else 0
+    span = messages[span_start:boundary]
+    extracted = extract_working_state(span, include_assistant_conclusions=True)
+    prior_working = prior.working_state if prior is not None else ""
+    working_parts = [part for part in (prior_working, extracted) if part]
+    prior_users = list(prior.user_messages) if prior is not None else []
+    users, dropped = _cap_user_messages(
+        prior_users + extract_user_messages(span),
+        prior_dropped=prior.user_messages_dropped if prior is not None else 0,
+    )
+    prior_summary = prior.summary_text if prior is not None else ""
+    if _DETERMINISTIC_NOTE not in prior_summary:
+        prior_summary = (prior_summary + "\n\n" if prior_summary else "") + _DETERMINISTIC_NOTE
+    summary = _bounded_continuity_text(prior_summary)
+    working_state = _bounded_continuity_text("\n\n".join(working_parts))
+    return CompactionState(
+        boundary_index=boundary,
+        summary_text=summary,
+        working_state=working_state,
+        user_messages=users,
+        user_messages_dropped=dropped,
+        created_at=time.time(),
+        model_used="",
+        trimmed=True,
     )
 
 

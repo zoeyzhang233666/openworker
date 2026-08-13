@@ -88,6 +88,7 @@ from ..skills import (
     SkillStore,
     effective_skills,
     seed_bundled_skills,
+    sync_managed_lexicon,
 )
 
 _SCOPES = {s.value for s in Scope}
@@ -118,7 +119,7 @@ class SessionManager:
         workspace: Optional[str | Path] = None,  # default/seed workspace (e.g. --cwd)
         data_dir: Optional[str | Path] = None,
         model: str = "apihub-cn:deepseek-v4-flash",
-        mode: Mode = Mode.INTERACTIVE,
+        mode: Mode = Mode.AUTO,
         provider: Optional[ProviderClient] = None,
     ) -> None:
         self.default_workspace = (
@@ -171,6 +172,11 @@ class SessionManager:
         self._prefs = self._load_prefs()
         if self._prefs.get("default_model"):
             self.model = self._prefs["default_model"]
+        if self._prefs.get("default_mode"):
+            try:
+                self.mode = Mode(self._prefs["default_mode"])
+            except ValueError:
+                pass
         # Seed the PDF-fallback module global from prefs so engines see the user's
         # choice from the first turn (set_pdf_settings keeps it in sync after).
         from ..pdf_support import set_fallback_mode
@@ -242,6 +248,7 @@ class SessionManager:
             settings_path=base / "skills-settings.json",
         )
         seed_bundled_skills(self.skill_store)
+        sync_managed_lexicon(self.skill_store)
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).
@@ -2108,8 +2115,7 @@ class SessionManager:
 
     def compaction_settings(self) -> dict[str, Any]:
         """The live auto-compaction knobs (OPE-27) — read by every engine per check, so a
-        Settings change applies without a rebuild. Only the two spec'd overrides plus the
-        summarizer-model pin; absent keys fall back to compaction.py defaults."""
+        Settings change applies without a rebuild. Absent keys use conservative defaults."""
         from ..compaction import DEFAULT_CAP_TOKENS, DEFAULT_THRESHOLD_PCT
 
         return {
@@ -2121,6 +2127,11 @@ class SessionManager:
             ),
             # "" → the session's own model (engine falls back to self.model).
             "model": str(self._prefs.get("compaction_model") or ""),
+            "timeout_seconds": int(self._prefs.get("compaction_timeout_seconds") or 90),
+            # 0 means derive a safe input budget from the summarizer model matrix.
+            "summary_input_tokens": int(
+                self._prefs.get("compaction_summary_input_tokens") or 0
+            ),
         }
 
     def compaction_settings_payload(self) -> dict[str, Any]:
@@ -2130,6 +2141,8 @@ class SessionManager:
             "compaction_threshold_pct": settings["threshold_pct"],
             "compaction_cap_tokens": settings["cap_tokens"],
             "compaction_model": settings["model"],
+            "compaction_timeout_seconds": settings["timeout_seconds"],
+            "compaction_summary_input_tokens": settings["summary_input_tokens"],
         }
 
     def set_compaction_settings(
@@ -2137,6 +2150,8 @@ class SessionManager:
         threshold_pct: Any = None,
         cap_tokens: Any = None,
         model: Any = None,
+        timeout_seconds: Any = None,
+        summary_input_tokens: Any = None,
     ) -> dict[str, Any]:
         """Persist the auto-compaction overrides (OPE-27). Threshold is a percentage of
         the model's context window (10–95); the cap is an absolute token ceiling; model
@@ -2162,6 +2177,31 @@ class SessionManager:
                 return {"ok": False, "error": "compaction_cap_tokens must be a number"}
         if model is not None:
             self._prefs["compaction_model"] = str(model)
+        if timeout_seconds is not None:
+            try:
+                timeout = int(timeout_seconds)
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "compaction_timeout_seconds must be a number"}
+            if not 15 <= timeout <= 300:
+                return {
+                    "ok": False,
+                    "error": "compaction_timeout_seconds must be between 15 and 300",
+                }
+            self._prefs["compaction_timeout_seconds"] = timeout
+        if summary_input_tokens is not None:
+            try:
+                input_tokens = int(summary_input_tokens)
+            except (TypeError, ValueError):
+                return {
+                    "ok": False,
+                    "error": "compaction_summary_input_tokens must be a number",
+                }
+            if input_tokens != 0 and not 1_000 <= input_tokens <= 24_000:
+                return {
+                    "ok": False,
+                    "error": "compaction_summary_input_tokens must be 0 or between 1000 and 24000",
+                }
+            self._prefs["compaction_summary_input_tokens"] = input_tokens
         self._save_prefs()
         return {"ok": True, **self.compaction_settings()}
 

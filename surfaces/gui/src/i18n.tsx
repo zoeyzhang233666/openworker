@@ -53,6 +53,12 @@ const messages = {
     "crmCreateContact.submit": "提交创建联系人审批",
     "crmCreateContact.hint":
       "将请求助手调用 hubspot_create_contact；仍须在审批卡中确认。不会自动创建联系人。",
+    "crmUpdateObject.submit": "提交 CRM 字段更新审批",
+    "crmUpdateObject.hint":
+      "将请求助手调用 hubspot_update_object；仍须在审批卡中确认。不会自动更新字段。",
+    "crmCreateTask.submit": "提交 CRM 任务创建审批",
+    "crmCreateTask.hint":
+      "将请求助手调用 hubspot_create_task；仍须在审批卡中确认。不会自动创建任务。",
     "nav.scheduled": "定时任务",
     "nav.connections": "连接",
     "nav.settings": "设置",
@@ -460,6 +466,12 @@ const messages = {
     "crmCreateContact.submit": "Submit create-contact for approval",
     "crmCreateContact.hint":
       "Asks the assistant to call hubspot_create_contact; you still confirm on the approval card. No auto create.",
+    "crmUpdateObject.submit": "Submit CRM field update for approval",
+    "crmUpdateObject.hint":
+      "Asks the assistant to call hubspot_update_object; you still confirm on the approval card. No auto field update.",
+    "crmCreateTask.submit": "Submit CRM create-task for approval",
+    "crmCreateTask.hint":
+      "Asks the assistant to call hubspot_create_task; you still confirm on the approval card. No auto create task.",
     "nav.scheduled": "Automations",
     "nav.connections": "Connectors",
     "nav.settings": "Settings",

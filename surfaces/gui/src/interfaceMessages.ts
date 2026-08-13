@@ -395,8 +395,8 @@ export const interfaceMessagesZh = {
     "设置上限可让超大上下文模型更早压缩——质量和速度往往在名义上限之前就会明显下降。",
   "Summarizer model": "摘要模型",
   "Session's own model (default)": "使用当前会话模型（默认）",
-  "The summary is written by this model. The default follows whatever model the session is using.":
-    "摘要由该模型生成。默认跟随当前会话所用模型。",
+  "The summary is written by this model. For better reliability, choose a stable non-reasoning model that returns normal text. A provider-prefixed model uses that provider's endpoint; the default follows the session model.":
+    "摘要由该模型生成。为提高可靠性，建议选择能稳定返回普通正文的非推理模型；带提供商前缀的模型会使用对应提供商的端点。默认仍跟随当前会话模型。",
   "Composer": "输入框",
   "Show the context window bar": "显示上下文窗口用量条",
   "A small meter showing how full the model's context window is. Turn it off to show this session's token total instead; either way the full breakdown is one click away.":

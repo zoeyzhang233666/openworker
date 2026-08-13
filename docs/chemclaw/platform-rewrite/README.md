@@ -18,18 +18,23 @@
 平台由 Persona 识别（用户说「改成小红书」即可）。  
 **按需（M2）**：`chem-hook-cta-pack` — 仅用户要标题 / 封面 / 钩子 / CTA 时 `load_skill`；不插入上述四步强制顺序；写入后仍须再过 policy → quality-check。
 
+## 词表层（M3 / D-128）
+
+- **官方 managed**：`chem-content-policy/references/lexicon/managed/base.csv` + `rule_version.txt` — 发版可热升级；勿手改。
+- **用户覆盖**：同目录旁 `user.csv` — 自定义禁词，或 `action=suppress` 关掉某条 `rule_id`；官方同步**永不覆盖**。
+- 扫描 JSON 含 `rule_set: { id: chem-content-policy, version }`。
+- 启动：`seed_bundled_skills` 后调用 `sync_managed_lexicon`（只同步 managed；兼容旧 `lexicon/base.csv` 迁入 managed）。
+
 ## 默认边界
 
 - 仅改写时不主动联网补 CAS / 纯度 / 认证 / 案例等  
 - 默认智能体仍为 ChemClaw/`cowork`；本龙虾默认禁用，需在「智能体」页启用  
-- knowledge 会话会自动把已安装 `skills` 目录挂为**只读 root**，以便 `load_skill` 后的 `read_file` 能读 references/schemas（不放宽全盘权限）  
-- 词表升级与安装包验收属 M3（见实施计划）
+- knowledge 会话会自动把已安装 `skills` 目录挂为**只读 root**，以便 `load_skill` 后的 `read_file` 能读 references/schemas（不放宽全盘权限）
 
-## 收口记录（M2）
+## 收口记录
 
-- **2026-08-10**：工作区曾显示 platform-rewrite 相关路径「已修改」，核对 blob 与 `HEAD` 内容一致（Windows 换行/stat 假 dirty），已 `git restore` 清标记。
-- 定向回归：`pytest tests/test_platform_rewrite_skills.py tests/test_platform_rewrite_lobster.py tests/test_platform_rewrite_corpus.py` → **26 passed**（`--basetemp` 指向 `D:\OpenWorker\.chemclaw-dev\pytest-basetemp\...`）。
-- **未启动 M3**；下一刀须点名且确认打安装包。
+- **2026-08-10（M1+M2）**：假 dirty 已清；定向 pytest 26 passed。
+- **2026-08-12（M3 / D-128）**：managed + user 词表、`sync_managed_lexicon`、schema/`rule_set`、packaging SkillLoader 路径验收；`pytest` platform-rewrite + bootstrap + packaging **38 passed**。正式 NSIS frozen 补验须再确认打安装包。
 
 ## 相关文件
 

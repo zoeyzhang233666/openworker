@@ -3,7 +3,7 @@
 > **选用结论（2026-08-10）**：相对「冯冯形五 Skill 洗稿草图」，采用 **Plan B「内容重构」规格**。  
 > **本文件** = Plan B 正文收紧为可粘贴指令 + **M1 硬分期**（EXE / 全量语料 / 词表升级框架 **不是** 第一期 blocker）。  
 > **正式实施计划**：[../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)  
-> **状态**：**M1+M2 已落地并收口（D-104 / D-107）**；2026-08-10 假 dirty 已清、定向 pytest 26 passed。粘贴块仍可用于新对话对齐约束。M3 待点名且确认打安装包。
+> **状态**：**M1+M2+M3 代码已落地（D-104 / D-107 / D-128）**；M3 含 managed 词表热升级 + user 覆盖不冲掉。正式 NSIS 内 frozen `load_skill` 补验须再确认打安装包。
 
 ## 如何使用
 
@@ -98,7 +98,7 @@ revise → 回到 chem-platform-rewrite。Skill 缺失须披露，不得假装�
 【路径】
 Persona: coworker/personas/builtin/platform-rewrite-lobster.md
 Skills: coworker/skills/bundled/<name>/{SKILL.md,references/,schemas/,scripts/}
-seed_bundled_skills 须能种出；已存在同名目录不自动升级（已知陷阱，M3 再做 managed rules + user override）。
+seed_bundled_skills 须能种出；已存在同名目录不整包升级；**M3（D-128）** 对 `chem-content-policy` 用 `sync_managed_lexicon` 只同步 `lexicon/managed/`，永不覆盖 `user.csv`。
 
 【M1 范围 — 硬分期；超出即超范围】
 做：四核心 Skill + Persona + 最小 schema + scan/check 脚本 + 小型 base.csv + 三平台 references + pytest（注册、默认仍 cowork、禁词命中、事实字段不变）+ docs/chemclaw/platform-rewrite/ 短文 README。
@@ -106,7 +106,7 @@ seed_bundled_skills 须能种出；已存在同名目录不自动升级（已知
 
 【M2 / M3 — 仅当用户点名】
 M2：hook-cta-pack；业务 regression corpus；resources_path / 只读 root 专项集成测。
-M3：bundled managed rules + user override + rule_version；安装包内 load_skill 验收（须用户确认打安装包）。
+M3（D-128 已落地代码）：managed + user override + rule_version + package-data/SkillLoader 路径验收；正式 NSIS frozen load_skill 补验仍须确认打安装包。
 
 【验收（M1）】
 1. 化工样例 → 小红书四段式（含改写说明）；敏感词被扫/改。

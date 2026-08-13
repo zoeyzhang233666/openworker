@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans.  
 > **规格来源：** Plan B「化工多平台内容重构」交接；相对 Plan A「洗稿草图」的选用结论见 [docs/chemclaw/HANDOFF_PLATFORM_REWRITE.md](../../chemclaw/HANDOFF_PLATFORM_REWRITE.md)。  
-> **Status (2026-08-10):** **M1 已落地（D-104）**；**M2 已落地（D-107）**。同日 dirty 收口：platform-rewrite 路径与 HEAD 内容一致（假 dirty 已 restore）；定向 pytest **26 passed**。M3 待用户点名且确认打安装包。
+> **Status (2026-08-12):** **M1 已落地（D-104）**；**M2 已落地（D-107）**；**M3 代码已落地（D-128）**（managed/user 词表 + `sync_managed_lexicon` + `rule_set`；package-data/SkillLoader 路径验收）。正式 NSIS frozen `load_skill` 补验须用户再确认打安装包。
 
 **Goal:** 交付可发现、默认可禁用的内置智能体「化工内容重构龙虾」（`platform-rewrite-lobster`）与四核心 bundled Skill，将化工/精细化工/贸易素材重构为小红书 / 抖音 / X 成稿，并保证事实不乱编、平台风格可区分、敏感表达可确定性扫描、门禁可回归。
 
@@ -32,7 +32,7 @@
 |--------|------|----------|
 | **M1** | Persona + 四核心 Skill + 最小 schema/脚本/词表 + pytest + 短文档 | 授权后的首期交付 |
 | **M2** | `chem-hook-cta-pack`；业务语料 10～20（或点名）；resources 只读 root 集成测 | 否，点名后做 |
-| **M3** | managed rules + user override + `rule_version`；wheel/PyInstaller 产物 `load_skill` | 否；打安装包须用户确认 |
+| **M3** | managed rules + user override + `rule_version`；wheel/PyInstaller 产物 `load_skill` | 代码已落地（D-128）；frozen NSIS 补验须再确认打安装包 |
 
 ---
 
@@ -121,9 +121,9 @@ skills:
 
 ## M3 Tasks（点名 + 确认打安装包后）
 
-- [ ] bundled managed rules + user override；官方升级不覆盖用户词表；`rule_version`
-- [ ] package-data / PyInstaller 核对 `SKILL.md` + references/schemas/scripts
-- [ ] 构建产物内真实 `load_skill` 验收
+- [x] bundled managed rules + user override；官方升级不覆盖用户词表；`rule_version`（D-128）
+- [x] package-data / SkillLoader 核对 `SKILL.md` + references/schemas/scripts（含 `lexicon/managed/**`）
+- [ ] 构建产物内真实 frozen `load_skill` 验收（须用户再确认打 NSIS / sidecar）
 
 ---
 

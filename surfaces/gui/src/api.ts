@@ -780,9 +780,11 @@ export interface ModelSettings {
   // Auto-compaction of long histories (OPE-27): trigger = min(threshold% × context
   // window, cap tokens); model pins the summarizer ("" → the session's own model).
   // Optional so the GUI is robust to an older backend.
-  compaction_threshold_pct?: number; // default 0.95, 0.10–0.95
-  compaction_cap_tokens?: number; // default 2000000
+  compaction_threshold_pct?: number; // default 0.70, 0.10–0.95
+  compaction_cap_tokens?: number; // default 100000 (UI max still 2000000)
   compaction_model?: string;
+  compaction_timeout_seconds?: number; // default 90, 15–300
+  compaction_summary_input_tokens?: number; // 0 → automatic, advanced API setting
   /** Local account-row display name (independent of cloud sign-in). Empty → UI default. */
   local_display_name?: string;
   /** Whether a local avatar image is stored on disk. */
@@ -923,6 +925,8 @@ export interface CompactionSettings {
   compaction_threshold_pct: number;
   compaction_cap_tokens: number;
   compaction_model: string;
+  compaction_timeout_seconds?: number;
+  compaction_summary_input_tokens?: number;
 }
 
 /** Persist the auto-compaction overrides (threshold %, token cap, summarizer model). */

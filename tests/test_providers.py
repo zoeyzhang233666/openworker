@@ -216,6 +216,36 @@ def test_max_tokens_rejection_retries_as_max_completion_tokens():
     assert "max_tokens" not in calls[1] and calls[1]["max_completion_tokens"] == 64
 
 
+def test_unsupported_reasoning_effort_is_dropped_for_compat_gateway():
+    class _ReasoningEffortRejecting:
+        def __init__(self, response):
+            self._response = response
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if "reasoning_effort" in kwargs:
+                raise RuntimeError(
+                    "Error code: 400 - Unsupported parameter: 'reasoning_effort'"
+                )
+            return self._response
+
+    client = _FakeClient(_response(content="summary"))
+    client.chat.completions = _ReasoningEffortRejecting(_response(content="summary"))
+    provider = OpenAIProvider(client=client)
+
+    turn = provider.complete(
+        model="compat-summary-model",
+        messages=[{"role": "user", "content": "summarize"}],
+        reasoning_effort="none",
+    )
+
+    calls = client.chat.completions.calls
+    assert turn.text == "summary" and len(calls) == 2
+    assert calls[0]["reasoning_effort"] == "none"
+    assert "reasoning_effort" not in calls[1]
+
+
 def test_unrelated_400s_are_not_retried():
     class _AlwaysRejects:
         calls: list = []
@@ -599,3 +629,65 @@ def test_complete_picks_up_reasoning_content():
     provider = OpenAIProvider(client=_FakeClient(SimpleNamespace(choices=[choice])))
     turn = provider.complete(model="deepseek-v4-pro", messages=[{"role": "user", "content": "x"}])
     assert turn.text == "Answer" and turn.reasoning == "deep thought"
+    assert turn.extras == {"_openai": {"reasoning_content": "deep thought"}}
+
+
+def test_reasoning_content_replayed_on_follow_up():
+    """DeepSeek thinking mode: prior assistant reasoning_content must ride on the wire."""
+    client = _FakeClient(_response(content="second"))
+    provider = OpenAIProvider(client=client)
+    history = [
+        {"role": "user", "content": "first"},
+        {
+            "role": "assistant",
+            "content": "done",
+            "_openai": {"reasoning_content": "prior chain of thought"},
+        },
+        {"role": "user", "content": "second"},
+    ]
+    provider.complete(
+        model="deepseek-v4-pro",
+        messages=history,
+        tools=[{"type": "function", "function": {"name": "read_file"}}],
+    )
+    sent = client.chat.completions.calls[0]["messages"][1]
+    assert sent == {
+        "role": "assistant",
+        "content": "done",
+        "reasoning_content": "prior chain of thought",
+    }
+
+
+def test_legacy_reasoning_sidecar_replayed_as_reasoning_content():
+    """Older sessions stored thinking only on the display `reasoning` sidecar."""
+    client = _FakeClient(_response(content="ok"))
+    provider = OpenAIProvider(client=client)
+    provider.complete(
+        model="deepseek-v4-pro",
+        messages=[
+            {"role": "user", "content": "hi"},
+            {
+                "role": "assistant",
+                "content": "prev",
+                "reasoning": "legacy thinking",
+            },
+        ],
+        tools=[{"type": "function", "function": {"name": "read_file"}}],
+    )
+    sent = client.chat.completions.calls[0]["messages"][1]
+    assert sent == {
+        "role": "assistant",
+        "content": "prev",
+        "reasoning_content": "legacy thinking",
+    }
+
+
+def test_stream_reasoning_content_sidecar_on_final_turn():
+    def rchunk(text):
+        delta = SimpleNamespace(content=None, tool_calls=None, reasoning_content=text)
+        return SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=None)])
+
+    chunks = [rchunk("think"), _chunk(content="Answer"), _chunk(finish="stop")]
+    provider = OpenAIProvider(client=_StreamClient(chunks))
+    final = list(provider.stream(model="deepseek-v4-pro", messages=[]))[-1].turn
+    assert final.extras == {"_openai": {"reasoning_content": "think"}}

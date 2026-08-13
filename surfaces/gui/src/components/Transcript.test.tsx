@@ -400,6 +400,99 @@ describe("submit CRM create-contact approval CTA (D-109)", () => {
   });
 });
 
+describe("submit CRM update-object / create-task approval CTAs (D-127)", () => {
+  it("shows update-object button only for its recommended_action gate", () => {
+    const ready: Item[] = [
+      {
+        kind: "assistant",
+        text: "Fields ready. recommended_action: ready_for_crm_update_object",
+      },
+    ];
+    const { rerender } = render(<Transcript items={ready} onApprove={vi.fn()} />);
+    expect(screen.getByTestId("submit-crm-update-object").textContent).toMatch(
+      /提交 CRM 字段更新审批|Submit CRM field update for approval/,
+    );
+    expect(screen.queryByTestId("submit-crm-create-task")).toBeNull();
+
+    rerender(<Transcript items={ready} onApprove={vi.fn()} running />);
+    expect(screen.queryByTestId("submit-crm-update-object")).toBeNull();
+
+    rerender(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text: "质量门禁通过（ready_for_crm_update_object）；若需建任务用 ready_for_crm_create_task。",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("submit-crm-update-object")).toBeNull();
+    expect(screen.queryByTestId("submit-crm-create-task")).toBeNull();
+  });
+
+  it("shows create-task button only for its recommended_action gate", () => {
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text: "Follow-up ready. recommended_action: ready_for_crm_create_task",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("submit-crm-create-task").textContent).toMatch(
+      /提交 CRM 任务创建审批|Submit CRM create-task for approval/,
+    );
+    expect(screen.queryByTestId("submit-crm-update-object")).toBeNull();
+  });
+
+  it("can show update-object and create-task CTAs together when both gates present", () => {
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text:
+              "recommended_action: ready_for_crm_update_object\nrecommended_action: ready_for_crm_create_task",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("submit-crm-update-object")).toBeTruthy();
+    expect(screen.getByTestId("submit-crm-create-task")).toBeTruthy();
+  });
+
+  it("dispatches update-object and create-task events on click", () => {
+    const updateSpy = vi.fn();
+    const taskSpy = vi.fn();
+    window.addEventListener("ocw-request-crm-update-object", updateSpy);
+    window.addEventListener("ocw-request-crm-create-task", taskSpy);
+    render(
+      <Transcript
+        items={[
+          {
+            kind: "assistant",
+            text:
+              "recommended_action: ready_for_crm_update_object\nrecommended_action: ready_for_crm_create_task",
+          },
+        ]}
+        onApprove={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("submit-crm-update-object"));
+    fireEvent.click(screen.getByTestId("submit-crm-create-task"));
+    expect(updateSpy).toHaveBeenCalledTimes(1);
+    expect(taskSpy).toHaveBeenCalledTimes(1);
+    window.removeEventListener("ocw-request-crm-update-object", updateSpy);
+    window.removeEventListener("ocw-request-crm-create-task", taskSpy);
+  });
+});
+
 describe("bubble hover affordances (FB-005)", () => {
   const TS = 1752969720; // unix seconds, as the server stamps them
   const ITEMS: Item[] = [

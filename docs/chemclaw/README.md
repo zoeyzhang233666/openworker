@@ -4,13 +4,13 @@
 
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。
 - 实施计划：阶段 1“首条真实纵向链路”已获用户批准。
-- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-122）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM；Comtrade；海关；询盘转报价；清单；SMTP；HubSpot；化工社合集试点+Triage；API 公开查询；SAM/Comtrade 境外可选；VAT/汇率/维基；**化工社只读检索**（D-118）+ **写反应首包**（D-119）+ **公开 SVG 落盘 Tool**（D-120）+ **压缩硬裁提示中性化/二次收紧摘要**（D-121）+ **四销售龙虾专属空态三卡**（D-122）。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用。**本机销售环点检（2026-08-09）用户确认通过**。
-- **化工多平台内容重构（2026-08-10，D-104 / D-107）**：选用 Plan B；**M1+M2 已落地并收口**：`platform-rewrite-lobster` + 四核心 Skill + **`chem-hook-cta-pack`（按需）**、确定性扫描、合成夹具、**12 条回归语料**、空态三卡；knowledge 会话只读挂载 `skills`；默认仍为 `cowork`，新 Agent 默认禁用；不自动发帖。同日核对工作区假 dirty 已清；定向 pytest **26 passed**。**M3**（词表热升级 / 安装包验收）须点名且确认打安装包。见 [platform-rewrite/README.md](platform-rewrite/README.md)、[HANDOFF_PLATFORM_REWRITE.md](HANDOFF_PLATFORM_REWRITE.md)、[计划](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)。
+- 销售增长智能：外贸/内贸/商机/转化设计已于 2026-08-07 获批。**已授权并实现（D-091—D-103、D-105—D-122、D-127）**：四龙虾包；PubChem/GLEIF/国内登记；TED；SAM；Comtrade；海关；询盘转报价；清单；SMTP；HubSpot（笔记/创建联系人/**字段更新/任务创建**）；化工社合集试点+Triage；API 公开查询；SAM/Comtrade 境外可选；VAT/汇率/维基；**化工社只读检索**（D-118）+ **写反应首包**（D-119）+ **公开 SVG 落盘 Tool**（D-120）+ **压缩硬裁提示中性化/二次收紧摘要**（D-121）+ **四销售龙虾专属空态三卡**（D-122）。默认仍为 ChemClaw/`cowork`，销售 Agent 默认禁用。**本机销售环点检（2026-08-09）用户确认通过**。
+- **化工多平台内容重构（2026-08-10，D-104 / D-107；2026-08-12，D-128）**：选用 Plan B；**M1+M2+M3 代码已落地**：`platform-rewrite-lobster` + 四核心 Skill + **`chem-hook-cta-pack`（按需）**、确定性扫描、合成夹具、**12 条回归语料**、空态三卡；knowledge 会话只读挂载 `skills`；**M3** managed 词表热升级 + `user.csv` 覆盖不冲掉 + `rule_set.version`；默认仍为 `cowork`，新 Agent 默认禁用；不自动发帖。定向 pytest（platform-rewrite + bootstrap + packaging）**38 passed**。**正式 NSIS 内 frozen `load_skill` 补验**须再确认打安装包。见 [platform-rewrite/README.md](platform-rewrite/README.md)、[HANDOFF_PLATFORM_REWRITE.md](HANDOFF_PLATFORM_REWRITE.md)、[计划](../superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md)。
 - **上游 Wave B（2026-08-11，D-125）**：已合入 `chemclaw-clean`（fast-forward）。OpenWorker [#471](https://github.com/andrewyng/openworker/pull/471) ask_user 2.0：富选项（说明/推荐/预览）+ 最多 4 题分组 stepper；旧单题/字符串 options/Inbox JSON 兼容；GUI 全 i18n。验证：`pytest` ask+durable **15 passed**；`tsc` OK；`ask-upgrades` e2e **2 passed**。
 - **上游 Wave C（2026-08-11，D-126）**：已合入 `chemclaw-clean`（fast-forward）。OpenWorker [#472](https://github.com/andrewyng/openworker/pull/472) Memory V1 四段移植（core → settings/REST → GUI/Undo → CLI/TUI）。语义：关=停写入；已有记忆仍可读/注入新会话；写开关 live；user rules 会话启动时固定。验证：`pytest` memory+api **52 passed**；GUI `tsc` OK；Transcript/i18n/audit **55 passed**；`python -m coworker.cli --help` OK。
 - **上游 Wave A（2026-08-11，D-124）**：已合入 `chemclaw-clean`：[#415](https://github.com/andrewyng/openworker/pull/415) DNS pin、[#416](https://github.com/andrewyng/openworker/pull/416) tomllib/3.10、[#419](https://github.com/andrewyng/openworker/pull/419) GUI `tsc` CI、[#417](https://github.com/andrewyng/openworker/pull/417) GUI README 路径。计划：[chemclaw-upstream-file-by-file-upgrade-plan-2026-08-11.md](chemclaw-upstream-file-by-file-upgrade-plan-2026-08-11.md)。
-- **本机 NSIS 安装包（2026-08-11）**：用户点名打包；已产出未签名 `ChemClaw_0.1.7_x64-setup.exe`（约 48.5 MB）于 `surfaces/gui/src-tauri/target/release/bundle/nsis/`。无 updater 签名密钥，不含自动更新制品。打包前修通 GUI `tsc` 门禁（含 `message_updated`、RightRail 残留进度调用等）。
-- **安装包纠偏（2026-08-11，D-123）**：旧包未打入 `skills/bundled`/`personas/builtin`，运行时又读 `%APPDATA%\\coworker`，表现为「带旧聊天、缺新龙虾」。已重打：sidecar 含本 worktree **108** 个 `SKILL.md` + **7** 个 builtin persona；默认状态目录改为 `%APPDATA%\\ChemClaw` / macOS `~/.config/chemclaw`（不迁移旧 coworker 数据）。**请装到空目录，不要覆盖 `D:\\ChemClaw` 旧工程树**；勿把桌面快捷方式指到旧目录里的 exe。
+- **本机 NSIS 安装包（2026-08-11 重打）**：用户点名自本 worktree `chemclaw-clean` 重打；未签名 `ChemClaw_0.1.7_x64-setup.exe`（约 **48.9 MB**，mtime 17:43）于 `surfaces/gui/src-tauri/target/release/bundle/nsis/`。无 updater 签名密钥，不含自动更新制品。staged sidecar 验收：**108** `SKILL.md` + **7** builtin persona（含 `export-sales-lobster` / `platform-rewrite-lobster`）；sidecar 内无 `sessions`/开发态路径泄漏。聊天只在 `%APPDATA%\\ChemClaw`，不进安装包；要无旧聊天+最新 seed 技能请先改名备份该目录再首次启动。
+- **安装包纠偏（2026-08-11，D-123）**：旧包未打入 `skills/bundled`/`personas/builtin`，运行时又读 `%APPDATA%\\coworker`，表现为「带旧聊天、缺新龙虾」。已按 D-123：sidecar 打入本树 bundled/builtin；默认状态目录 `%APPDATA%\\ChemClaw` / macOS `~/.config/chemclaw`（不迁移旧 coworker 数据）。**请装到空目录，不要覆盖 `D:\\ChemClaw` 旧工程树**；勿把桌面快捷方式指到旧目录里的 exe。
 - **macOS DMG（2026-08-11）**：`packaging/build_dmg.sh` 的 APP 名改为读 `tauri.conf.json` `productName`（ChemClaw）；Release workflow 稳定产物名为 `ChemClaw-macos-arm64.dmg` / `ChemClaw-macos-x64.dmg`。须在 **macOS runner**（GitHub Actions `workflow_dispatch` 或标签 `app-v*`）或本机 Mac 构建，Windows 不能交叉编译。已推送 `chemclaw-clean` @ `9b0ac4c` 与标签 `app-v0.1.7-chemclaw-macos`。若 Actions 页仍为 0 runs：到仓库 Settings → Actions → General 允许 Actions 后再 **Re-run** / `workflow_dispatch`。无 Apple 证书时为未签名包：Mac 上右键打开或 `xattr -cr ChemClaw.app`。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
@@ -46,7 +46,9 @@
   - ✅ Mermaid 全局主题改为 `neo`（彩色现代主题；图内 `%%{init}%%` / `classDef` 仍可覆盖）
   - ✅ Mermaid 悬停/聚焦才显示框线与工具栏（默认融文；错误态始终露出；工具栏 visibility 保占位防抖）
   - ✅ Mermaid 渲染失败补救（D-074）：语法失败自动就地修 1 次并显示「正在修正图表…」；仍失败保留「修复图表」；成功图/过长/库加载失败不进模型修图；`POST /v1/sessions/{id}/mermaid-repair` + `message_updated`
-  - ✅ 设置页 Context compaction 已汉化；默认触发阈值/上限拉到允许最大值（95% / 2,000,000 tokens）
+  - ✅ 设置页 Context compaction 已汉化；产品默认 **70% / 100,000 tokens**（D-129；设置仍可调到最高 95% / 2,000,000；已有 prefs 不迁移）
+  - ✅ （2026-08-12 D-130）摘要可靠性首包：摘要输入改为按摘要模型窗口计算的保守 token 硬预算（未知模型按 32k；普通最多 24k、重试最多 8k）；失败日志区分 reasoning-only / 空回复 / 截断 / 超限 / 限流 / 超时且不记正文；两次失败后先生成确定性 continuity ledger（todo、产物路径、命令、MCP、最近结论、用户原话）再续跑；canonical transcript 不变。
+  - 回归：`pytest tests/test_compaction.py tests/test_compaction_engine.py tests/test_providers.py`：**75 passed**；GUI i18n/localization：**23 passed**；`npm run build`：通过（仅既有 chunk-size/dynamic-import 警告）。
 - ✅ （2026-08-05 D-073）长程任务不再因上下文过大阻塞：压缩失败不弹阻塞式 QUESTION；出站工具大回包统一裁剪到 40,000 字符并溢出落盘；压缩后续跑依赖 `<compacted-history>`（**2026-08-06 已撤销** `task-progress.md` 落盘与「查看任务进度」入口）
 - ✅ （2026-08-06 D-075）Agent Runtime 提速与体验 A–C：产物错误中文化；禁止本地 browser 自检；只读 MCP 并行 + 30s 默认超时（慢查询可用 `CHEMCLAW_MCP_TOOL_TIMEOUT=120` 覆盖后重启 sidecar）；MCP 结构化摘要；Trim 中文硬裁；**已撤销**任务进度 md / MCP 批次落盘；规格/计划见 `2026-08-06-chemclaw-agent-runtime-ux-*`（里程碑 D 待做）
 - ✅ （2026-08-06 D-076）首包空窗 UX：live Thinking 首包阶段默认展开；无 reasoning 时龙虾等待文案按前→后池约每 3s 轮播（中英）；不再长期「正在等待 Agent…」；规格/计划见 `2026-08-06-chemclaw-first-token-wait-ux-*`
@@ -152,7 +154,7 @@
 1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
-4. 销售主线含 D-105/D-109 HubSpot、D-106 SAM、D-108/D-110 海关、**D-113—D-120**（公开查询 + VAT/汇率/维基 + **化工社只读/写反应/SVG 落盘**）。**用户侧**补勾 D-108/109/110。**下一刀须点名**：① CRM 字段/任务 CTA → ② 合集 P0 → ③ M3。
+4. 销售主线含 D-105/D-109/D-127 HubSpot、D-106 SAM、D-108/D-110 海关、**D-113—D-120**（公开查询 + VAT/汇率/维基 + **化工社只读/写反应/SVG 落盘**）、内容重构 **D-128 M3**。**用户侧**补勾 D-108/109/110/127。**下一刀须点名**：① 合集 P0；②（可选）确认打安装包以补验 M3 frozen `load_skill`。
 
 ## 文档索引
 
@@ -169,6 +171,7 @@
 - [SMTP 发送审批计划（D-099）](../superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md)
 - [HubSpot CRM 审批写入（D-105）](../superpowers/plans/2026-08-10-chemclaw-hubspot-crm-write-approval.md)
 - [HubSpot 创建联系人审批（D-109）](../superpowers/plans/2026-08-10-chemclaw-hubspot-create-contact-approval.md)
+- [HubSpot 字段更新/任务创建审批（D-127）](../superpowers/plans/2026-08-12-chemclaw-hubspot-crm-update-task-cta.md)
 - [国内登记 Provider（D-100）](../superpowers/plans/2026-08-09-chemclaw-cn-registry-provider.md)
 - [TED / Comtrade 队列](../superpowers/plans/2026-08-09-chemclaw-next-providers-queue.md)
 - [TED TenderProvider（D-101）](../superpowers/plans/2026-08-09-chemclaw-ted-tender-provider.md)
