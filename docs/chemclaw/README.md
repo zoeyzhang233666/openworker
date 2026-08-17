@@ -2,6 +2,7 @@
 
 ## 当前状态
 
+- **产物栏交付约定（2026-08-17，D-132）**：会话根目录为最终产物；`._chemclaw/charts/` 为内部过程文件。knowledge 会话隐藏遗留顶层 `charts/`；打开芯片时把当前 workspace 内的 Windows 绝对路径安全转为相对路径；RightRail 不再静默只显示 16 条。
 - **性能/路由改造 Plan v5（2026-08-13）**：Plan + execution log 已入库。[`…-v5.md`](../superpowers/plans/2026-08-13-chemclaw-performance-router-v5.md) / [`…-execution-log.md`](../superpowers/plans/2026-08-13-chemclaw-performance-router-v5-execution-log.md)。**HARD STOP A–G + §65 steps 46–55 final regression 已完成**。**Step 56–59（独立授权）已落地**：`request_routing_enabled` + `tool_projection_enabled` + **`structured_tools_true_streaming_enabled`（仅 known-safe）** + **`emergency_finalization_enabled`** built-in = **候选 ON**；unknown/custom compat **仍 buffered + salvage-safe**；FAST/KNOWLEDGE 强制 EF OFF；kill switch OFF 可回 legacy hard-limit。hard-ceiling / Stop / pending / durable-resume / unfinished side-effect：**NEW FAIL = none**（`test_durable_resume_approval_executes_tool` 仍为既有 EXISTING FAIL）。真实 GUI Critical Product Smoke A–P = **ENV BLOCKED — manual validation pending**。**四开关独立 rollout 已全部完成**；下一刀须新独立授权（合集 P0 / 其它产品门禁），不得自动改架构。
 - **默认身份自称（2026-08-13，D-131）**：默认 `cowork` 的 system prompt / Agent title / 前端 short·full 名统一为 **ChemClaw**（不再「我是 Cowork」）；路由 id 仍为 `cowork`。回归：`pytest` identity 3 passed；`personaScope`+Sidebar **10 passed**。
 - 产品设计：书面规格已于 2026-07-29 获得用户批准。

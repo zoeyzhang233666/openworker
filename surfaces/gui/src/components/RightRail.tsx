@@ -13,6 +13,7 @@ import { useI18n, type MessageKey } from "../i18n";
 import { AccessSection } from "./AccessSection";
 import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
+import { artifactIdentity, normalizeSeparators } from "../artifactPath";
 import { prepareHtmlPreview } from "../htmlPreviewSandbox";
 
 type Panel = "progress" | "artifacts";
@@ -142,11 +143,17 @@ export function RightRail({
       size: 0,
       modified_at: 0,
     });
-    const match = (list: ArtifactInfo[], path: string) =>
-      list.find((a) => a.path === path || a.path.endsWith("/" + path) || a.name === path);
+    const match = (list: ArtifactInfo[], path: string) => {
+      const want = artifactIdentity(path, workspace);
+      return list.find((a) => {
+        const p = normalizeSeparators(a.path);
+        return p === want || (want && p.endsWith("/" + want));
+      });
+    };
     const onOpen = (e: Event) => {
       const path = String((e as CustomEvent).detail?.path || "");
       if (!path) return;
+      const ident = artifactIdentity(path, workspace) || path;
       const found = match(artifacts, path);
       if (found) {
         setSelected(found);
@@ -155,13 +162,13 @@ export function RightRail({
       getArtifacts(sessionId)
         .then((list) => {
           setArtifacts(visibleArtifacts(list));
-          setSelected(match(list, path) ?? minimal(path));
+          setSelected(match(list, path) ?? minimal(ident));
         })
-        .catch(() => setSelected(minimal(path)));
+        .catch(() => setSelected(minimal(ident)));
     };
     window.addEventListener(OPEN_ARTIFACT_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_ARTIFACT_EVENT, onOpen);
-  }, [sessionId, artifacts]);
+  }, [sessionId, artifacts, workspace]);
 
   if (!active) return null;
 
@@ -214,7 +221,7 @@ export function RightRail({
               <div className="rail-muted">{t("No previewable files yet.")}</div>
             ) : (
               <div className="artifact-list">
-                {artifacts.slice(0, 16).map((a) => (
+                {artifacts.map((a) => (
                   <button className="artifact-row" key={a.path} onClick={() => setSelected(a)}>
                     <span className="artifact-ico" title={a.kind}>
                       <Icon name={kindIcon(a.kind)} size={17} />

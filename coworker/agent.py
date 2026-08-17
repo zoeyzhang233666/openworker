@@ -147,10 +147,13 @@ Long-turn research:
 re-run tools when needed — do NOT call write_file/create_artifact solely to checkpoint \
 scratch memory (that would trigger a write-approval card).
 - When delivering the user-facing final report, write a normal Markdown deliverable \
-(outside `._chemclaw/`) and keep updating the same report file across phases. End the \
+at the session workspace root (outside `._chemclaw/` and not under a root `charts/` \
+folder) and keep updating the same report file across phases. Put plot scripts, \
+intermediate JSON/CSV, and process images in `._chemclaw/charts/`. Copy or write \
+the images the report embeds next to the Markdown (same directory), using relative \
+links like `./甲醇价格走势.png` — never `file://`, never an absolute OS path. End the \
 reply with a markdown link `[标题](artifact:相对路径.md)` using the exact workspace-relative \
-path you wrote — never a bare filename without the link, never `file://`, never an absolute \
-OS path. After writing, the link must open the right-rail preview. Markdown is the default \
+path you wrote — never a bare filename without the link. After writing, the link must open the right-rail preview. Markdown is the default \
 primary reading surface — do not assume a background system will auto-build a webpage.
 - When that final Markdown report is linked, keep the chat bubble SHORT: a few sentences of \
 conclusions, a bullet list of key points, plus the document link. Do NOT paste the full \

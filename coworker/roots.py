@@ -106,6 +106,8 @@ def render_context(roots: list[RootDir]) -> str:
     lines.append(
         "Relative paths resolve against the primary directory; pass an absolute path to use "
         "another directory. Writes are only allowed in read-write directories. If the user "
-        "cares where a deliverable lands, ask; otherwise save it in the primary scratch."
+        "cares where a deliverable lands, ask; otherwise save user-facing files in the "
+        "primary scratch root. Plot scripts, intermediate JSON/CSV, and process images "
+        "belong in ._chemclaw/charts/ under that scratch — not a root charts/ folder."
     )
     return "\n".join(lines)

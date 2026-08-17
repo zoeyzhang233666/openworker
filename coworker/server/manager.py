@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from ..agent import build_engine
 from ..agents import get_agent
+from ..chemclaw_paths import workspace_relpath_or_none
 from ..connections import (
     PersonaConnectionStore,
     SessionConnectionStore,
@@ -1351,6 +1352,17 @@ class SessionManager:
     def browser_close(self) -> dict[str, Any]:
         return browser_close_session()
 
+    def _hide_legacy_charts_dir(self, session_id: str) -> bool:
+        """Knowledge/ChemClaw sessions: leftover root ``charts/`` is process work, not a deliverable."""
+        record = self.session_store.load(session_id)
+        agent_id = record.agent if record else None
+        if not agent_id:
+            return False
+        try:
+            return get_agent(agent_id).family != "code"
+        except Exception:
+            return False
+
     def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
         record = self.session_store.load(session_id)
         workspace = record.workspace if record else self.default_workspace
@@ -1359,6 +1371,7 @@ class SessionManager:
         root = Path(workspace).expanduser().resolve()
         if not root.is_dir():
             return []
+        hide_charts = self._hide_legacy_charts_dir(session_id)
         out: list[dict[str, Any]] = []
         suffixes = {
             ".md",
@@ -1398,6 +1411,12 @@ class SessionManager:
         skip = {"node_modules", "target", "dist", "__pycache__"} | OS_DATA_DIRS
         for dirpath, dirs, files in os.walk(root):
             dirs[:] = [d for d in dirs if not d.startswith(".") and d not in skip]
+            if hide_charts:
+                try:
+                    if Path(dirpath).resolve() == root:
+                        dirs[:] = [d for d in dirs if d != "charts"]
+                except OSError:
+                    pass
             for name in files:
                 if name.startswith("."):
                     continue
@@ -1440,8 +1459,9 @@ class SessionManager:
         if not workspace:
             return None, "artifact_no_workspace"
         root = Path(workspace).expanduser().resolve()
-        # Normalize separators so Windows clients and artifact: chips match.
-        rel = str(path or "").replace("\\", "/").lstrip("/")
+        rel = workspace_relpath_or_none(root, path)
+        if rel is None:
+            return None, "artifact_path_mismatch"
         target = (root / rel).expanduser().resolve()
         try:
             target.relative_to(root)

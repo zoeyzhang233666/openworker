@@ -243,6 +243,7 @@
 - **D-129（2026-08-12）**：Context compaction 产品默认改为 **70%** 触发比例与 **100,000** tokens 上限（`coworker/compaction.py` `DEFAULT_*` + 设置页无键回退）；设置页仍允许调到最高 95% / 2,000,000。不迁移已写入 prefs 的本机旧值。目的：更早摘要，降低拖到爆窗后反复硬裁（「上下文已自动精简以继续」）。
 - **D-130（2026-08-12）**：OPE-27 摘要可靠性首包采用「单次严格投影 + 分类诊断 + 确定性中间降级」，不立即增加多轮 map-reduce。摘要输入读取摘要模型 context window；未知模型按 32k，普通输入最多 24k tokens、紧缩重试最多 8k，并预留 3k 输出与至少 2k safety。`reasoning_content` 不得当作摘要正文；reasoning-only、空回复、输出截断、context overflow、限流、超时与其他 Provider 错误分别记录无正文 warning。保留既有 `compaction_model` Provider 路由；摘要等待默认 90s。两次失败后先生成确定性 continuity ledger，保留最近 todo、产物路径、命令状态、MCP 查询、助手结论、用户原话和近期原文；仍失败才最小 Trim。成功继续显示「上下文已自动压缩（较早轮次已摘要）」；非 LLM 降级继续显示「上下文已自动精简以继续」。canonical transcript 永不改写。
 - **D-131（2026-08-13）**：默认智能体对外身份统一为 **ChemClaw**（对齐 D-003）。`coworker/agents/cowork.py` 的 `COWORK_INSTRUCTIONS` / `title` 改为自称 ChemClaw（不再 “You are a Cowork agent” / title Cowork）；前端 `personaScope` 与侧栏 fallback 对 `id=cowork` 显示 ChemClaw（不再 Coworker/协作助手）。内部路由 id 仍为 `cowork`；不改 Python 包名；不清洗 Code/Chat/Ops 提示词中的 coworker 措辞。
+- **D-132（2026-08-17）**：会话 workspace **根目录 = 用户最终产物**（报告 Markdown 与其引用的图片等）；**`._chemclaw/` = 内部工作目录**（绘图脚本、中间 json/csv、过程图，默认 `._chemclaw/charts/`）。产物栏递归列举时继续跳过点目录；knowledge/ChemClaw 会话额外隐藏遗留顶层 `charts/`，Code 会话不隐藏。`artifact:` identity 为 workspace-relative；聊天里的 Windows 绝对路径仅当确实位于当前 workspace 内才安全相对化（`PureWindowsPath`，禁止 basename）。RightRail 展示全部产物，不再静默截断 16 条。不把扫描改成只看根目录；不取消 workspace escape。
 
 ## 协作治理
 

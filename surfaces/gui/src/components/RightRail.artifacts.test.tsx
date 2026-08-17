@@ -121,4 +121,57 @@ describe("RightRail artifacts panel", () => {
     expect(screen.queryByText("clip-1.txt")).toBeNull();
     expect(screen.queryByText("查看任务进度")).toBeNull();
   });
+
+  it("lists more than 16 deliverables instead of silently truncating", async () => {
+    const sessionId = "s-many";
+    const artifacts = Array.from({ length: 20 }, (_, i) => ({
+      path: `report-${String(i + 1).padStart(2, "0")}.md`,
+      name: `report-${String(i + 1).padStart(2, "0")}.md`,
+      kind: "markdown",
+      size: 10,
+      modified_at: 20 - i,
+    }));
+    stubFetch([
+      {
+        match: `/v1/sessions/${sessionId}/artifacts`,
+        method: "GET",
+        json: { artifacts },
+      },
+      {
+        match: `/v1/sessions/${sessionId}/roots`,
+        method: "GET",
+        json: { roots: [] },
+      },
+      {
+        match: `/v1/sessions/${sessionId}/connections`,
+        method: "GET",
+        json: { connected: [], recommended: [], attention: 0 },
+      },
+      {
+        match: `/v1/connectors`,
+        method: "GET",
+        json: [],
+      },
+    ]);
+
+    render(
+      <LocaleProvider>
+        <RightRail
+          active={true}
+          sessionId={sessionId}
+          refreshKey={0}
+          toolNames={[]}
+          todo={[]}
+          running={false}
+          onPreviewChange={() => {}}
+        />
+      </LocaleProvider>,
+    );
+
+    await screen.findByText("report-01.md");
+    expect(screen.getByText("report-17.md")).toBeTruthy();
+    expect(screen.getByText("report-18.md")).toBeTruthy();
+    expect(screen.getByText("report-19.md")).toBeTruthy();
+    expect(screen.getByText("report-20.md")).toBeTruthy();
+  });
 });
