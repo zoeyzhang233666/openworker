@@ -130,6 +130,15 @@ you're doing and why (e.g. "Checking what merged since yesterday's digest."). It
 to the user as live progress. Don't narrate trivial single-call follow-ups, don't repeat \
 the previous line, and never let narration replace your final answer."""
 
+# Section 65 step 46: encourage batched independent read-only tool calls (Engine already
+# runs low-risk tools concurrently when requested in the same assistant turn).
+_TOOL_BATCHING_GUIDANCE = """\
+Tool efficiency:
+When multiple read-only searches, lookups, or file reads are independent,
+request them together in the same assistant tool-call turn instead of serializing
+them across separate model iterations.
+Only serialize calls when a later call genuinely depends on an earlier result."""
+
 # ChemClaw long-turn hard guidance (D-073 / D-077–D-078): resume + short bubble + optional webpage.
 _LONG_TASK_GUIDANCE = """\
 Long-turn research:
@@ -291,6 +300,15 @@ def build_engine(
     skill_dirs: Optional[list[str | Path]] = None,
     # Persona frontmatter `skills:` (D-068) — remind the model to load_skill these first.
     default_skill_ids: Optional[list[str]] = None,
+    # Optional route ExecutionProfile (HARD STOP D/E). None = legacy-inert path.
+    # Callers may pass resolve_execution_profile(...)[1] when request_routing_enabled.
+    # Schema projection is gated by tool_projection_enabled (independent; Step 57 candidate ON).
+    execution_profile: Optional[Any] = None,
+    tool_projection_enabled: Optional[bool] = None,
+    structured_tools_true_streaming_enabled: Optional[bool] = None,
+    emergency_finalization_enabled: Optional[bool] = None,
+    turn_tool_policy: Optional[Any] = None,
+    mandatory_tool_names: Optional[set[str]] = None,
 ) -> TurnEngine:
     ws = Path(workspace).expanduser().resolve() if workspace else None
     if agent.needs_workspace and ws is None:
@@ -431,6 +449,7 @@ def build_engine(
 
     instructions = (
         f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}\n\n"
+        f"{_TOOL_BATCHING_GUIDANCE}\n\n"
         f"{_LONG_TASK_GUIDANCE}\n\n"
         f"{_DIAGRAM_GUIDANCE}\n\n{_CLARIFY_POINTER}"
     )
@@ -584,6 +603,24 @@ def build_engine(
         directory_requester=directory_requester,
         plan_approver=plan_approver,
         question_asker=question_asker,
+        execution_profile=execution_profile,
+        tool_projection_enabled=(
+            bool(config.tool_projection_enabled)
+            if tool_projection_enabled is None
+            else bool(tool_projection_enabled)
+        ),
+        structured_tools_true_streaming_enabled=(
+            bool(config.structured_tools_true_streaming_enabled)
+            if structured_tools_true_streaming_enabled is None
+            else bool(structured_tools_true_streaming_enabled)
+        ),
+        emergency_finalization_enabled=(
+            bool(config.emergency_finalization_enabled)
+            if emergency_finalization_enabled is None
+            else bool(emergency_finalization_enabled)
+        ),
+        turn_tool_policy=turn_tool_policy,
+        mandatory_tool_names=mandatory_tool_names,
     )
     engine.executor = executor  # type: ignore[attr-defined]
     engine.todo = todo  # type: ignore[attr-defined]

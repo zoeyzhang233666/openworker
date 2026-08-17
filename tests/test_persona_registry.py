@@ -53,6 +53,19 @@ def test_personas_endpoint_exposes_chemclaw_name_without_changing_cowork_routing
     assert manager.personas.agent(cowork["id"]).name == "cowork"
 
 
+def test_default_cowork_system_prompt_identifies_as_chemclaw(tmp_path):
+    """D-003 / branding: model identity must say ChemClaw, not legacy Cowork."""
+    from coworker.agents.cowork import cowork_agent
+
+    reg = _reg(tmp_path)
+    agent = reg.agent("cowork")
+    built = cowork_agent()
+    for prompt in (agent.system_prompt, built.system_prompt):
+        assert "ChemClaw" in prompt
+        assert "You are a Cowork agent" not in prompt
+    assert built.title == "ChemClaw"
+
+
 def test_chat_disabled_by_default_but_resolvable(tmp_path):
     reg = _reg(tmp_path)
     assert reg.is_surfaced("chat") is False  # default-hidden

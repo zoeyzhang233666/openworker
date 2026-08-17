@@ -242,6 +242,7 @@
 - **D-128（2026-08-12）**：用户点名实现**化工多平台内容重构 M3**：`chem-content-policy` 词表拆为 `references/lexicon/managed/`（官方可按 `rule_version` 热升级）+ `user.csv`（用户覆盖/`action=suppress`，官方同步永不覆盖）；`scan_content` 合并两层并输出 `rule_set:{id,version}`；启动时 `sync_managed_lexicon` 在 `seed_bundled_skills` 之后仅同步 managed（兼容旧 `lexicon/base.csv` 迁移）；package-data / SkillLoader 路径验收；**不等于**已确认重打 NSIS（产物内 frozen `load_skill` 须用户再确认打安装包后补验）。计划见 `docs/superpowers/plans/2026-08-10-chemclaw-platform-rewrite-builtin-pack.md`。
 - **D-129（2026-08-12）**：Context compaction 产品默认改为 **70%** 触发比例与 **100,000** tokens 上限（`coworker/compaction.py` `DEFAULT_*` + 设置页无键回退）；设置页仍允许调到最高 95% / 2,000,000。不迁移已写入 prefs 的本机旧值。目的：更早摘要，降低拖到爆窗后反复硬裁（「上下文已自动精简以继续」）。
 - **D-130（2026-08-12）**：OPE-27 摘要可靠性首包采用「单次严格投影 + 分类诊断 + 确定性中间降级」，不立即增加多轮 map-reduce。摘要输入读取摘要模型 context window；未知模型按 32k，普通输入最多 24k tokens、紧缩重试最多 8k，并预留 3k 输出与至少 2k safety。`reasoning_content` 不得当作摘要正文；reasoning-only、空回复、输出截断、context overflow、限流、超时与其他 Provider 错误分别记录无正文 warning。保留既有 `compaction_model` Provider 路由；摘要等待默认 90s。两次失败后先生成确定性 continuity ledger，保留最近 todo、产物路径、命令状态、MCP 查询、助手结论、用户原话和近期原文；仍失败才最小 Trim。成功继续显示「上下文已自动压缩（较早轮次已摘要）」；非 LLM 降级继续显示「上下文已自动精简以继续」。canonical transcript 永不改写。
+- **D-131（2026-08-13）**：默认智能体对外身份统一为 **ChemClaw**（对齐 D-003）。`coworker/agents/cowork.py` 的 `COWORK_INSTRUCTIONS` / `title` 改为自称 ChemClaw（不再 “You are a Cowork agent” / title Cowork）；前端 `personaScope` 与侧栏 fallback 对 `id=cowork` 显示 ChemClaw（不再 Coworker/协作助手）。内部路由 id 仍为 `cowork`；不改 Python 包名；不清洗 Code/Chat/Ops 提示词中的 coworker 措辞。
 
 ## 协作治理
 

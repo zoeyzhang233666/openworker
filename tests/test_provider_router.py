@@ -30,7 +30,10 @@ def test_base_url_passed_to_sdk(monkeypatch):
     OpenAIProvider(
         api_key="ollama", base_url="http://localhost:11434/v1"
     )._ensure_client()
-    assert captured == {"api_key": "ollama", "base_url": "http://localhost:11434/v1"}
+    assert captured["api_key"] == "ollama"
+    assert captured["base_url"] == "http://localhost:11434/v1"
+    assert "timeout" in captured
+    assert "max_retries" not in captured  # complete/non-stream keeps SDK retry
 
 
 def test_base_url_omitted_when_none(monkeypatch):
@@ -259,6 +262,85 @@ def test_salvage_nested_braces_in_tag():
     calls = _salvage_tool_calls_from_text(text, _TODO_TOOLS)
     assert calls[0].name == "todo_write"
     assert calls[0].arguments == {"items": [{"content": "a", "status": "pending"}]}
+
+
+def test_salvage_qwen_hermes_xml_function_blocks():
+    """Qwen3-coder / Hermes emit nested XML, not JSON, inside (or without) <tool_call>."""
+    text = (
+        "<tool_call>"
+        "<function=todo_write>"
+        # No embedded whitespace → _coerce_param recovers real JSON values.
+        '<parameter=items>[{"content":"Plan","status":"pending"}]</parameter>'
+        "</function>"
+        "</tool_call>"
+    )
+    calls = _salvage_tool_calls_from_text(text, _TODO_TOOLS)
+    assert len(calls) == 1
+    assert calls[0].id == "call_salvaged_0"
+    assert calls[0].name == "todo_write"
+    assert calls[0].arguments == {
+        "items": [{"content": "Plan", "status": "pending"}]
+    }
+
+
+def test_salvage_qwen_hermes_preserves_free_text_parameter_values():
+    write_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "write_file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                    },
+                    "required": ["path", "content"],
+                },
+            },
+        }
+    ]
+    text = (
+        "<function=write_file>"
+        "<parameter=path>hello.txt</parameter>"
+        "<parameter=content>line one\nline two</parameter>"
+        "</function>"
+    )
+    calls = _salvage_tool_calls_from_text(text, write_tools)
+    assert calls[0].name == "write_file"
+    assert calls[0].arguments == {
+        "path": "hello.txt",
+        "content": "line one\nline two",
+    }
+
+
+def test_salvage_qwen_hermes_filters_unknown_function_name():
+    text = (
+        "<function=rm_rf>"
+        "<parameter=path>/</parameter>"
+        "</function>"
+    )
+    assert _salvage_tool_calls_from_text(text, _TODO_TOOLS) == []
+
+
+def test_salvage_parameters_alias_for_arguments():
+    calls = _salvage_tool_calls_from_text(
+        '{"name": "list_files", "parameters": {"recursive": true}}',
+        _TODO_TOOLS,
+    )
+    assert calls[0].name == "list_files"
+    assert calls[0].arguments == {"recursive": True}
+
+
+def test_maybe_salvage_skips_when_structured_tool_calls_already_present():
+    from coworker.providers.base import ToolCall
+    from coworker.providers.openai_provider import _maybe_salvage_tool_calls
+
+    blob = '{"name": "list_files", "arguments": {"recursive": true}}'
+    structured = [ToolCall(id="call_1", name="todo_write", arguments={"items": []})]
+    text, calls = _maybe_salvage_tool_calls(blob, structured, tools=_TODO_TOOLS)
+    assert text == blob
+    assert calls == structured
 
 
 class _FakeOAClient:

@@ -47,4 +47,4 @@
 
 ## 当前门禁
 
-产品设计与阶段 1 实施计划已获批准。销售主线首包（D-091—D-122）与内容重构 M1+M2+M3（D-104/D-107/**D-128**）已落地。**D-127 HubSpot 字段更新/任务创建 CTA 已落地**。当前：公开查询必显销售 Provider；VAT/汇率/维基已接线；**化工社只读 + 写反应 + SVG 落盘**（D-118/D-119/D-120）；**压缩硬裁提示中性化**（D-121）；**压缩默认 70%/100k**（D-129）；**四销售龙虾专属空态三卡**（D-122）。按 GATE 点检 D-108+。下一刀默认合集 P0。以 `docs/chemclaw/README.md` 为准。
+产品设计与阶段 1 实施计划已获批准。销售主线首包（D-091—D-122）与内容重构 M1+M2+M3（D-104/D-107/**D-128**）已落地。**D-127 HubSpot 字段更新/任务创建 CTA 已落地**。**D-131 默认智能体自称 ChemClaw**（system prompt/title/UI，id 仍 `cowork`）。当前：公开查询必显销售 Provider；VAT/汇率/维基已接线；**化工社只读 + 写反应 + SVG 落盘**（D-118/D-119/D-120）；**压缩硬裁提示中性化**（D-121）；**压缩默认 70%/100k**（D-129）；**四销售龙虾专属空态三卡**（D-122）。**性能 Router v5：HARD STOP A–G + §65 46–55 已完成；Step 56–59 已授权落地**（routing + projection + structured-tools true streaming known-safe + Emergency Finalization built-in = 候选 ON；unknown/custom 仍 buffered；FAST/KNOWLEDGE EF 强制 OFF；NEW FAIL = none）。**四开关独立 rollout 已全部完成**。下一刀须新独立授权（合集 P0 / 其它产品门禁）。按 GATE 点检 D-108+。以 `docs/chemclaw/README.md` 为准。

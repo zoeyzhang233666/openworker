@@ -35,7 +35,7 @@ import { CLOUD_SIGNIN_ENABLED, PRODUCT_NAME } from "../product";
 // Session surfaces shown as accordions, in display order. The surfaced personas drive this list
 // (so third-party / Ops personas appear); the hardcoded set is the fallback before personas load.
 const SURFACES: { key: string; label: string; icon: IconName; cls: string }[] = [
-  { key: "cowork", label: "Coworker", icon: "diamond", cls: "ico-cowork" },
+  { key: "cowork", label: "ChemClaw", icon: "diamond", cls: "ico-cowork" },
   { key: "chat", label: "Chat", icon: "chat", cls: "ico-chat" },
   { key: "code", label: "Code", icon: "code", cls: "ico-code" },
 ];
@@ -215,9 +215,8 @@ const compactAge = (iso: string | null | undefined, locale: Locale): string => {
 export function Sidebar(props: Props) {
   const { locale, t } = useI18n();
   const localizedSurfaceLabel = (label: string) =>
-    label === "Coworker" || label === "Chat" || label === "Code"
-      ? t(label)
-      : label;
+    // ChemClaw is the product brand — never localize to legacy "协作助手"/Coworker.
+    label === "Chat" || label === "Code" ? t(label) : label;
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   // Account row: local profile (name + optional avatar) is the default identity.

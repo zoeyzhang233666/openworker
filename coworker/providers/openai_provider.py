@@ -11,8 +11,10 @@ tools combined with reasoning on GPT-5.6+, so reasoning + tools needs `/v1/respo
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 from .base import (
     AssistantTurn,
@@ -23,6 +25,8 @@ from .base import (
     ToolCall,
 )
 from .capabilities import capabilities_for
+
+_log = logging.getLogger(__name__)
 
 
 def resolve_api_key(secrets: Any = None) -> Optional[str]:
@@ -162,6 +166,82 @@ def _usage_from(usage: Any) -> Optional[TokenUsage]:
     )
 
 
+# ChemClaw owns streaming transport retry (progress-gated). Keep attempts conservative so we
+# do not stack SDK retries + many ChemClaw attempts + complete() fallback.
+MAX_STREAM_ATTEMPTS = 2
+
+# HARD STOP F: ChemClaw-internal stream() kwarg — never forwarded to the OpenAI API.
+_STRUCTURED_TOOLS_STREAMING_SETTING = "structured_tools_true_streaming_enabled"
+
+# Conservative known-safe matrix for tools-enabled true streaming. Being
+# "OpenAI-compatible" alone is never enough — unknown/custom hosts stay salvage-safe.
+_KNOWN_SAFE_STRUCTURED_TOOL_MODEL_PREFIXES = ("gpt-4", "gpt-5", "o1", "o3", "o4")
+
+
+def is_known_safe_structured_tools_streaming(
+    model: str, *, base_url: Optional[str] = None
+) -> bool:
+    """True only for explicitly allowlisted provider/model hosts.
+
+    Stock OpenAI Chat Completions (``base_url is None`` / ``api.openai.com``) and
+    Azure OpenAI hosts with GPT-/o-family model names qualify. Reseller / ApiHub /
+    Ollama / DashScope / arbitrary custom endpoints do not — even when the model
+    string looks like ``gpt-*``.
+    """
+    name = model.split(":", 1)[-1].lower()
+    if not name.startswith(_KNOWN_SAFE_STRUCTURED_TOOL_MODEL_PREFIXES):
+        return False
+    if not base_url:
+        return True
+    host = (urlparse(base_url).hostname or "").lower()
+    if host == "api.openai.com":
+        return True
+    if host == "openai.azure.com" or host.endswith(".openai.azure.com"):
+        return True
+    return False
+
+
+def _should_true_stream_with_tools(
+    *,
+    model: str,
+    base_url: Optional[str],
+    enabled: bool,
+) -> bool:
+    """Kill switch ON + known-safe matrix → tools-enabled true streaming; else compat."""
+    return bool(enabled) and is_known_safe_structured_tools_streaming(
+        model, base_url=base_url
+    )
+
+
+def _sdk_client_kwargs(
+    *,
+    api_key: str,
+    base_url: Optional[str] = None,
+    streaming_retry_owned: bool = False,
+) -> dict[str, Any]:
+    """Shared OpenAI SDK constructor kwargs.
+
+    Streaming clients set ``max_retries=0`` so ChemClaw's provider_progress gate is the only
+    retry owner. Non-stream / ``complete()`` clients omit that override and keep SDK defaults.
+    """
+    import httpx
+
+    kwargs: dict[str, Any] = {
+        "api_key": api_key,
+        "timeout": httpx.Timeout(
+            connect=15.0,
+            read=120.0,
+            write=30.0,
+            pool=15.0,
+        ),
+    }
+    if base_url:
+        kwargs["base_url"] = base_url
+    if streaming_retry_owned:
+        kwargs["max_retries"] = 0
+    return kwargs
+
+
 class OpenAIProvider(ProviderClient):
     def __init__(
         self,
@@ -188,7 +268,7 @@ class OpenAIProvider(ProviderClient):
         self._secrets = secrets
         self.default_model = default_model
 
-    def _make_sdk_client(self) -> Any:
+    def _make_sdk_client(self, *, streaming_retry_owned: bool = False) -> Any:
         """Build a new OpenAI SDK client from current key/base_url settings."""
         from openai import OpenAI
 
@@ -198,15 +278,19 @@ class OpenAIProvider(ProviderClient):
                 "No model API key configured. Set OPENAI_API_KEY in the environment, "
                 "or add your key in Manage → Settings."
             )
-        kwargs: dict[str, Any] = {"api_key": key}
-        if self._base_url:
-            kwargs["base_url"] = self._base_url
-        return OpenAI(**kwargs)
+        return OpenAI(
+            **_sdk_client_kwargs(
+                api_key=key,
+                base_url=self._base_url,
+                streaming_retry_owned=streaming_retry_owned,
+            )
+        )
 
     def _ensure_client(self) -> Any:
         if self._client is None:
             # Lazy import so the SDK is only required when actually talking to OpenAI.
-            self._client = self._make_sdk_client()
+            # Non-stream path keeps SDK retry ownership (streaming_retry_owned=False).
+            self._client = self._make_sdk_client(streaming_retry_owned=False)
         return self._client
 
     def _stream_client(self) -> tuple[Any, bool]:
@@ -220,7 +304,7 @@ class OpenAIProvider(ProviderClient):
         """
         if self._client_injected:
             return self._client, False
-        return self._make_sdk_client(), True
+        return self._make_sdk_client(streaming_retry_owned=True), True
 
     def complete(
         self,
@@ -276,12 +360,16 @@ class OpenAIProvider(ProviderClient):
         tools: Optional[list[dict[str, Any]]] = None,
         **settings: Any,
     ):
+        # ChemClaw-internal kill switch — never forward to the OpenAI request body.
+        structured_tools_streaming = bool(
+            settings.pop(_STRUCTURED_TOOLS_STREAMING_SETTING, False)
+        )
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": _prepare_messages(messages),
             "stream": True,
             # Usage on the final chunk (empty choices). Compat servers that reject
-            # the option get a one-shot retry without it (_param_fix_retry).
+            # the option get a one-shot retry without it (_param_form_retry).
             "stream_options": {"include_usage": True},
             **settings,
         }
@@ -290,22 +378,82 @@ class OpenAIProvider(ProviderClient):
         _pin_reasoning_effort(kwargs)
         client, close_after = self._stream_client()
 
-        # Compat gateways sometimes close the chunked body mid-turn ("incomplete
-        # chunked read"). Buffer each attempt fully so a dead partial never reaches
-        # the UI, retry a couple of times, then fall back to non-streaming complete().
+        # Transport retry is ChemClaw-owned and progress-gated:
+        # - no semantic provider progress → at most one retry, then optional complete()
+        # - any text / reasoning / structured tool / textual-tool candidate → never regenerate
+        #
+        # Streaming path selection (HARD STOP B + F):
+        # - tools=None → always true streaming
+        # - tools enabled + kill switch ON + known-safe → true streaming (structured only)
+        # - otherwise → compat-buffered + textual salvage
+        true_stream_tools = tools is not None and _should_true_stream_with_tools(
+            model=model,
+            base_url=self._base_url,
+            enabled=structured_tools_streaming,
+        )
         try:
             last_transport: Optional[BaseException] = None
-            for _attempt in range(3):
+            for attempt in range(MAX_STREAM_ATTEMPTS):
+                progress = {"seen": False}
+                if tools is None:
+                    stream_mode = "direct"
+                elif true_stream_tools:
+                    stream_mode = "structured"
+                else:
+                    stream_mode = "compat_buffered"
                 try:
-                    buffered = _collect_stream_chunks(client, kwargs, tools=tools)
+                    from ..turn_instrumentation import (
+                        build_provider_stream_snapshot,
+                        emit_instrumentation,
+                    )
+
+                    emit_instrumentation(
+                        "provider_stream",
+                        build_provider_stream_snapshot(
+                            stream_attempt=attempt + 1,
+                            stream_mode=stream_mode,
+                        ),
+                    )
+                except Exception:
+                    pass
+                try:
+                    if tools is None or true_stream_tools:
+                        yield from _iter_true_stream_chunks(
+                            client, kwargs, progress=progress
+                        )
+                    else:
+                        buffered = _collect_stream_chunks(
+                            client, kwargs, tools=tools, progress=progress
+                        )
+                        for chunk in buffered:
+                            yield chunk
+                    return
                 except Exception as exc:
-                    if _is_stream_transport_error(exc):
-                        last_transport = exc
-                        continue
-                    raise
-                for chunk in buffered:
-                    yield chunk
-                return
+                    if not _is_stream_transport_error(exc):
+                        raise
+                    last_transport = exc
+                    try:
+                        from ..turn_instrumentation import (
+                            build_provider_stream_snapshot,
+                            emit_instrumentation,
+                        )
+
+                        emit_instrumentation(
+                            "provider_stream",
+                            build_provider_stream_snapshot(
+                                stream_attempt=attempt + 1,
+                                stream_mode=stream_mode,
+                                provider_progress_seen=bool(progress.get("seen")),
+                                transport_failure_type=type(exc).__name__,
+                                retried=attempt + 1 < MAX_STREAM_ATTEMPTS
+                                and not progress.get("seen"),
+                            ),
+                        )
+                    except Exception:
+                        pass
+                    if progress["seen"]:
+                        raise
+                    continue
 
             turn = self.complete(
                 model=model, messages=messages, tools=tools, **settings
@@ -323,6 +471,7 @@ class OpenAIProvider(ProviderClient):
                         close()
                     except Exception:
                         pass
+
 
 
 def _is_stream_transport_error(exc: BaseException) -> bool:
@@ -348,29 +497,127 @@ def _is_stream_transport_error(exc: BaseException) -> bool:
     return False
 
 
+def _open_chat_completion_stream(client: Any, kwargs: dict[str, Any]) -> Any:
+    """Open one upstream chat.completions stream with param-form retries only."""
+    req = dict(kwargs)
+    # Up to two param-form retries: effort and max_tokens can BOTH need fixing.
+    for _ in range(2):
+        try:
+            return client.chat.completions.create(**req)
+        except Exception as exc:
+            if _is_stream_transport_error(exc):
+                raise
+            req = _param_fix_retry(req, exc)
+    return client.chat.completions.create(**req)
+
+
+def _mark_provider_progress(progress: Optional[dict[str, bool]]) -> None:
+    if progress is not None:
+        progress["seen"] = True
+
+
+def _accumulate_structured_tool_delta(
+    tool_accum: dict[int, dict[str, str]], tc: Any
+) -> None:
+    acc = tool_accum.setdefault(
+        getattr(tc, "index", 0), {"id": "", "name": "", "args": ""}
+    )
+    if getattr(tc, "id", None):
+        acc["id"] = tc.id
+    fn = getattr(tc, "function", None)
+    if fn is not None:
+        if getattr(fn, "name", None):
+            acc["name"] = fn.name
+        if getattr(fn, "arguments", None):
+            acc["args"] += fn.arguments
+
+
+def _finalize_tool_calls(
+    tool_accum: dict[int, dict[str, str]],
+) -> list[ToolCall]:
+    tool_calls: list[ToolCall] = []
+    for index in sorted(tool_accum):
+        acc = tool_accum[index]
+        try:
+            arguments = json.loads(acc["args"]) if acc["args"] else {}
+        except (TypeError, json.JSONDecodeError):
+            arguments = {"_raw": acc["args"]}
+        tool_calls.append(
+            ToolCall(id=acc["id"], name=acc["name"], arguments=arguments)
+        )
+    return tool_calls
+
+
+def _iter_true_stream_chunks(
+    client: Any,
+    kwargs: dict[str, Any],
+    *,
+    progress: Optional[dict[str, bool]] = None,
+):
+    """``tools is None`` path: parse and yield each semantic delta immediately."""
+    chunks = _open_chat_completion_stream(client, kwargs)
+
+    text_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    tool_accum: dict[int, dict[str, str]] = {}
+    finish_reason = None
+    usage: Optional[TokenUsage] = None
+
+    for chunk in chunks:
+        chunk_usage = _usage_from(getattr(chunk, "usage", None))
+        if chunk_usage is not None:
+            usage = chunk_usage
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        choice = choices[0]
+        delta = getattr(choice, "delta", None)
+        if delta is not None:
+            reasoning = _delta_reasoning(delta)
+            if reasoning:
+                _mark_provider_progress(progress)
+                reasoning_parts.append(reasoning)
+                yield StreamChunk(reasoning_delta=reasoning)
+            content = getattr(delta, "content", None)
+            if content:
+                _mark_provider_progress(progress)
+                text_parts.append(content)
+                yield StreamChunk(text_delta=content)
+            for tc in getattr(delta, "tool_calls", None) or []:
+                _mark_provider_progress(progress)
+                _accumulate_structured_tool_delta(tool_accum, tc)
+        if getattr(choice, "finish_reason", None):
+            finish_reason = choice.finish_reason
+
+    tool_calls = _finalize_tool_calls(tool_accum)
+    reasoning = "".join(reasoning_parts) or None
+    yield StreamChunk(
+        turn=AssistantTurn(
+            text="".join(text_parts) or None,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            reasoning=reasoning,
+            extras=_reasoning_extras(reasoning),
+            usage=usage,
+        )
+    )
+
+
 def _collect_stream_chunks(
     client: Any,
     kwargs: dict[str, Any],
     *,
     tools: Optional[list[dict[str, Any]]],
+    progress: Optional[dict[str, bool]] = None,
 ) -> list[StreamChunk]:
-    """Run one streaming attempt to completion and return buffered chunks.
+    """Tools-enabled compatibility path: buffer one attempt, then salvage-safe yield.
 
     Param-form retries (effort / max_tokens / stream_options) still apply on create().
     Transport errors during iteration propagate to the caller for retry/fallback.
+    Intermediate text deltas that are salvaged into tool_calls are dropped so potential
+    tool-call text never reaches the UI as assistant deltas.
     """
-    req = dict(kwargs)
-    # Up to two param-form retries: effort and max_tokens can BOTH need fixing.
-    for _ in range(2):
-        try:
-            chunks = client.chat.completions.create(**req)
-            break
-        except Exception as exc:
-            if _is_stream_transport_error(exc):
-                raise
-            req = _param_fix_retry(req, exc)
-    else:
-        chunks = client.chat.completions.create(**req)
+    chunks = _open_chat_completion_stream(client, kwargs)
 
     text_parts: list[str] = []
     reasoning_parts: list[str] = []
@@ -391,41 +638,29 @@ def _collect_stream_chunks(
         if delta is not None:
             reasoning = _delta_reasoning(delta)
             if reasoning:
+                _mark_provider_progress(progress)
                 reasoning_parts.append(reasoning)
                 out.append(StreamChunk(reasoning_delta=reasoning))
             content = getattr(delta, "content", None)
             if content:
+                # Text while tools were offered counts as semantic progress even before
+                # salvage — may be prose or a textual tool-call candidate.
+                _mark_provider_progress(progress)
                 text_parts.append(content)
                 out.append(StreamChunk(text_delta=content))
             for tc in getattr(delta, "tool_calls", None) or []:
-                acc = tool_accum.setdefault(
-                    getattr(tc, "index", 0), {"id": "", "name": "", "args": ""}
-                )
-                if getattr(tc, "id", None):
-                    acc["id"] = tc.id
-                fn = getattr(tc, "function", None)
-                if fn is not None:
-                    if getattr(fn, "name", None):
-                        acc["name"] = fn.name
-                    if getattr(fn, "arguments", None):
-                        acc["args"] += fn.arguments
+                _mark_provider_progress(progress)
+                _accumulate_structured_tool_delta(tool_accum, tc)
         if getattr(choice, "finish_reason", None):
             finish_reason = choice.finish_reason
 
-    tool_calls = []
-    for index in sorted(tool_accum):
-        acc = tool_accum[index]
-        try:
-            arguments = json.loads(acc["args"]) if acc["args"] else {}
-        except (TypeError, json.JSONDecodeError):
-            arguments = {"_raw": acc["args"]}
-        tool_calls.append(
-            ToolCall(id=acc["id"], name=acc["name"], arguments=arguments)
-        )
-
+    tool_calls = _finalize_tool_calls(tool_accum)
     text, tool_calls = _maybe_salvage_tool_calls(
         "".join(text_parts) or None, tool_calls, tools=tools
     )
+    if text is None and tool_calls:
+        # Salvaged textual tool calls must not have leaked as ASSISTANT_DELTA fodder.
+        out = [c for c in out if not c.text_delta]
     reasoning = "".join(reasoning_parts) or None
     out.append(
         StreamChunk(
@@ -508,6 +743,23 @@ def _maybe_salvage_tool_calls(
         return text, tool_calls
     salvaged = _salvage_tool_calls_from_text(text, tools)
     if salvaged:
+        try:
+            from ..turn_instrumentation import (
+                build_provider_stream_snapshot,
+                emit_instrumentation,
+            )
+
+            emit_instrumentation(
+                "provider_stream",
+                build_provider_stream_snapshot(
+                    stream_attempt=0,
+                    stream_mode="compat_buffered",
+                    tool_progress_seen=True,
+                    textual_tool_salvage_used=True,
+                ),
+            )
+        except Exception:
+            pass
         return None, salvaged
     return text, tool_calls
 

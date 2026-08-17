@@ -268,9 +268,11 @@ def test_unrelated_400s_are_not_retried():
 # -- streaming ------------------------------------------------------------------
 
 
-def _chunk(content=None, tool_call=None, finish=None):
+def _chunk(content=None, tool_call=None, finish=None, reasoning=None):
     delta = SimpleNamespace(
-        content=content, tool_calls=[tool_call] if tool_call else None
+        content=content,
+        tool_calls=[tool_call] if tool_call else None,
+        reasoning_content=reasoning,
     )
     return SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=finish)])
 
@@ -291,6 +293,42 @@ def test_stream_text_deltas():
     assert out[-1].turn.finish_reason == "stop"
 
 
+def test_stream_tools_none_yields_deltas_before_upstream_finishes():
+    """tools=None must true-stream: first delta is visible before later chunks arrive."""
+    import threading
+
+    release_rest = threading.Event()
+    first_pulled = threading.Event()
+
+    class _GatedStream:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            def _gen():
+                yield _chunk(content="Hel")
+                assert first_pulled.wait(timeout=2.0), "consumer never pulled first delta"
+                assert release_rest.wait(timeout=2.0), "test never released remaining chunks"
+                yield _chunk(content="lo")
+                yield _chunk(finish="stop")
+
+            return _gen()
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _GatedStream()
+    provider = OpenAIProvider(client=client)
+    it = iter(provider.stream(model="gpt-5.5", messages=[]))
+    first = next(it)
+    assert first.text_delta == "Hel"
+    first_pulled.set()
+    release_rest.set()
+    rest = list(it)
+    assert [c.text_delta for c in rest if c.text_delta] == ["lo"]
+    assert rest[-1].turn.text == "Hello"
+
+
 def test_stream_accumulates_tool_calls():
     tc1 = SimpleNamespace(
         index=0,
@@ -308,9 +346,303 @@ def test_stream_accumulates_tool_calls():
     )
 
 
+def test_stream_salvages_textual_tool_call_on_final_turn():
+    """Compat-buffered tools path: salvage into structured tool_calls and never leak
+    the raw textual tool-call blob as ASSISTANT_DELTA text_delta."""
+    blob = '{"name": "get_weather", "arguments": {"city": "Paris"}}'
+    tools = [{"type": "function", "function": {"name": "get_weather"}}]
+    chunks = [
+        _chunk(content=blob[:20]),
+        _chunk(content=blob[20:]),
+        _chunk(finish="stop"),
+    ]
+    provider = OpenAIProvider(client=_StreamClient(chunks))
+    out = list(provider.stream(model="ollama:x", messages=[], tools=tools))
+    assert [c.text_delta for c in out if c.text_delta] == []
+    turn = out[-1].turn
+    assert turn.text is None
+    assert turn.has_tool_calls
+    assert turn.tool_calls[0].name == "get_weather"
+    assert turn.tool_calls[0].arguments == {"city": "Paris"}
+
+
+def test_stream_does_not_salvage_textual_tool_call_without_tools():
+    blob = '{"name": "get_weather", "arguments": {"city": "Paris"}}'
+    chunks = [_chunk(content=blob), _chunk(finish="stop")]
+    provider = OpenAIProvider(client=_StreamClient(chunks))
+    turn = list(provider.stream(model="ollama:x", messages=[]))[-1].turn
+    assert not turn.has_tool_calls
+    assert turn.text == blob
+
+
+def test_stream_malformed_structured_tool_args_keep_raw():
+    tc = SimpleNamespace(
+        index=0,
+        id="call_bad",
+        function=SimpleNamespace(name="x", arguments="{not json"),
+    )
+    chunks = [_chunk(tool_call=tc), _chunk(finish="tool_calls")]
+    provider = OpenAIProvider(client=_StreamClient(chunks))
+    turn = list(provider.stream(model="gpt-5.5", messages=[]))[-1].turn
+    assert turn.tool_calls[0] == ToolCall(
+        id="call_bad", name="x", arguments={"_raw": "{not json"}
+    )
+
+
+# -- HARD STOP F: structured-tools true streaming (known-safe + kill switch) -----
+
+
+def _tools_read_file():
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                },
+            },
+        }
+    ]
+
+
+def test_known_safe_structured_tools_streaming_matrix():
+    from coworker.providers.openai_provider import (
+        is_known_safe_structured_tools_streaming,
+    )
+
+    assert is_known_safe_structured_tools_streaming("gpt-5.5", base_url=None)
+    assert is_known_safe_structured_tools_streaming(
+        "openai:gpt-4o", base_url="https://api.openai.com/v1"
+    )
+    assert is_known_safe_structured_tools_streaming(
+        "gpt-5.6",
+        base_url="https://my-resource.openai.azure.com/openai/v1",
+    )
+    # OpenAI-compatible alone is NOT known-safe — even with a gpt-* model name.
+    assert not is_known_safe_structured_tools_streaming(
+        "gpt-5.5", base_url="https://custom.example/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "gpt-5.6-luna", base_url="https://www.tokenfoundryx.com/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "deepseek-v4-flash", base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "ollama:qwen3", base_url="http://localhost:11434/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "qwen-plus", base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    )
+
+
+def test_structured_tools_true_streaming_kill_switch_off_stays_compat_buffered():
+    """Explicit kill switch OFF: tools path remains buffered, even for gpt-*."""
+    import threading
+
+    release_rest = threading.Event()
+    first_pulled = threading.Event()
+    tools = _tools_read_file()
+
+    class _GatedStream:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            def _gen():
+                yield _chunk(content="Hel")
+                # If true-streaming leaked, consumer would pull before release.
+                # Compat path buffers everything first, so this runs before next().
+                assert not first_pulled.is_set()
+                yield _chunk(content="lo")
+                yield _chunk(finish="stop")
+                release_rest.set()
+
+            return _gen()
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _GatedStream()
+    provider = OpenAIProvider(client=client)  # stock OpenAI host (known-safe model)
+    out = list(
+        provider.stream(
+            model="gpt-5.5",
+            messages=[],
+            tools=tools,
+            # kill switch OFF: omit flag / False
+            structured_tools_true_streaming_enabled=False,
+        )
+    )
+    assert release_rest.is_set()
+    assert [c.text_delta for c in out if c.text_delta] == ["Hel", "lo"]
+    assert out[-1].turn.text == "Hello"
+    # Internal flag must not leak into the OpenAI request kwargs.
+    assert "structured_tools_true_streaming_enabled" not in client.chat.completions.calls[0]
+
+
+def test_structured_tools_true_streaming_known_safe_yields_before_upstream_finishes():
+    """Kill switch ON + known-safe: text deltas stream live; split tool args accumulate."""
+    import threading
+
+    release_rest = threading.Event()
+    first_pulled = threading.Event()
+    tools = _tools_read_file()
+    tc1 = SimpleNamespace(
+        index=0,
+        id="call_1",
+        function=SimpleNamespace(name="read_file", arguments='{"pa'),
+    )
+    tc2 = SimpleNamespace(
+        index=0, id=None, function=SimpleNamespace(name=None, arguments='th":"a.py"}')
+    )
+
+    class _GatedStream:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            def _gen():
+                yield _chunk(content="Looking")
+                assert first_pulled.wait(timeout=2.0), "consumer never pulled first delta"
+                assert release_rest.wait(timeout=2.0), "test never released remaining chunks"
+                yield _chunk(tool_call=tc1)
+                yield _chunk(tool_call=tc2)
+                yield _chunk(finish="tool_calls")
+
+            return _gen()
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _GatedStream()
+    provider = OpenAIProvider(client=client)
+    it = iter(
+        provider.stream(
+            model="gpt-5.5",
+            messages=[],
+            tools=tools,
+            structured_tools_true_streaming_enabled=True,
+        )
+    )
+    first = next(it)
+    assert first.text_delta == "Looking"
+    first_pulled.set()
+    release_rest.set()
+    rest = list(it)
+    assert [c.text_delta for c in rest if c.text_delta] == []
+    turn = rest[-1].turn
+    assert turn.text == "Looking"
+    assert turn.tool_calls == [
+        ToolCall(id="call_1", name="read_file", arguments={"path": "a.py"})
+    ]
+    assert "structured_tools_true_streaming_enabled" not in client.chat.completions.calls[0]
+
+
+def test_structured_tools_true_streaming_unknown_compat_stays_buffered_even_when_on():
+    """Unknown/custom OpenAI-compatible endpoint: never assume structured-tool-safe."""
+    import threading
+
+    release_rest = threading.Event()
+    tools = _tools_read_file()
+
+    class _GatedStream:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            def _gen():
+                yield _chunk(content="Hel")
+                yield _chunk(content="lo")
+                yield _chunk(finish="stop")
+                release_rest.set()
+
+            return _gen()
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _GatedStream()
+    provider = OpenAIProvider(client=client, base_url="https://custom.example/v1")
+    out = list(
+        provider.stream(
+            model="gpt-5.5",
+            messages=[],
+            tools=tools,
+            structured_tools_true_streaming_enabled=True,
+        )
+    )
+    assert release_rest.is_set()
+    assert [c.text_delta for c in out if c.text_delta] == ["Hel", "lo"]
+    assert out[-1].turn.text == "Hello"
+
+
+def test_structured_tools_kill_switch_off_restores_textual_salvage():
+    """OFF must seamlessly restore compat-buffered + textual salvage (no UI leak)."""
+    blob = '{"name": "read_file", "arguments": {"path": "a.py"}}'
+    tools = _tools_read_file()
+    chunks = [
+        _chunk(content=blob[:18]),
+        _chunk(content=blob[18:]),
+        _chunk(finish="stop"),
+    ]
+    provider = OpenAIProvider(client=_StreamClient(chunks))
+    out = list(
+        provider.stream(
+            model="gpt-5.5",
+            messages=[],
+            tools=tools,
+            structured_tools_true_streaming_enabled=False,
+        )
+    )
+    assert [c.text_delta for c in out if c.text_delta] == []
+    turn = out[-1].turn
+    assert turn.text is None
+    assert turn.tool_calls[0].name == "read_file"
+    assert turn.tool_calls[0].arguments == {"path": "a.py"}
+
+
+def test_stream_usage_only_chunk_does_not_block_retry():
+    """Usage-only / empty-choices heartbeat is not semantic progress."""
+
+    class _UsageThenFailThenOk:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            stream_n = sum(1 for c in self.calls if c.get("stream"))
+            if kwargs.get("stream"):
+                if stream_n == 1:
+                    usage = SimpleNamespace(
+                        prompt_tokens=3,
+                        completion_tokens=0,
+                        prompt_tokens_details=None,
+                    )
+
+                    def _gen():
+                        yield SimpleNamespace(choices=[], usage=usage)
+                        raise RuntimeError(
+                            "peer closed connection without sending complete "
+                            "message body (incomplete chunked read)"
+                        )
+
+                    return _gen()
+                return iter([_chunk(content="OK"), _chunk(finish="stop")])
+            return _response(content="unused")
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _UsageThenFailThenOk()
+    provider = OpenAIProvider(client=client)
+    out = list(provider.stream(model="gpt-5.5", messages=[]))
+    assert [c.text_delta for c in out if c.text_delta] == ["OK"]
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 2
+
+
 def test_stream_retries_incomplete_chunked_read_without_duplicating_deltas():
-    """Compat gateways (chem-cloud etc.) sometimes drop the chunked body mid-turn.
-    Retry the whole stream attempt; never flush the partial that died."""
+    """No semantic progress yet → one ChemClaw retry; never flush a dead partial."""
 
     class _FlakyThenOk:
         def __init__(self):
@@ -321,15 +653,10 @@ def test_stream_retries_incomplete_chunked_read_without_duplicating_deltas():
             stream_n = sum(1 for c in self.calls if c.get("stream"))
             if kwargs.get("stream"):
                 if stream_n == 1:
-
-                    def _boom():
-                        yield _chunk(content="partial-")
-                        raise RuntimeError(
-                            "peer closed connection without sending complete "
-                            "message body (incomplete chunked read)"
-                        )
-
-                    return _boom()
+                    raise RuntimeError(
+                        "peer closed connection without sending complete "
+                        "message body (incomplete chunked read)"
+                    )
                 return iter(
                     [_chunk(content="OK"), _chunk(finish="stop")]
                 )
@@ -352,15 +679,10 @@ def test_stream_falls_back_to_nonstream_after_transport_failures():
         def create(self, **kwargs):
             self.calls.append(kwargs)
             if kwargs.get("stream"):
-
-                def _boom():
-                    yield _chunk(content="x")
-                    raise RuntimeError(
-                        "peer closed connection without sending complete "
-                        "message body (incomplete chunked read)"
-                    )
-
-                return _boom()
+                raise RuntimeError(
+                    "peer closed connection without sending complete "
+                    "message body (incomplete chunked read)"
+                )
             return _response(content="from-nonstream")
 
     client = _FakeClient(_response(content="x"))
@@ -369,7 +691,7 @@ def test_stream_falls_back_to_nonstream_after_transport_failures():
     out = list(provider.stream(model="gpt-5.5", messages=[]))
     assert out[-1].turn is not None
     assert out[-1].turn.text == "from-nonstream"
-    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) >= 2
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 2
     assert any(not c.get("stream") for c in client.chat.completions.calls)
 
 
@@ -400,7 +722,7 @@ def test_concurrent_streams_use_distinct_sdk_clients():
             self.closed = True
 
     provider = OpenAIProvider(api_key="sk-test", base_url="https://example.test/v1")
-    provider._make_sdk_client = lambda: _FakeSDK()  # type: ignore[method-assign]
+    provider._make_sdk_client = lambda **kw: _FakeSDK()  # type: ignore[method-assign]
 
     def _run():
         return list(provider.stream(model="kimi-k2.5", messages=[]))
@@ -429,12 +751,7 @@ def test_stream_retries_generic_connection_error(monkeypatch):
             stream_n = sum(1 for c in self.calls if c.get("stream"))
             if kwargs.get("stream"):
                 if stream_n == 1:
-
-                    def _boom():
-                        yield _chunk(content="x")
-                        raise RuntimeError("Connection error.")
-
-                    return _boom()
+                    raise RuntimeError("Connection error.")
                 return iter([_chunk(content="recovered"), _chunk(finish="stop")])
             return _response(content="unused")
 
@@ -443,6 +760,135 @@ def test_stream_retries_generic_connection_error(monkeypatch):
     provider = OpenAIProvider(client=client)
     out = list(provider.stream(model="gpt-5.5", messages=[]))
     assert [c.text_delta for c in out if c.text_delta] == ["recovered"]
+
+
+def _transport_after_first_delta(*, kind: str):
+    """Fake completions: first stream attempt emits one semantic delta then dies."""
+
+    class _BoomAfterProgress:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if not kwargs.get("stream"):
+                return _response(content="fallback-should-not-run")
+            if kind == "text":
+                first = _chunk(content="partial-")
+            elif kind == "reasoning":
+                first = _chunk(reasoning="think-")
+            elif kind == "structured_tool":
+                tc = SimpleNamespace(
+                    index=0,
+                    id="call_1",
+                    function=SimpleNamespace(name="read_file", arguments='{"p":'),
+                )
+                first = _chunk(tool_call=tc)
+            elif kind == "textual_tool_candidate":
+                first = _chunk(content='{"name": "get_weather"')
+            else:
+                raise AssertionError(kind)
+
+            def _boom():
+                yield first
+                raise RuntimeError(
+                    "peer closed connection without sending complete "
+                    "message body (incomplete chunked read)"
+                )
+
+            return _boom()
+
+    return _BoomAfterProgress()
+
+
+def test_stream_no_retry_after_text_progress():
+    import pytest
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _transport_after_first_delta(kind="text")
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(RuntimeError, match="incomplete chunked read"):
+        list(provider.stream(model="gpt-5.5", messages=[]))
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
+
+
+def test_stream_no_retry_after_reasoning_progress():
+    import pytest
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _transport_after_first_delta(kind="reasoning")
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(RuntimeError, match="incomplete chunked read"):
+        list(provider.stream(model="gpt-5.5", messages=[]))
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
+
+
+def test_stream_no_retry_after_structured_tool_progress():
+    import pytest
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _transport_after_first_delta(kind="structured_tool")
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(RuntimeError, match="incomplete chunked read"):
+        list(provider.stream(model="gpt-5.5", messages=[]))
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
+
+
+def test_stream_no_retry_after_textual_tool_candidate_progress():
+    import pytest
+
+    tools = [{"type": "function", "function": {"name": "get_weather"}}]
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _transport_after_first_delta(
+        kind="textual_tool_candidate"
+    )
+    provider = OpenAIProvider(client=client)
+    with pytest.raises(RuntimeError, match="incomplete chunked read"):
+        list(provider.stream(model="ollama:x", messages=[], tools=tools))
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
+
+
+def test_sdk_client_kwargs_stream_owns_retry_with_explicit_timeout():
+    from coworker.providers.openai_provider import _sdk_client_kwargs
+
+    kw = _sdk_client_kwargs(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        streaming_retry_owned=True,
+    )
+    assert kw["max_retries"] == 0
+    assert kw["api_key"] == "sk-test"
+    assert kw["base_url"] == "https://example.test/v1"
+    timeout = kw["timeout"]
+    assert timeout.connect == 15.0
+    assert timeout.read == 120.0
+    assert timeout.write == 30.0
+    assert timeout.pool == 15.0
+
+
+def test_sdk_client_kwargs_complete_keeps_sdk_retry_ownership():
+    from coworker.providers.openai_provider import _sdk_client_kwargs
+
+    kw = _sdk_client_kwargs(api_key="sk-test", streaming_retry_owned=False)
+    assert "max_retries" not in kw
+    assert kw["timeout"].read == 120.0
+
+
+def test_make_sdk_client_passes_streaming_retry_ownership(monkeypatch):
+    captured: list[dict] = []
+
+    class _FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.append(kwargs)
+
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", _FakeOpenAI)
+    provider = OpenAIProvider(api_key="sk-test", base_url="https://example.test/v1")
+    provider._make_sdk_client(streaming_retry_owned=True)
+    provider._make_sdk_client(streaming_retry_owned=False)
+    assert captured[0]["max_retries"] == 0
+    assert "max_retries" not in captured[1]
 
 
 # -- OpenAI-compatible vendor providers (Z AI, DeepSeek, Kimi, MiniMax, Qwen, xAI, Mistral) ------

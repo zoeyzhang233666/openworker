@@ -31,7 +31,23 @@ DEFAULT_ALLOWED_COMMANDS: list[str] = []
 class Config:
     model: str = "apihub-cn:deepseek-v4-flash"
     mode: str = "interactive"
-    max_iterations: int = 150
+    max_iterations: int = 150  # legacy hard ceiling (not a soft target)
+    # Soft targets / route budgets — only applied when an explicit ExecutionProfile
+    # is attached (future Router or tests). Legacy sessions ignore these fields.
+    agent_target_iterations: int = 32
+    deep_research_target_iterations: int = 50
+    verified_max_iterations: int = 6
+    # Risky kill switches. Section 65 Step 56–59: request_routing + tool_projection
+    # + structured-tools true streaming (known-safe only) + Emergency Finalization
+    # all candidate ON (post-regression independent rollouts).
+    request_routing_enabled: bool = True
+    tool_projection_enabled: bool = True
+    # Step 58: ON + known-safe provider/model → tools-enabled true streaming;
+    # unknown/custom compat endpoints stay compat-buffered + salvage-safe.
+    structured_tools_true_streaming_enabled: bool = True
+    # Step 59: hard-ceiling best-effort model-only finalization (guards still apply;
+    # FAST/KNOWLEDGE profiles force OFF; kill switch False restores legacy hard-limit).
+    emergency_finalization_enabled: bool = True
     allowed_commands: list[str] = field(
         default_factory=lambda: list(DEFAULT_ALLOWED_COMMANDS)
     )
@@ -65,6 +81,13 @@ _FIELDS = {
     "model",
     "mode",
     "max_iterations",
+    "agent_target_iterations",
+    "deep_research_target_iterations",
+    "verified_max_iterations",
+    "request_routing_enabled",
+    "tool_projection_enabled",
+    "structured_tools_true_streaming_enabled",
+    "emergency_finalization_enabled",
     "allowed_commands",
     "auto_allow",
     "host",

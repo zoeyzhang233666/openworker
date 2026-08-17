@@ -88,6 +88,10 @@ class ModelCapabilities:
     pdf: bool = False
     parallel_tool_calls: bool = True
     streaming: bool = True
+    # Optional reasoning knobs (HARD STOP C plumbing). Defaults False so legacy
+    # providers never receive unsupported reasoning_effort patches.
+    supports_reasoning_effort: bool = False
+    supports_disable_reasoning: bool = False
 
 
 @dataclass

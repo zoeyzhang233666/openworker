@@ -1,0 +1,1025 @@
+{
+  "phase": "HARD_STOP_D",
+  "purpose": "legacy provider-visible tool-name/schema parity before Step 34",
+  "note": "tool_projection_enabled not introduced; no aggressive filtering applied",
+  "snapshots": [
+    {
+      "label": "cowork_default_session",
+      "agent_name": "cowork",
+      "tool_count": 46,
+      "tool_names": [
+        "apply_patch",
+        "apply_unified_diff",
+        "ask_user",
+        "browser_click",
+        "browser_close",
+        "browser_get_text",
+        "browser_open_url",
+        "browser_read_url",
+        "browser_screenshot",
+        "browser_select",
+        "browser_snapshot",
+        "browser_type",
+        "browser_upload_file",
+        "browser_wait",
+        "calculate_quote",
+        "create_huagongshe_reaction",
+        "fetch_huagongshe_svg",
+        "filter_customs_importers",
+        "format_lead_list",
+        "grep",
+        "list_files",
+        "load_skill",
+        "lookup_chemical_identity",
+        "lookup_fx_rate",
+        "lookup_huagongshe_chemical",
+        "lookup_legal_entity",
+        "lookup_trade_flow",
+        "lookup_wikipedia",
+        "propose_plan",
+        "read_file",
+        "read_file_lines",
+        "replace_in_file",
+        "request_directory",
+        "run_shell",
+        "save_skill",
+        "search_huagongshe",
+        "search_sam_opportunities",
+        "search_tenders",
+        "shell_task_kill",
+        "shell_task_output",
+        "todo_write",
+        "validate_eu_vat",
+        "validate_huagongshe_reaction",
+        "web_fetch",
+        "web_search",
+        "write_file"
+      ],
+      "schemas": {
+        "list_files": {
+          "fingerprint": "0666eae33c2e0a06",
+          "param_keys": [
+            "max_results",
+            "path",
+            "pattern",
+            "recursive"
+          ]
+        },
+        "read_file": {
+          "fingerprint": "e3895c06b1a07bbc",
+          "param_keys": [
+            "path"
+          ]
+        },
+        "read_file_lines": {
+          "fingerprint": "4779041b9e24a17c",
+          "param_keys": [
+            "max_lines",
+            "path",
+            "start_line"
+          ]
+        },
+        "write_file": {
+          "fingerprint": "5de4b6c2127c03bf",
+          "param_keys": [
+            "content",
+            "overwrite",
+            "path"
+          ]
+        },
+        "apply_unified_diff": {
+          "fingerprint": "63279d520e22258a",
+          "param_keys": [
+            "diff"
+          ]
+        },
+        "apply_patch": {
+          "fingerprint": "78aafa53baa7fe67",
+          "param_keys": [
+            "patch"
+          ]
+        },
+        "replace_in_file": {
+          "fingerprint": "34e574339438ec6e",
+          "param_keys": [
+            "expected_replacements",
+            "new",
+            "old",
+            "path"
+          ]
+        },
+        "grep": {
+          "fingerprint": "995a7661cd34c14e",
+          "param_keys": [
+            "glob",
+            "max_results",
+            "path",
+            "pattern"
+          ]
+        },
+        "run_shell": {
+          "fingerprint": "d1bcfc7988bfcaa0",
+          "param_keys": [
+            "command",
+            "description",
+            "run_in_background",
+            "timeout_seconds"
+          ]
+        },
+        "shell_task_output": {
+          "fingerprint": "c57c6556c49fca9b",
+          "param_keys": [
+            "task_id"
+          ]
+        },
+        "shell_task_kill": {
+          "fingerprint": "e2cdc5f9ec689a13",
+          "param_keys": [
+            "task_id"
+          ]
+        },
+        "todo_write": {
+          "fingerprint": "7b550976a81a3517",
+          "param_keys": [
+            "todos"
+          ]
+        },
+        "request_directory": {
+          "fingerprint": "535569c2a4e89622",
+          "param_keys": [
+            "path",
+            "reason",
+            "writable"
+          ]
+        },
+        "browser_open_url": {
+          "fingerprint": "ced79dc41153cba5",
+          "param_keys": [
+            "url",
+            "wait_until"
+          ]
+        },
+        "browser_snapshot": {
+          "fingerprint": "c0e122eac88f2335",
+          "param_keys": [
+            "max_chars"
+          ]
+        },
+        "browser_get_text": {
+          "fingerprint": "9ed9660c90c1bb7e",
+          "param_keys": [
+            "max_chars"
+          ]
+        },
+        "browser_click": {
+          "fingerprint": "fe81bc56261f78a2",
+          "param_keys": [
+            "target"
+          ]
+        },
+        "browser_type": {
+          "fingerprint": "ffc4950e9740ff82",
+          "param_keys": [
+            "clear",
+            "target",
+            "text"
+          ]
+        },
+        "browser_select": {
+          "fingerprint": "bb91b108e41d5b6e",
+          "param_keys": [
+            "target",
+            "value"
+          ]
+        },
+        "browser_upload_file": {
+          "fingerprint": "bca7d16fffa75a43",
+          "param_keys": [
+            "path",
+            "target"
+          ]
+        },
+        "browser_wait": {
+          "fingerprint": "6bf29cb35a29ea56",
+          "param_keys": [
+            "milliseconds",
+            "target"
+          ]
+        },
+        "browser_screenshot": {
+          "fingerprint": "0df32335e1e2cec7",
+          "param_keys": [
+            "path"
+          ]
+        },
+        "browser_close": {
+          "fingerprint": "da0525bb62c587d2",
+          "param_keys": []
+        },
+        "browser_read_url": {
+          "fingerprint": "8fde0e81dfc0d927",
+          "param_keys": [
+            "max_chars",
+            "url"
+          ]
+        },
+        "web_search": {
+          "fingerprint": "7ab60801bb3abc0a",
+          "param_keys": [
+            "max_results",
+            "query"
+          ]
+        },
+        "web_fetch": {
+          "fingerprint": "da700ffe22fd751a",
+          "param_keys": [
+            "max_chars",
+            "url"
+          ]
+        },
+        "lookup_chemical_identity": {
+          "fingerprint": "2bbb082b2600dbae",
+          "param_keys": [
+            "query",
+            "query_type"
+          ]
+        },
+        "lookup_legal_entity": {
+          "fingerprint": "a3f5c199a24c231d",
+          "param_keys": [
+            "query",
+            "query_type"
+          ]
+        },
+        "validate_eu_vat": {
+          "fingerprint": "884d021fc173a8b0",
+          "param_keys": [
+            "vat_number"
+          ]
+        },
+        "lookup_fx_rate": {
+          "fingerprint": "dfcc7d5d44d972f7",
+          "param_keys": [
+            "amount",
+            "base",
+            "quote"
+          ]
+        },
+        "lookup_wikipedia": {
+          "fingerprint": "67c0c74028749b07",
+          "param_keys": [
+            "lang",
+            "title"
+          ]
+        },
+        "search_huagongshe": {
+          "fingerprint": "8daa608579d7b9de",
+          "param_keys": [
+            "mode",
+            "page",
+            "page_size",
+            "query"
+          ]
+        },
+        "lookup_huagongshe_chemical": {
+          "fingerprint": "583b7cd7ba1488f2",
+          "param_keys": [
+            "chemical_id"
+          ]
+        },
+        "fetch_huagongshe_svg": {
+          "fingerprint": "d2fcdcb144753540",
+          "param_keys": [
+            "entity_id",
+            "height",
+            "kind",
+            "width"
+          ]
+        },
+        "validate_huagongshe_reaction": {
+          "fingerprint": "ee0d94a114f24b45",
+          "param_keys": [
+            "reaction_json"
+          ]
+        },
+        "create_huagongshe_reaction": {
+          "fingerprint": "ce74d8493a0b6417",
+          "param_keys": [
+            "idempotency_key",
+            "reaction_json"
+          ]
+        },
+        "calculate_quote": {
+          "fingerprint": "d0fe9ddd7e009040",
+          "param_keys": [
+            "currency",
+            "freight",
+            "incoterm",
+            "lines",
+            "tax_amount",
+            "tax_rate"
+          ]
+        },
+        "format_lead_list": {
+          "fingerprint": "22858929f48126b1",
+          "param_keys": [
+            "leads",
+            "list_id",
+            "market_summary",
+            "rule_version",
+            "sku_summary",
+            "title"
+          ]
+        },
+        "search_tenders": {
+          "fingerprint": "517311106853c68d",
+          "param_keys": [
+            "buyer_country",
+            "cpv",
+            "limit",
+            "query"
+          ]
+        },
+        "search_sam_opportunities": {
+          "fingerprint": "5ef85d01eb2a761f",
+          "param_keys": [
+            "limit",
+            "naics",
+            "posted_from",
+            "posted_to",
+            "query"
+          ]
+        },
+        "lookup_trade_flow": {
+          "fingerprint": "21569902a7a7b9fc",
+          "param_keys": [
+            "flow",
+            "hs_code",
+            "limit",
+            "partner",
+            "period",
+            "reporter"
+          ]
+        },
+        "filter_customs_importers": {
+          "fingerprint": "60bd893c49a189c0",
+          "param_keys": [
+            "address_col",
+            "company_col",
+            "date_col",
+            "hs_col",
+            "limit",
+            "path",
+            "product_col",
+            "role_col",
+            "shipper_col",
+            "value_col"
+          ]
+        },
+        "ask_user": {
+          "fingerprint": "f50bcb3c40a2e16c",
+          "param_keys": [
+            "allow_text",
+            "header",
+            "multi",
+            "options",
+            "question",
+            "questions"
+          ]
+        },
+        "load_skill": {
+          "fingerprint": "8ab1f90307697660",
+          "param_keys": [
+            "name"
+          ]
+        },
+        "save_skill": {
+          "fingerprint": "8d7844f54ed77eee",
+          "param_keys": [
+            "description",
+            "files",
+            "instructions",
+            "name"
+          ]
+        },
+        "propose_plan": {
+          "fingerprint": "226556ad5cbeb9ce",
+          "param_keys": [
+            "plan"
+          ]
+        }
+      }
+    },
+    {
+      "label": "chat_agent_session",
+      "agent_name": "chat",
+      "tool_count": 21,
+      "tool_names": [
+        "calculate_quote",
+        "create_huagongshe_reaction",
+        "fetch_huagongshe_svg",
+        "filter_customs_importers",
+        "format_lead_list",
+        "load_skill",
+        "lookup_chemical_identity",
+        "lookup_fx_rate",
+        "lookup_huagongshe_chemical",
+        "lookup_legal_entity",
+        "lookup_trade_flow",
+        "lookup_wikipedia",
+        "propose_plan",
+        "save_skill",
+        "search_huagongshe",
+        "search_sam_opportunities",
+        "search_tenders",
+        "validate_eu_vat",
+        "validate_huagongshe_reaction",
+        "web_fetch",
+        "web_search"
+      ],
+      "schemas": {
+        "web_search": {
+          "fingerprint": "7ab60801bb3abc0a",
+          "param_keys": [
+            "max_results",
+            "query"
+          ]
+        },
+        "web_fetch": {
+          "fingerprint": "da700ffe22fd751a",
+          "param_keys": [
+            "max_chars",
+            "url"
+          ]
+        },
+        "lookup_chemical_identity": {
+          "fingerprint": "2bbb082b2600dbae",
+          "param_keys": [
+            "query",
+            "query_type"
+          ]
+        },
+        "lookup_legal_entity": {
+          "fingerprint": "a3f5c199a24c231d",
+          "param_keys": [
+            "query",
+            "query_type"
+          ]
+        },
+        "validate_eu_vat": {
+          "fingerprint": "884d021fc173a8b0",
+          "param_keys": [
+            "vat_number"
+          ]
+        },
+        "lookup_fx_rate": {
+          "fingerprint": "dfcc7d5d44d972f7",
+          "param_keys": [
+            "amount",
+            "base",
+            "quote"
+          ]
+        },
+        "lookup_wikipedia": {
+          "fingerprint": "67c0c74028749b07",
+          "param_keys": [
+            "lang",
+            "title"
+          ]
+        },
+        "search_huagongshe": {
+          "fingerprint": "8daa608579d7b9de",
+          "param_keys": [
+            "mode",
+            "page",
+            "page_size",
+            "query"
+          ]
+        },
+        "lookup_huagongshe_chemical": {
+          "fingerprint": "583b7cd7ba1488f2",
+          "param_keys": [
+            "chemical_id"
+          ]
+        },
+        "fetch_huagongshe_svg": {
+          "fingerprint": "d2fcdcb144753540",
+          "param_keys": [
+            "entity_id",
+            "height",
+            "kind",
+            "width"
+          ]
+        },
+        "validate_huagongshe_reaction": {
+          "fingerprint": "ee0d94a114f24b45",
+          "param_keys": [
+            "reaction_json"
+          ]
+        },
+        "create_huagongshe_reaction": {
+          "fingerprint": "ce74d8493a0b6417",
+          "param_keys": [
+            "idempotency_key",
+            "reaction_json"
+          ]
+        },
+        "calculate_quote": {
+          "fingerprint": "d0fe9ddd7e009040",
+          "param_keys": [
+            "currency",
+            "freight",
+            "incoterm",
+            "lines",
+            "tax_amount",
+            "tax_rate"
+          ]
+        },
+        "format_lead_list": {
+          "fingerprint": "22858929f48126b1",
+          "param_keys": [
+            "leads",
+            "list_id",
+            "market_summary",
+            "rule_version",
+            "sku_summary",
+            "title"
+          ]
+        },
+        "search_tenders": {
+          "fingerprint": "517311106853c68d",
+          "param_keys": [
+            "buyer_country",
+            "cpv",
+            "limit",
+            "query"
+          ]
+        },
+        "search_sam_opportunities": {
+          "fingerprint": "5ef85d01eb2a761f",
+          "param_keys": [
+            "limit",
+            "naics",
+            "posted_from",
+            "posted_to",
+            "query"
+          ]
+        },
+        "lookup_trade_flow": {
+          "fingerprint": "21569902a7a7b9fc",
+          "param_keys": [
+            "flow",
+            "hs_code",
+            "limit",
+            "partner",
+            "period",
+            "reporter"
+          ]
+        },
+        "filter_customs_importers": {
+          "fingerprint": "60bd893c49a189c0",
+          "param_keys": [
+            "address_col",
+            "company_col",
+            "date_col",
+            "hs_col",
+            "limit",
+            "path",
+            "product_col",
+            "role_col",
+            "shipper_col",
+            "value_col"
+          ]
+        },
+        "load_skill": {
+          "fingerprint": "8ab1f90307697660",
+          "param_keys": [
+            "name"
+          ]
+        },
+        "save_skill": {
+          "fingerprint": "8d7844f54ed77eee",
+          "param_keys": [
+            "description",
+            "files",
+            "instructions",
+            "name"
+          ]
+        },
+        "propose_plan": {
+          "fingerprint": "226556ad5cbeb9ce",
+          "param_keys": [
+            "plan"
+          ]
+        }
+      }
+    },
+    {
+      "label": "persona_chain-lobster",
+      "agent_name": "chain-lobster",
+      "tool_count": 46,
+      "tool_names": [
+        "apply_patch",
+        "apply_unified_diff",
+        "ask_user",
+        "browser_click",
+        "browser_close",
+        "browser_get_text",
+        "browser_open_url",
+        "browser_read_url",
+        "browser_screenshot",
+        "browser_select",
+        "browser_snapshot",
+        "browser_type",
+        "browser_upload_file",
+        "browser_wait",
+        "calculate_quote",
+        "create_huagongshe_reaction",
+        "fetch_huagongshe_svg",
+        "filter_customs_importers",
+        "format_lead_list",
+        "grep",
+        "list_files",
+        "load_skill",
+        "lookup_chemical_identity",
+        "lookup_fx_rate",
+        "lookup_huagongshe_chemical",
+        "lookup_legal_entity",
+        "lookup_trade_flow",
+        "lookup_wikipedia",
+        "propose_plan",
+        "read_file",
+        "read_file_lines",
+        "replace_in_file",
+        "request_directory",
+        "run_shell",
+        "save_skill",
+        "search_huagongshe",
+        "search_sam_opportunities",
+        "search_tenders",
+        "shell_task_kill",
+        "shell_task_output",
+        "todo_write",
+        "validate_eu_vat",
+        "validate_huagongshe_reaction",
+        "web_fetch",
+        "web_search",
+        "write_file"
+      ],
+      "schemas": {
+        "list_files": {
+          "fingerprint": "0666eae33c2e0a06",
+          "param_keys": [
+            "max_results",
+            "path",
+            "pattern",
+            "recursive"
+          ]
+        },
+        "read_file": {
+          "fingerprint": "e3895c06b1a07bbc",
+          "param_keys": [
+            "path"
+          ]
+        },
+        "read_file_lines": {
+          "fingerprint": "4779041b9e24a17c",
+          "param_keys": [
+            "max_lines",
+            "path",
+            "start_line"
+          ]
+        },
+        "write_file": {
+          "fingerprint": "5de4b6c2127c03bf",
+          "param_keys": [
+            "content",
+            "overwrite",
+            "path"
+          ]
+        },
+        "apply_unified_diff": {
+          "fingerprint": "63279d520e22258a",
+          "param_keys": [
+            "diff"
+          ]
+        },
+        "apply_patch": {
+          "fingerprint": "78aafa53baa7fe67",
+          "param_keys": [
+            "patch"
+          ]
+        },
+        "replace_in_file": {
+          "fingerprint": "34e574339438ec6e",
+          "param_keys": [
+            "expected_replacements",
+            "new",
+            "old",
+            "path"
+          ]
+        },
+        "grep": {
+          "fingerprint": "995a7661cd34c14e",
+          "param_keys": [
+            "glob",
+            "max_results",
+            "path",
+            "pattern"
+          ]
+        },
+        "run_shell": {
+          "fingerprint": "d1bcfc7988bfcaa0",
+          "param_keys": [
+            "command",
+            "description",
+            "run_in_background",
+            "timeout_seconds"
+          ]
+        },
+        "shell_task_output": {
+          "fingerprint": "c57c6556c49fca9b",
+          "param_keys": [
+            "task_id"
+          ]
+        },
+        "shell_task_kill": {
+          "fingerprint": "e2cdc5f9ec689a13",
+          "param_keys": [
+            "task_id"
+          ]
+        },
+        "todo_write": {
+          "fingerprint": "7b550976a81a3517",
+          "param_keys": [
+            "todos"
+          ]
+        },
+        "request_directory": {
+          "fingerprint": "535569c2a4e89622",
+          "param_keys": [
+            "path",
+            "reason",
+            "writable"
+          ]
+        },
+        "browser_open_url": {
+          "fingerprint": "ced79dc41153cba5",
+          "param_keys": [
+            "url",
+            "wait_until"
+          ]
+        },
+        "browser_snapshot": {
+          "fingerprint": "c0e122eac88f2335",
+          "param_keys": [
+            "max_chars"
+          ]
+        },
+        "browser_get_text": {
+          "fingerprint": "9ed9660c90c1bb7e",
+          "param_keys": [
+            "max_chars"
+          ]
+        },
+        "browser_click": {
+          "fingerprint": "fe81bc56261f78a2",
+          "param_keys": [
+            "target"
+          ]
+        },
+        "browser_type": {
+          "fingerprint": "ffc4950e9740ff82",
+          "param_keys": [
+            "clear",
+            "target",
+            "text"
+          ]
+        },
+        "browser_select": {
+          "fingerprint": "bb91b108e41d5b6e",
+          "param_keys": [
+            "target",
+            "value"
+          ]
+        },
+        "browser_upload_file": {
+          "fingerprint": "bca7d16fffa75a43",
+          "param_keys": [
+            "path",
+            "target"
+          ]
+        },
+        "browser_wait": {
+          "fingerprint": "6bf29cb35a29ea56",
+          "param_keys": [
+            "milliseconds",
+            "target"
+          ]
+        },
+        "browser_screenshot": {
+          "fingerprint": "0df32335e1e2cec7",
+          "param_keys": [
+            "path"
+          ]
+        },
+        "browser_close": {
+          "fingerprint": "da0525bb62c587d2",
+          "param_keys": []
+        },
+        "browser_read_url": {
+          "fingerprint": "8fde0e81dfc0d927",
+          "param_keys": [
+            "max_chars",
+            "url"
+          ]
+        },
+        "web_search": {
+          "fingerprint": "7ab60801bb3abc0a",
+          "param_keys": [
+            "max_results",
+            "query"
+          ]
+        },
+        "web_fetch": {
+          "fingerprint": "da700ffe22fd751a",
+          "param_keys": [
+            "max_chars",
+            "url"
+          ]
+        },
+        "lookup_chemical_identity": {
+          "fingerprint": "2bbb082b2600dbae",
+          "param_keys": [
+            "query",
+            "query_type"
+          ]
+        },
+        "lookup_legal_entity": {
+          "fingerprint": "a3f5c199a24c231d",
+          "param_keys": [
+            "query",
+            "query_type"
+          ]
+        },
+        "validate_eu_vat": {
+          "fingerprint": "884d021fc173a8b0",
+          "param_keys": [
+            "vat_number"
+          ]
+        },
+        "lookup_fx_rate": {
+          "fingerprint": "dfcc7d5d44d972f7",
+          "param_keys": [
+            "amount",
+            "base",
+            "quote"
+          ]
+        },
+        "lookup_wikipedia": {
+          "fingerprint": "67c0c74028749b07",
+          "param_keys": [
+            "lang",
+            "title"
+          ]
+        },
+        "search_huagongshe": {
+          "fingerprint": "8daa608579d7b9de",
+          "param_keys": [
+            "mode",
+            "page",
+            "page_size",
+            "query"
+          ]
+        },
+        "lookup_huagongshe_chemical": {
+          "fingerprint": "583b7cd7ba1488f2",
+          "param_keys": [
+            "chemical_id"
+          ]
+        },
+        "fetch_huagongshe_svg": {
+          "fingerprint": "d2fcdcb144753540",
+          "param_keys": [
+            "entity_id",
+            "height",
+            "kind",
+            "width"
+          ]
+        },
+        "validate_huagongshe_reaction": {
+          "fingerprint": "ee0d94a114f24b45",
+          "param_keys": [
+            "reaction_json"
+          ]
+        },
+        "create_huagongshe_reaction": {
+          "fingerprint": "ce74d8493a0b6417",
+          "param_keys": [
+            "idempotency_key",
+            "reaction_json"
+          ]
+        },
+        "calculate_quote": {
+          "fingerprint": "d0fe9ddd7e009040",
+          "param_keys": [
+            "currency",
+            "freight",
+            "incoterm",
+            "lines",
+            "tax_amount",
+            "tax_rate"
+          ]
+        },
+        "format_lead_list": {
+          "fingerprint": "22858929f48126b1",
+          "param_keys": [
+            "leads",
+            "list_id",
+            "market_summary",
+            "rule_version",
+            "sku_summary",
+            "title"
+          ]
+        },
+        "search_tenders": {
+          "fingerprint": "517311106853c68d",
+          "param_keys": [
+            "buyer_country",
+            "cpv",
+            "limit",
+            "query"
+          ]
+        },
+        "search_sam_opportunities": {
+          "fingerprint": "5ef85d01eb2a761f",
+          "param_keys": [
+            "limit",
+            "naics",
+            "posted_from",
+            "posted_to",
+            "query"
+          ]
+        },
+        "lookup_trade_flow": {
+          "fingerprint": "21569902a7a7b9fc",
+          "param_keys": [
+            "flow",
+            "hs_code",
+            "limit",
+            "partner",
+            "period",
+            "reporter"
+          ]
+        },
+        "filter_customs_importers": {
+          "fingerprint": "60bd893c49a189c0",
+          "param_keys": [
+            "address_col",
+            "company_col",
+            "date_col",
+            "hs_col",
+            "limit",
+            "path",
+            "product_col",
+            "role_col",
+            "shipper_col",
+            "value_col"
+          ]
+        },
+        "ask_user": {
+          "fingerprint": "f50bcb3c40a2e16c",
+          "param_keys": [
+            "allow_text",
+            "header",
+            "multi",
+            "options",
+            "question",
+            "questions"
+          ]
+        },
+        "load_skill": {
+          "fingerprint": "8ab1f90307697660",
+          "param_keys": [
+            "name"
+          ]
+        },
+        "save_skill": {
+          "fingerprint": "8d7844f54ed77eee",
+          "param_keys": [
+            "description",
+            "files",
+            "instructions",
+            "name"
+          ]
+        },
+        "propose_plan": {
+          "fingerprint": "226556ad5cbeb9ce",
+          "param_keys": [
+            "plan"
+          ]
+        }
+      }
+    }
+  ]
+}

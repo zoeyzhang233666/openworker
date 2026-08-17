@@ -7,22 +7,21 @@ export function isProjectScoped(p?: { workspace?: string; family?: string }): bo
   return p?.family === "code";
 }
 
-// Persona naming: the product is "OpenWorker"; the personas are a "Coworker" family — Coworker
-// (general), Code Coworker, Ops Coworker. In lists/chrome we use the SHORT label (Coworker / Code /
-// Ops); the persona detail page uses the FULL family name. Backend names are left untouched (the
-// API + tests keep "OpenWorker" / "Ops Coworker"); this is purely the display layer.
+// Persona naming: the product is ChemClaw. Default surface id stays `cowork` internally;
+// user-facing short/full labels for that id are ChemClaw (D-003). Other personas keep their
+// API names; legacy "* Coworker" suffixes are stripped for short labels / kept for full names.
 
-// Short label for the sidebar + top bar: "Coworker" / "Code" / "Ops" / "Chat".
+// Short label for the sidebar + top bar: "ChemClaw" / "Code" / "Ops" / "Chat".
 export function shortPersonaName(name?: string, id?: string): string {
-  if (id === "cowork") return "Coworker";
+  if (id === "cowork") return "ChemClaw";
   const n = (name || id || "").trim();
   return n.replace(/\s*coworker$/i, "").trim() || n;
 }
 
-// Full family name for the persona detail page: "Coworker" / "Code Coworker" / "Ops Coworker".
+// Full family name for the persona detail page: "ChemClaw" / "Code Coworker" / "Ops Coworker".
 // Chat isn't a coworker — left as-is.
 export function fullPersonaName(name?: string, id?: string): string {
-  if (id === "cowork") return "Coworker";
+  if (id === "cowork") return "ChemClaw";
   const n = (name || id || "").trim();
   if (id === "chat" || !n) return n;
   return /coworker$/i.test(n) ? n : `${n} Coworker`;

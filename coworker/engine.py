@@ -24,10 +24,55 @@ _log = logging.getLogger(__name__)
 
 from . import compaction as _compaction
 from .events import Event, EventType
+from .execution_profile import (
+    ExecutionProfile,
+    apply_reasoning_mode_settings,
+    budget_guidance_text,
+    budget_phase_for_iteration,
+)
 from .permissions import Mode, PermissionEngine
 from .providers import AssistantTurn, ProviderClient, ToolCall
 from .providers.errors import friendly_model_error
+from .tool_policy import TurnToolPolicy
+from .tool_projection import project_provider_visible_schemas
 from .tools import ToolRegistry
+from .turn_instrumentation import (
+    build_model_call_snapshot,
+    build_turn_snapshot,
+    emit_instrumentation,
+)
+
+# HARD STOP G: outbound-only prompt for one model-only finalization at hard ceiling.
+_EMERGENCY_FINALIZATION_PROMPT = """The tool-call iteration budget has been exhausted.
+
+You may not call any more tools.
+
+Using only the evidence and tool results already present in the conversation,
+produce the best possible final answer now.
+
+If a deliverable file was already created, reference it correctly.
+
+If some requested work could not be completed, clearly state the remaining gap,
+but still provide the most useful finished result possible."""
+
+# Section 65 step 47: advisory only — never hard-block the tool.
+_DUPLICATE_TOOL_WARNING = (
+    "You have repeated an identical tool call several times.\n"
+    "Do not call it again unless there is a concrete reason to expect a different result.\n"
+    "Use the evidence already collected and move toward completion."
+)
+
+
+def _tool_call_signature(tool_call: ToolCall) -> tuple[str, str]:
+    return (
+        tool_call.name,
+        json.dumps(
+            tool_call.arguments,
+            sort_keys=True,
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
 
 
 class ApprovalOutcome(str, Enum):
@@ -80,6 +125,28 @@ class TurnEngine:
         # Called (thread-safe, best-effort) when the user stops the turn — e.g. the
         # executor's kill for a running shell command.
         interrupt_hooks: Optional[list[Callable[[], None]]] = None,
+        # Optional route profile (HARD STOP C). None → full legacy-inert path:
+        # only max_iterations / model_settings / existing state machine apply.
+        # Soft targets, Converge/Deliver guidance, and route reasoning defaults
+        # activate only when a caller attaches an explicit profile.
+        execution_profile: Optional[ExecutionProfile] = None,
+        # HARD STOP E: independent kill switch (built-in default OFF). When False,
+        # provider-visible schemas stay at the full registered legacy set even if
+        # a FAST_CHAT/KNOWLEDGE profile is attached.
+        tool_projection_enabled: bool = False,
+        # HARD STOP F / Step 58: Config built-in is candidate ON; TurnEngine ctor
+        # default stays False so unit tests that omit the flag remain salvage-safe.
+        # When False, tools paths stay compat-buffered + salvage-safe.
+        # Production wiring passes Config (known-safe matrix still gates true stream).
+        structured_tools_true_streaming_enabled: bool = False,
+        # HARD STOP G: Emergency Finalization kill switch (built-in OFF).
+        # When True and guards allow, one tools-disabled model call at hard ceiling.
+        emergency_finalization_enabled: bool = False,
+        turn_tool_policy: Optional[TurnToolPolicy] = None,
+        mandatory_tool_names: Optional[set[str]] = None,
+        # Optional RouteDecision for instrumentation only (Section 65 step 48).
+        route_decision: Optional[Any] = None,
+        router_elapsed_ms: Optional[float] = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -88,8 +155,26 @@ class TurnEngine:
         self.approver = approver or _deny_all
         self.max_iterations = max_iterations
         self.model_settings = dict(model_settings or {})
+        self.execution_profile = execution_profile
+        self.tool_projection_enabled = bool(tool_projection_enabled)
+        self.structured_tools_true_streaming_enabled = bool(
+            structured_tools_true_streaming_enabled
+        )
+        self.emergency_finalization_enabled = bool(emergency_finalization_enabled)
+        self.turn_tool_policy = turn_tool_policy
+        self.mandatory_tool_names = (
+            set(mandatory_tool_names) if mandatory_tool_names else set()
+        )
+        self.route_decision = route_decision
+        self.router_elapsed_ms = router_elapsed_ms
         self.messages: list[dict[str, Any]] = list(messages or [])
         self.audit_sink = audit_sink
+        # 1-based iteration counter for soft-budget phase guidance (outbound only).
+        self._budget_iteration = 0
+        # Outbound-only: inject EF prompt / force tools=None for one finalization call.
+        self._emergency_finalizing = False
+        # Section 65 step 47: consecutive identical tool signatures (name+args).
+        self._recent_tool_signatures: list[tuple[str, str]] = []
         # Returns an ephemeral `<system-context>` block appended to the LAST user message at
         # send-time only (never persisted). We can't reliably inject system messages mid-thread
         # across providers, so dynamic per-turn context (e.g. the live directory list) rides on
@@ -127,6 +212,57 @@ class TurnEngine:
         # TOOL_FINISHED event can carry the note to the tool card (§25).
         self._standing_notes: dict[str, str] = {}
         self._interrupt_hooks: list[Callable[[], None]] = list(interrupt_hooks or [])
+
+    @property
+    def target_iterations(self) -> Optional[int]:
+        """Soft target from an attached ExecutionProfile; None on the legacy path."""
+        profile = self.execution_profile
+        return None if profile is None else profile.target_iterations
+
+    def _note_tool_signatures(self, tool_calls: list[ToolCall]) -> None:
+        """Record exact name+args signatures for consecutive-duplicate detection."""
+        for tool_call in tool_calls:
+            self._recent_tool_signatures.append(_tool_call_signature(tool_call))
+
+    def _duplicate_tool_warning_for_outbound(self) -> str:
+        """Advisory warning when the same signature repeats ≥3 times consecutively."""
+        if len(self._recent_tool_signatures) < 3:
+            return ""
+        last = self._recent_tool_signatures[-1]
+        streak = 0
+        for sig in reversed(self._recent_tool_signatures):
+            if sig != last:
+                break
+            streak += 1
+        if streak < 3:
+            return ""
+        return _DUPLICATE_TOOL_WARNING
+
+    def _emit_turn_instrumentation(self) -> None:
+        tools = None
+        try:
+            if not self._emergency_finalizing:
+                tools = project_provider_visible_schemas(
+                    self.registry,
+                    tool_projection_enabled=self.tool_projection_enabled,
+                    profile=self.execution_profile,
+                    tool_policy=self.turn_tool_policy,
+                    mandatory_tool_names=self.mandatory_tool_names,
+                )
+        except Exception:
+            tools = None
+        tools_enabled = tools is not None
+        allowed_tool_count = 0 if tools is None else len(tools)
+        snap = build_turn_snapshot(
+            route_decision=self.route_decision,
+            execution_profile=self.execution_profile,
+            tool_projection_enabled=self.tool_projection_enabled,
+            tools_enabled=tools_enabled,
+            allowed_tool_count=allowed_tool_count,
+            router_elapsed_ms=self.router_elapsed_ms,
+            mandatory_tool_count=len(self.mandatory_tool_names) or None,
+        )
+        emit_instrumentation("turn", snap)
 
     # -- external controls ------------------------------------------------------
     def request_interrupt(self) -> None:
@@ -314,16 +450,137 @@ class TurnEngine:
                 return out
         return []
 
+    def _emergency_finalization_active(self) -> bool:
+        """Kill switch: profile flag wins when a profile is attached; else engine flag."""
+        profile = self.execution_profile
+        if profile is not None:
+            return bool(profile.emergency_finalization_enabled)
+        return bool(self.emergency_finalization_enabled)
+
+    def _should_emergency_finalize(self) -> bool:
+        """True only at hard ceiling in a normal terminable state (HARD STOP G guards)."""
+        if not self._emergency_finalization_active():
+            return False
+        if self._cancel.is_set():
+            return False
+        # Pending ask_user / approval / plan / request_directory / durable resume:
+        # unanswered trailing tool calls mean the turn is still suspended.
+        if self._unanswered_trailing_tool_calls():
+            return False
+        return True
+
+    async def _emergency_finalize(self, iterations: int) -> AsyncIterator[Event]:
+        """One tools-disabled model call; never re-enters the agent/tool loop."""
+        self._emergency_finalizing = True
+        turn: Optional[AssistantTurn] = None
+        streamed: list[str] = []
+        streamed_reasoning: list[str] = []
+        try:
+            try:
+                async for chunk in self._astream():
+                    if chunk.reasoning_delta:
+                        streamed_reasoning.append(chunk.reasoning_delta)
+                        yield Event(
+                            EventType.REASONING_DELTA,
+                            {"text": chunk.reasoning_delta},
+                        )
+                    if chunk.text_delta:
+                        streamed.append(chunk.text_delta)
+                        yield Event(
+                            EventType.ASSISTANT_DELTA, {"text": chunk.text_delta}
+                        )
+                    if chunk.turn is not None:
+                        turn = chunk.turn
+            except Exception as exc:
+                if streamed or streamed_reasoning:
+                    self.messages.append(
+                        _assistant_message(
+                            AssistantTurn(
+                                text="".join(streamed) or None,
+                                reasoning="".join(streamed_reasoning) or None,
+                            )
+                        )
+                    )
+                friendly = friendly_model_error(self.model, exc)
+                payload = {
+                    "error": friendly or str(exc),
+                    "error_type": type(exc).__name__,
+                }
+                if friendly:
+                    payload["raw"] = str(exc)
+                self._append_notice("error", friendly or str(exc))
+                yield Event(EventType.ERROR, payload)
+                return
+            if self._cancel.is_set() and turn is None:
+                if streamed or streamed_reasoning:
+                    self.messages.append(
+                        _assistant_message(
+                            AssistantTurn(
+                                text="".join(streamed) or None,
+                                reasoning="".join(streamed_reasoning) or None,
+                            )
+                        )
+                    )
+                self._append_notice("interrupted")
+                yield Event(EventType.INTERRUPTED, {"iterations": iterations})
+                return
+            if turn is None:
+                turn = AssistantTurn(
+                    text="".join(streamed) or None,
+                    reasoning="".join(streamed_reasoning) or None,
+                )
+            # Tools are disabled: never execute or persist tool_calls from this call.
+            if turn.tool_calls:
+                turn = AssistantTurn(
+                    text=turn.text,
+                    reasoning=turn.reasoning,
+                    finish_reason="stop",
+                    usage=turn.usage,
+                    extras=turn.extras,
+                )
+            assistant_msg = _assistant_message(turn, model=self.model)
+            self.messages.append(assistant_msg)
+            payload: dict[str, Any] = {
+                "text": turn.text,
+                "tool_calls": [],
+            }
+            if isinstance(assistant_msg.get("ts"), (int, float)):
+                payload["ts"] = assistant_msg["ts"]
+            if turn.reasoning:
+                payload["reasoning"] = turn.reasoning
+            if turn.usage is not None:
+                payload["usage"] = {"model": self.model, **turn.usage.as_dict()}
+            yield Event(EventType.ASSISTANT_MESSAGE, payload)
+            yield Event(
+                EventType.TURN_END,
+                {
+                    "status": "max_iterations_exceeded",
+                    "iterations": iterations,
+                    "best_effort_finalized": True,
+                },
+            )
+        finally:
+            self._emergency_finalizing = False
+
     async def _loop(self) -> AsyncIterator[Event]:
         iterations = 0
         while True:
             if iterations >= self.max_iterations:
+                if self._should_emergency_finalize():
+                    async for event in self._emergency_finalize(iterations):
+                        yield event
+                    return
                 yield Event(
                     EventType.TURN_END,
                     {"status": "max_iterations_exceeded", "iterations": iterations},
                 )
                 return
             iterations += 1
+            self._budget_iteration = iterations
+            if iterations == 1:
+                self._emit_turn_instrumentation()
+            iter_started = time.perf_counter()
+            first_visible_delta_ms: Optional[float] = None
 
             # Auto-compaction checkpoint (OPE-27): between tool turns and before a new
             # turn's first call. Deliberately no "wrap up" warning to the model. The
@@ -340,6 +597,10 @@ class TurnEngine:
             turn: Optional[AssistantTurn] = None
             streamed: list[str] = []
             streamed_reasoning: list[str] = []
+            suppress_reasoning_delta = (
+                self.execution_profile is not None
+                and self.execution_profile.reasoning_mode == "off"
+            )
 
             def _partial_turn() -> AssistantTurn:
                 # What the user watched arrive — text and thinking, NO tool calls (any
@@ -353,11 +614,21 @@ class TurnEngine:
                 async for chunk in self._astream():
                     if chunk.reasoning_delta:
                         streamed_reasoning.append(chunk.reasoning_delta)
-                        yield Event(
-                            EventType.REASONING_DELTA, {"text": chunk.reasoning_delta}
-                        )
+                        if first_visible_delta_ms is None:
+                            first_visible_delta_ms = (
+                                time.perf_counter() - iter_started
+                            ) * 1000.0
+                        if not suppress_reasoning_delta:
+                            yield Event(
+                                EventType.REASONING_DELTA,
+                                {"text": chunk.reasoning_delta},
+                            )
                     if chunk.text_delta:
                         streamed.append(chunk.text_delta)
+                        if first_visible_delta_ms is None:
+                            first_visible_delta_ms = (
+                                time.perf_counter() - iter_started
+                            ) * 1000.0
                         yield Event(
                             EventType.ASSISTANT_DELTA, {"text": chunk.text_delta}
                         )
@@ -433,6 +704,30 @@ class TurnEngine:
                 payload["usage"] = {"model": self.model, **turn.usage.as_dict()}
             yield Event(EventType.ASSISTANT_MESSAGE, payload)
 
+            # Section 65 step 48: model-call metrics (no prompt / no tool bodies).
+            phase = None
+            profile = self.execution_profile
+            if profile is not None and profile.target_iterations is not None:
+                from .execution_profile import budget_phase_for_iteration as _bpf
+
+                phase_enum = _bpf(
+                    iterations,
+                    hard=profile.max_iterations,
+                    target=profile.target_iterations,
+                )
+                phase = getattr(phase_enum, "value", str(phase_enum))
+            emit_instrumentation(
+                "model_call",
+                build_model_call_snapshot(
+                    iteration=iterations,
+                    budget_phase=phase,
+                    elapsed_ms=(time.perf_counter() - iter_started) * 1000.0,
+                    first_visible_delta_ms=first_visible_delta_ms,
+                    tool_count=len(turn.tool_calls or []),
+                    finish_reason=turn.finish_reason,
+                ),
+            )
+
             if not turn.tool_calls:
                 if self._steering:
                     self._inject_steering()
@@ -443,6 +738,8 @@ class TurnEngine:
                 )
                 return
 
+            # Section 65 step 47: record signatures before next outbound iteration.
+            self._note_tool_signatures(turn.tool_calls)
             async for event in self._handle_tool_calls(turn.tool_calls):
                 yield event
 
@@ -608,16 +905,48 @@ class TurnEngine:
         thread + queue, so text deltas surface live without blocking the event loop."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
-        tools = self.registry.schemas() or None
+        # HARD STOP G: emergency finalization is model-only (tools disabled).
+        if self._emergency_finalizing:
+            tools = None
+        else:
+            tools = project_provider_visible_schemas(
+                self.registry,
+                tool_projection_enabled=self.tool_projection_enabled,
+                profile=self.execution_profile,
+                tool_policy=self.turn_tool_policy,
+                mandatory_tool_names=self.mandatory_tool_names,
+            )
         model = self.model
         messages = self._outbound_messages()
-        settings = self.model_settings
+        settings = dict(self.model_settings)
+        profile = self.execution_profile
+        if profile is not None:
+            # Route reasoning defaults only when an explicit profile is attached.
+            # Legacy path keeps caller-provided model_settings untouched.
+            supports_disable = False
+            try:
+                caps = self.provider.capabilities(model)
+                supports_disable = bool(
+                    getattr(caps, "supports_disable_reasoning", False)
+                )
+            except Exception:
+                supports_disable = False
+            settings = apply_reasoning_mode_settings(
+                settings,
+                profile.reasoning_mode,
+                supports_disable_reasoning=supports_disable,
+            )
         provider = self.provider
+        structured_tools_streaming = self.structured_tools_true_streaming_enabled
 
         def produce():
             try:
                 for chunk in provider.stream(
-                    model=model, messages=messages, tools=tools, **settings
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    structured_tools_true_streaming_enabled=structured_tools_streaming,
+                    **settings,
                 ):
                     # User pressed Stop: drop the stream between chunks (reading the
                     # asyncio.Event's flag from a thread is safe; we only read).
@@ -1239,6 +1568,16 @@ class TurnEngine:
         context = (
             self.context_provider() if self.context_provider is not None else ""
         ) or ""
+        budget_notice = self._budget_guidance_for_outbound()
+        if budget_notice:
+            context = f"{context}\n\n{budget_notice}".strip() if context else budget_notice
+        dup_notice = self._duplicate_tool_warning_for_outbound()
+        if dup_notice:
+            context = f"{context}\n\n{dup_notice}".strip() if context else dup_notice
+        # HARD STOP G: EF prompt is outbound-only (never persisted to canonical history).
+        if self._emergency_finalizing:
+            ef = _EMERGENCY_FINALIZATION_PROMPT
+            context = f"{context}\n\n{ef}".strip() if context else ef
         if not context:
             return out
         block = f"\n\n<system-context>\n{context}\n</system-context>"
@@ -1256,6 +1595,24 @@ class TurnEngine:
             out[i] = msg
             break
         return out
+
+    def _budget_guidance_for_outbound(self) -> str:
+        """Soft-target Explore→Converge→Deliver notice. Outbound-only; never mutates
+        canonical history. Completely inert when no ExecutionProfile is attached or
+        budget_guidance_enabled is false.
+        """
+        profile = self.execution_profile
+        if profile is None or not profile.budget_guidance_enabled:
+            return ""
+        target = profile.target_iterations
+        if target is None:
+            return ""
+        hard = profile.max_iterations
+        iteration = self._budget_iteration or 1
+        phase = budget_phase_for_iteration(iteration, hard=hard, target=target)
+        return (
+            budget_guidance_text(phase, iteration=iteration, hard=hard) or ""
+        )
 
 
 def _assistant_message(turn: AssistantTurn, model: Optional[str] = None) -> dict[str, Any]:
