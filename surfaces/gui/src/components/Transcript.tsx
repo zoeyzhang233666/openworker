@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ApprovalDecision, Item } from "../types";
+import type { ChartToolResult } from "../chartSpec";
 import { shortArgs } from "./ApprovalCard";
 import { humanizeAsk, humanizeTool, type HumanLine } from "../humanize";
 import { Markdown } from "./Markdown";
@@ -135,6 +136,13 @@ type ToolItem = Extract<Item, { kind: "tool" }>;
 type ApprovalItem = Extract<Item, { kind: "approval" }>;
 type AssistantItem = Extract<Item, { kind: "assistant" }>;
 type TurnItem = ToolItem | ApprovalItem | AssistantItem;
+
+/** Yahoo OHLC previews from a turn — for ```chart short-ref resolve (D-136). */
+export function yahooChartToolsFromItems(items: Item[]): ChartToolResult[] {
+  return items
+    .filter((it): it is ToolItem => it.kind === "tool" && it.name === "lookup_yahoo_ohlc")
+    .map((t) => ({ name: t.name, preview: t.preview }));
+}
 
 // TurnGroup (§33, absorbs §7's StepGroup): the whole user-message → final-answer span collapses
 // as ONE disclosure — "N steps" — with the agent's narration (assistant text followed by more
@@ -306,6 +314,7 @@ function TurnGroup({
   // Manual toggle sticks for this TurnGroup instance (userToggle !== null).
   const rows = buildRows(items);
   const tools = items.filter((it): it is ToolItem => it.kind === "tool");
+  const chartToolResults = yahooChartToolsFromItems(items);
   const running = live || tools.some((t) => t.status === "…");
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const open = userToggle ?? turnGroupAutoOpen({ live, tools, aborted });
@@ -357,7 +366,7 @@ function TurnGroup({
           {rows.map((row, i) =>
             row.type === "narr" ? (
               <div className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]" key={i} data-testid="turn-narration">
-                <Markdown text={row.text} />
+                <Markdown text={row.text} chartToolResults={chartToolResults} />
               </div>
             ) : row.type === "ask" ? (
               <div className="flex items-baseline gap-2 px-2 py-0.5" key={i} data-testid="turn-ask">
@@ -539,12 +548,17 @@ export function Transcript({
                   <ThinkingBlock text={item.reasoning} />
                 </div>
               );
-            return (
+            {
+              const prev = blocks[bi - 1];
+              const chartToolResults =
+                prev && "turn" in prev ? yahooChartToolsFromItems(prev.turn) : [];
+              return (
               <div className="group bubble-assistant" key={bi}>
                 <div className="who">{who}</div>
                 {item.reasoning && <ThinkingBlock text={item.reasoning} />}
                 <Markdown
                   text={item.text}
+                  chartToolResults={chartToolResults}
                   repairContext={
                     sessionId
                       ? {
@@ -654,6 +668,7 @@ export function Transcript({
                 <BubbleMeta text={item.text} ts={item.ts} align="left" />
               </div>
             );
+            }
           case "dirreq":
             if (!item.resolved) return null;
             return (

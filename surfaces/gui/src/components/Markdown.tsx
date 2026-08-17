@@ -12,6 +12,7 @@ import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
 import { MermaidBlock, type MermaidRepairContext } from "./MermaidBlock";
 import { ChartBlock } from "./ChartBlock";
+import type { ChartToolResult } from "../chartSpec";
 import { REQUEST_WEBPAGE_EVENT } from "../requestWebpage";
 
 // §34 (UX-016): the agent ends a deliverable turn with plain markdown —
@@ -190,16 +191,21 @@ export function Markdown({
   renderMermaid = true,
   renderCharts = true,
   repairContext,
+  chartToolResults,
 }: {
   text: string;
   renderMermaid?: boolean;
   renderCharts?: boolean;
   repairContext?: MermaidRepairContext;
+  /** Same-turn tool previews for Yahoo ```chart short-ref resolve (D-136). */
+  chartToolResults?: ChartToolResult[];
 }) {
   // Keep components identity stable across parent re-renders (scroll follow, etc.).
-  // MermaidBlock reads the latest repairContext via its own ref each render.
+  // MermaidBlock / ChartBlock read latest sidecars via refs each render.
   const repairRef = useRef(repairContext);
   repairRef.current = repairContext;
+  const chartToolsRef = useRef(chartToolResults);
+  chartToolsRef.current = chartToolResults;
 
   const components = useMemo((): Components => {
     const Pre: Components["pre"] = ({ children }) => {
@@ -210,7 +216,8 @@ export function Markdown({
       }
       if (renderCharts) {
         const chartSrc = chartSourceFromPreChildren(children);
-        if (chartSrc !== null) return <ChartBlock source={chartSrc} />;
+        if (chartSrc !== null)
+          return <ChartBlock source={chartSrc} chartToolResults={chartToolsRef.current} />;
       }
       return <pre>{children}</pre>;
     };

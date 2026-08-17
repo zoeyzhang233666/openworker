@@ -16,7 +16,8 @@ import {
   type ChartConfiguration,
   type ChartType as ChartJsType,
 } from "chart.js";
-import { parseChartSpec, type ChartSpec } from "../chartSpec";
+import { CandlestickController, CandlestickElement } from "chartjs-chart-financial";
+import { resolveChartSource, type ChartSpec, type ChartToolResult } from "../chartSpec";
 import { useI18n } from "../i18n";
 
 // Tree-shaken chart.js requires controllers + elements; missing LineController
@@ -25,6 +26,8 @@ Chart.register(
   LineController,
   BarController,
   ScatterController,
+  CandlestickController,
+  CandlestickElement,
   CategoryScale,
   LinearScale,
   PointElement,
@@ -74,9 +77,146 @@ function seriesPaint(index: number) {
   return SERIES_PALETTE[index % SERIES_PALETTE.length]!;
 }
 
+/** 国内行情习惯（同花顺/文华）：红涨绿跌。 */
+export const CN_CANDLE_COLORS = {
+  border: {
+    up: "#E53935",
+    down: "#1B9E5A",
+    unchanged: "#9E9E9E",
+  },
+  background: {
+    up: "rgba(229, 57, 53, 0.75)",
+    down: "rgba(27, 158, 90, 0.75)",
+    unchanged: "rgba(158, 158, 158, 0.45)",
+  },
+} as const;
+
+/** Format chart prices for tooltips — at most two decimal places. */
+export function formatChartPrice(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  return value.toFixed(2);
+}
+
+export type ChartTooltipUi = {
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+};
+
+const DEFAULT_OHLC_UI: ChartTooltipUi = {
+  open: "开盘",
+  high: "最高",
+  low: "最低",
+  close: "收盘",
+};
+
+function candlestickIndex(ctx: {
+  dataIndex?: number;
+  parsed?: unknown;
+  raw?: unknown;
+}): number {
+  if (typeof ctx.dataIndex === "number" && Number.isFinite(ctx.dataIndex)) return ctx.dataIndex;
+  const parsed = ctx.parsed;
+  if (typeof parsed === "object" && parsed && "x" in parsed) {
+    const x = Number((parsed as { x: unknown }).x);
+    if (Number.isFinite(x)) return Math.round(x);
+  }
+  const raw = ctx.raw;
+  if (typeof raw === "object" && raw && "x" in raw) {
+    const x = Number((raw as { x: unknown }).x);
+    if (Number.isFinite(x)) return Math.round(x);
+  }
+  return -1;
+}
+
 /** Build Chart.js config from a validated ChartSpec (never from raw model options). */
-export function chartJsConfigFromSpec(spec: ChartSpec): ChartConfiguration {
+export function chartJsConfigFromSpec(
+  spec: ChartSpec,
+  ui: ChartTooltipUi = DEFAULT_OHLC_UI,
+): ChartConfiguration {
   const colors = themeColors();
+  const yTitle = spec.yTitle || (spec.unit ? spec.unit : undefined);
+  const unitSuffix = spec.unit ? ` ${spec.unit}` : yTitle && !spec.unit ? ` ${yTitle}` : "";
+
+  if (spec.type === "candlestick") {
+    const bars = spec.ohlc ?? [];
+    return {
+      type: "candlestick",
+      data: {
+        datasets: [
+          {
+            label: spec.title || "OHLC",
+            data: bars.map((bar, i) => ({ x: i, o: bar.o, h: bar.h, l: bar.l, c: bar.c })),
+            borderColors: { ...CN_CANDLE_COLORS.border },
+            backgroundColors: { ...CN_CANDLE_COLORS.background },
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: spec.showLegend === true,
+            labels: { color: colors.text },
+          },
+          title: {
+            display: !!spec.title,
+            text: spec.subtitle ? [spec.title!, spec.subtitle] : spec.title,
+            color: colors.text,
+          },
+          tooltip: {
+            callbacks: {
+              title(items) {
+                const item = items[0];
+                if (!item) return "";
+                const i = candlestickIndex(item);
+                return i >= 0 && spec.labels[i] != null ? String(spec.labels[i]) : "";
+              },
+              label(ctx) {
+                const raw = ctx.raw as { o?: number; h?: number; l?: number; c?: number } | undefined;
+                if (!raw) return "";
+                return [
+                  `${ui.open} ${formatChartPrice(raw.o)}${unitSuffix}`,
+                  `${ui.high} ${formatChartPrice(raw.h)}${unitSuffix}`,
+                  `${ui.low} ${formatChartPrice(raw.l)}${unitSuffix}`,
+                  `${ui.close} ${formatChartPrice(raw.c)}${unitSuffix}`,
+                ];
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: "linear",
+            offset: true,
+            title: spec.xTitle
+              ? { display: true, text: spec.xTitle, color: colors.muted }
+              : undefined,
+            ticks: {
+              color: colors.muted,
+              callback(value) {
+                const i = Number(value);
+                return Number.isInteger(i) && spec.labels[i] != null ? spec.labels[i] : "";
+              },
+            },
+            grid: { color: colors.grid },
+          },
+          y: {
+            min: spec.yMin,
+            max: spec.yMax,
+            title: yTitle
+              ? { display: true, text: yTitle, color: colors.muted }
+              : undefined,
+            ticks: { color: colors.muted },
+            grid: { color: colors.grid },
+          },
+        },
+      },
+    };
+  }
+
   const fill = spec.type === "area";
   const chartType: ChartJsType =
     spec.type === "area" ? "line" : spec.type === "scatter" ? "scatter" : spec.type;
@@ -111,8 +251,6 @@ export function chartJsConfigFromSpec(spec: ChartSpec): ChartConfiguration {
     };
   });
 
-  const yTitle = spec.yTitle || (spec.unit ? spec.unit : undefined);
-
   return {
     type: chartType,
     data: {
@@ -142,7 +280,7 @@ export function chartJsConfigFromSpec(spec: ChartSpec): ChartConfiguration {
                   : typeof ctx.parsed === "number"
                     ? ctx.parsed
                     : NaN;
-              const base = `${ctx.dataset.label ?? ""}: ${Number.isFinite(y) ? y : "—"}`;
+              const base = `${ctx.dataset.label ?? ""}: ${formatChartPrice(y)}`;
               return spec.unit ? `${base} ${spec.unit}` : base;
             },
           },
@@ -184,14 +322,40 @@ export function chartJsConfigFromSpec(spec: ChartSpec): ChartConfiguration {
   };
 }
 
-export function ChartBlock({ source }: { source: string }): JSX.Element {
-  const { t } = useI18n();
+export function ChartBlock({
+  source,
+  chartToolResults,
+}: {
+  source: string;
+  chartToolResults?: ChartToolResult[];
+}): JSX.Element {
+  const { t, locale } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chartRef = useRef<Chart | null>(null);
   const [view, setView] = useState<ViewMode>("chart");
   const [error, setError] = useState<string | null>(null);
 
-  const parsed = useMemo(() => parseChartSpec(source), [source]);
+  // Stable signature so parent re-renders with a new array identity do not rebuild Chart.js.
+  const toolsSig = (chartToolResults || [])
+    .filter((t) => t.name === "lookup_yahoo_ohlc" && t.preview)
+    .map((t) => t.preview!)
+    .join("\0");
+
+  const parsed = useMemo(
+    () => resolveChartSource(source, chartToolResults),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- toolsSig stands in for chartToolResults
+    [source, toolsSig],
+  );
+
+  const tooltipUi = useMemo(
+    (): ChartTooltipUi => ({
+      open: t("chart.ohlc.open"),
+      high: t("chart.ohlc.high"),
+      low: t("chart.ohlc.low"),
+      close: t("chart.ohlc.close"),
+    }),
+    [t, locale],
+  );
 
   useEffect(() => {
     function releaseCanvas(canvas: HTMLCanvasElement | null) {
@@ -226,7 +390,7 @@ export function ChartBlock({ source }: { source: string }): JSX.Element {
     releaseCanvas(canvas);
 
     try {
-      chartRef.current = new Chart(canvas, chartJsConfigFromSpec(parsed.spec));
+      chartRef.current = new Chart(canvas, chartJsConfigFromSpec(parsed.spec, tooltipUi));
       setError(null);
       setView("chart");
     } catch (err) {
@@ -238,7 +402,7 @@ export function ChartBlock({ source }: { source: string }): JSX.Element {
     return () => {
       releaseCanvas(canvasRef.current);
     };
-  }, [source, parsed]);
+  }, [source, parsed, tooltipUi]);
 
   const showChart = view === "chart" && parsed.ok && !error;
   const showSource = view === "source" || !!error || !parsed.ok;

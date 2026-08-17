@@ -32,6 +32,11 @@ vi.mock("chart.js", () => ({
   Tooltip: {},
 }));
 
+vi.mock("chartjs-chart-financial", () => ({
+  CandlestickController: {},
+  CandlestickElement: {},
+}));
+
 afterEach(cleanup);
 
 // §34 (UX-016): [Title](artifact:path) renders as a chip that opens the artifact viewer via
@@ -183,5 +188,36 @@ describe("Markdown chart fence", () => {
     render(<Markdown text={text} renderCharts={false} />);
     expect(screen.queryByTestId("chart-block")).toBeNull();
     expect(document.querySelector("pre code")?.className || "").toMatch(/language-chart/);
+  });
+
+  it("resolves Yahoo short-ref via chartToolResults", async () => {
+    const ref = JSON.stringify({
+      version: 1,
+      type: "candlestick",
+      from_tool: "lookup_yahoo_ohlc",
+      symbol: "CL=F",
+    });
+    const preview = JSON.stringify({
+      status: "ok",
+      symbol: "CL=F",
+      chart_spec: {
+        version: 1,
+        type: "candlestick",
+        labels: ["D1", "D2"],
+        ohlc: [
+          { o: 1, h: 2, l: 0.5, c: 1.5 },
+          { o: 2, h: 3, l: 1, c: 2.5 },
+        ],
+      },
+    });
+    const text = `\`\`\`chart\n${ref}\n\`\`\``;
+    render(
+      <Markdown
+        text={text}
+        chartToolResults={[{ name: "lookup_yahoo_ohlc", preview }]}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("chart-block")).toBeTruthy());
+    expect(screen.queryByTestId("chart-error")).toBeNull();
   });
 });

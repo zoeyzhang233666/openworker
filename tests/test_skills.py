@@ -96,6 +96,8 @@ def test_build_engine_chat(tmp_path):
     assert "time series" in sys_msg and "≥2" in sys_msg
     assert "price trend" in sys_msg
     assert "top-level string array" in sys_msg
+    assert "lookup_yahoo_ohlc" in sys_msg and "candlestick" in sys_msg
+    assert "from_tool" in sys_msg and "short-ref" in sys_msg
     assert "load_skill" in sys_msg and "grilling" in sys_msg
     assert "nicer webpage" in sys_msg or "美观" in sys_msg or "网页" in sys_msg
     assert "align" in sys_msg.lower() or "对齐" in sys_msg

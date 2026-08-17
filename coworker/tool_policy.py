@@ -63,6 +63,7 @@ _REMOTE_OTHER = frozenset(
         "lookup_legal_entity",
         "validate_eu_vat",
         "lookup_fx_rate",
+        "lookup_yahoo_ohlc",
         "lookup_wikipedia",
         "lookup_huagongshe_chemical",
         "fetch_huagongshe_svg",

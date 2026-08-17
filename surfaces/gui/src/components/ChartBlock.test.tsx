@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChartBlock } from "./ChartBlock";
+import { ChartBlock, chartJsConfigFromSpec, formatChartPrice, CN_CANDLE_COLORS } from "./ChartBlock";
+import { parseChartSpec } from "../chartSpec";
 
 const destroyMock = vi.fn();
 const getChartDestroyMock = vi.fn();
@@ -29,6 +30,11 @@ vi.mock("chart.js", () => ({
   Legend: {},
   Title: {},
   Tooltip: {},
+}));
+
+vi.mock("chartjs-chart-financial", () => ({
+  CandlestickController: {},
+  CandlestickElement: {},
 }));
 
 const validLine = JSON.stringify({
@@ -88,6 +94,59 @@ describe("ChartBlock", () => {
     expect(cfg.data.datasets[0].borderColor).toBe("#2563eb");
     expect(cfg.data.datasets[1].borderColor).toBe("#D55E00");
     expect(cfg.data.datasets[0].borderWidth).toBe(2);
+  });
+
+  it("renders candlestick from ohlc without requiring version", async () => {
+    const candle = JSON.stringify({
+      type: "candlestick",
+      title: "WTI",
+      labels: ["D1", "D2"],
+      ohlc: [
+        { o: 70, h: 72, l: 69, c: 71 },
+        { o: 71, h: 73, l: 70, c: 72 },
+      ],
+    });
+    render(<ChartBlock source={candle} />);
+    await waitFor(() => expect(ChartMock).toHaveBeenCalled());
+    const cfg = ChartMock.mock.calls[0][1];
+    expect(cfg.type).toBe("candlestick");
+    expect(cfg.data.datasets[0].data[0]).toEqual({ x: 0, o: 70, h: 72, l: 69, c: 71 });
+    // 国内习惯：红涨绿跌
+    expect(cfg.data.datasets[0].borderColors.up).toBe(CN_CANDLE_COLORS.border.up);
+    expect(cfg.data.datasets[0].borderColors.down).toBe(CN_CANDLE_COLORS.border.down);
+    expect(cfg.data.datasets[0].backgroundColors.up).toBe(CN_CANDLE_COLORS.background.up);
+    expect(cfg.data.datasets[0].backgroundColors.down).toBe(CN_CANDLE_COLORS.background.down);
+  });
+
+  it("resolves Yahoo short-ref from chartToolResults", async () => {
+    const ref = JSON.stringify({
+      version: 1,
+      type: "candlestick",
+      from_tool: "lookup_yahoo_ohlc",
+      symbol: "CL=F",
+    });
+    const preview = JSON.stringify({
+      status: "ok",
+      symbol: "CL=F",
+      chart_spec: {
+        version: 1,
+        type: "candlestick",
+        title: "Crude",
+        labels: ["D1", "D2"],
+        ohlc: [
+          { o: 70, h: 72, l: 69, c: 71 },
+          { o: 71, h: 73, l: 70, c: 72 },
+        ],
+      },
+    });
+    render(
+      <ChartBlock
+        source={ref}
+        chartToolResults={[{ name: "lookup_yahoo_ohlc", preview }]}
+      />,
+    );
+    await waitFor(() => expect(ChartMock).toHaveBeenCalled());
+    expect(screen.queryByTestId("chart-error")).toBeNull();
   });
 
   it("shows error when series length mismatches labels", async () => {
@@ -159,5 +218,94 @@ describe("ChartBlock", () => {
     expect(getChartDestroyMock).toHaveBeenCalled();
     expect(screen.queryByTestId("chart-error")).toBeNull();
     expect(screen.queryByText(/Canvas is already in use/i)).toBeNull();
+  });
+});
+
+describe("chart tooltip formatting", () => {
+  it("formatChartPrice keeps at most two decimals", () => {
+    expect(formatChartPrice(93.44999694824219)).toBe("93.45");
+    expect(formatChartPrice(97)).toBe("97.00");
+    expect(formatChartPrice(Number.NaN)).toBe("—");
+  });
+
+  it("candlestick uses CN red-up green-down colors", () => {
+    const parsed = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["D1"],
+        ohlc: [{ o: 1, h: 2, l: 0.5, c: 1.5 }],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec);
+    const ds = cfg.data.datasets[0] as {
+      borderColors: { up: string; down: string };
+      backgroundColors: { up: string; down: string };
+    };
+    expect(ds.borderColors.up).toBe("#E53935");
+    expect(ds.borderColors.down).toBe("#1B9E5A");
+    expect(ds.backgroundColors.up).toContain("229, 57, 53");
+    expect(ds.backgroundColors.down).toContain("27, 158, 90");
+  });
+
+  it("candlestick tooltip title uses date label and Chinese OHLC lines", () => {
+    const parsed = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["2026-05-18", "2026-06-03"],
+        ohlc: [
+          { o: 93.44999694824219, h: 97, l: 93.44999694824219, c: 96.0199966430664 },
+          { o: 70, h: 72, l: 69, c: 71 },
+        ],
+        yLabel: "USD",
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec);
+    const title = cfg.options?.plugins?.tooltip?.callbacks?.title as
+      | ((items: { dataIndex: number }[]) => string)
+      | undefined;
+    const label = cfg.options?.plugins?.tooltip?.callbacks?.label as
+      | ((ctx: { raw: { o: number; h: number; l: number; c: number } }) => string | string[])
+      | undefined;
+    expect(title?.([{ dataIndex: 0 }])).toBe("2026-05-18");
+    const lines = label?.({
+      raw: {
+        o: 93.44999694824219,
+        h: 97,
+        l: 93.44999694824219,
+        c: 96.0199966430664,
+      },
+    });
+    expect(Array.isArray(lines)).toBe(true);
+    expect(lines).toEqual([
+      "开盘 93.45 USD",
+      "最高 97.00 USD",
+      "最低 93.45 USD",
+      "收盘 96.02 USD",
+    ]);
+    expect(JSON.stringify(lines)).not.toMatch(/\bO \d/);
+  });
+
+  it("line tooltip formats y to two decimals", () => {
+    const parsed = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "line",
+        labels: ["A", "B"],
+        series: [{ name: "价", values: [6100.129, 6035] }],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec);
+    const label = cfg.options?.plugins?.tooltip?.callbacks?.label as
+      | ((ctx: { parsed: number; dataset: { label?: string } }) => string)
+      | undefined;
+    expect(label?.({ parsed: 6100.129, dataset: { label: "价" } })).toBe("价: 6100.13");
   });
 });

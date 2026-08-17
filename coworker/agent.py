@@ -51,6 +51,7 @@ from .customs import make_filter_customs_importers_tool
 from .trade import make_lookup_trade_flow_tool
 from .vat import make_validate_eu_vat_tool
 from .fx import make_lookup_fx_rate_tool
+from .yahoo_finance import make_lookup_yahoo_ohlc_tool
 from .wiki import make_lookup_wikipedia_tool
 from .huagongshe import (
     make_create_huagongshe_reaction_tool,
@@ -201,11 +202,20 @@ attachment, or other static exported chart.
 time series (≥2 dated points), include one fenced ```chart` line ChartSpec in the same \
 reply (alongside any price table and highlights). Skip the chart only if there is no \
 usable time series.
+- For futures/stock OHLC, call `lookup_yahoo_ohlc` (do not shell/curl Yahoo). When OHLC is \
+available, emit one ```chart` short-ref per symbol — do NOT hand-copy labels/ohlc arrays. \
+Example: {\"version\": 1, \"type\": \"candlestick\", \"from_tool\": \"lookup_yahoo_ohlc\", \
+\"symbol\": \"CL=F\"} (optional title only). Multiple symbols → multiple separate short-ref \
+blocks. The UI resolves chart_spec from the tool result.
+- Chemical spot averages without OHLC stay as `type: \"line\"` (multi-region may share one \
+line chart with multiple series). Never invent OHLC or volume.
 - When structured tool/MCP data already contains the values, preserve those numeric values \
 exactly; do not invent or interpolate missing prices unless explicitly requested (use null).
 - Do not invoke shell, Node, npm, chart.mjs, Vega, or chart-image merely to visualize data \
 in the conversation.
-- Emit ChartSpec version 1. Every series.values length must exactly match labels length.
+- Emit ChartSpec version 1 (always include `\"version\": 1`; parsers may default a missing \
+version, but still write it). For hand-built line/bar charts, every series.values length must \
+exactly match labels length. Yahoo candlesticks use short-ref only.
 - Put `labels` as a top-level string array (not nested under `x: { labels: [...] }`). \
 Parsers may accept `x.labels` as a fallback, but the canonical shape is flat."""
 
@@ -410,6 +420,8 @@ def build_engine(
     registry.register(make_validate_eu_vat_tool())
     # FX: keyless Frankfurter (convert user-supplied amounts only; never invent prices).
     registry.register(make_lookup_fx_rate_tool())
+    # Futures/stock OHLC: unofficial Yahoo chart (best-effort; prefer over shell/curl).
+    registry.register(make_lookup_yahoo_ohlc_tool())
     # Wikipedia: encyclopedia background for SKU/synonyms (never sole Qualified evidence).
     registry.register(make_lookup_wikipedia_tool())
     # Huagongshe: chemistry search + SVG asset save + reaction validate/create

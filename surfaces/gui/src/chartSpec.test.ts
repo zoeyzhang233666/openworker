@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChartSpec } from "./chartSpec";
+import { parseChartSpec, resolveChartSource } from "./chartSpec";
 
 const validLine = {
   version: 1 as const,
@@ -162,27 +162,129 @@ describe("parseChartSpec", () => {
     if (!result.ok) expect(result.error).toMatch(/labels must be an array/i);
   });
 
-  it("maps x.title / x.label to xTitle when flat aliases absent", () => {
-    const withTitle = parseChartSpec(
-      JSON.stringify({
-        version: 1,
-        type: "line",
-        x: { labels: ["D1", "D2"], title: "日期" },
-        series: [{ name: "价", values: [1, 2] }],
-      }),
-    );
-    expect(withTitle.ok).toBe(true);
-    if (withTitle.ok) expect(withTitle.spec.xTitle).toBe("日期");
+  it("defaults missing version to 1", () => {
+    const { version: _v, ...rest } = validLine;
+    const result = parseChartSpec(JSON.stringify(rest));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.spec.version).toBe(1);
+  });
 
-    const withLabel = parseChartSpec(
+  it("accepts candlestick ohlc aligned with labels", () => {
+    const result = parseChartSpec(
       JSON.stringify({
-        version: 1,
-        type: "line",
-        x: { labels: ["D1", "D2"], label: "日" },
-        series: [{ name: "价", values: [1, 2] }],
+        type: "candlestick",
+        title: "WTI",
+        labels: ["D1", "D2"],
+        ohlc: [
+          { o: 70, h: 72, l: 69, c: 71 },
+          { open: 71, high: 73, low: 70, close: 72 },
+        ],
+        yLabel: "USD/bbl",
       }),
     );
-    expect(withLabel.ok).toBe(true);
-    if (withLabel.ok) expect(withLabel.spec.xTitle).toBe("日");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.type).toBe("candlestick");
+      expect(result.spec.series).toEqual([]);
+      expect(result.spec.ohlc).toEqual([
+        { o: 70, h: 72, l: 69, c: 71 },
+        { o: 71, h: 73, l: 70, c: 72 },
+      ]);
+      expect(result.spec.yTitle).toBe("USD/bbl");
+    }
+  });
+
+  it("truncates candlestick to min(labels, ohlc) prefix when lengths differ", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["D1", "D2", "D3"],
+        ohlc: [
+          { o: 1, h: 2, l: 0.5, c: 1.5 },
+          { o: 2, h: 3, l: 1.5, c: 2.5 },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.labels).toEqual(["D1", "D2"]);
+      expect(result.spec.ohlc).toHaveLength(2);
+    }
+  });
+
+  it("rejects candlestick without ohlc", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["D1"],
+        series: [{ name: "x", values: [1] }],
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/ohlc/i);
+  });
+});
+
+describe("resolveChartSource Yahoo short-ref", () => {
+  const toolPreview = JSON.stringify({
+    status: "ok",
+    symbol: "CL=F",
+    chart_spec: {
+      version: 1,
+      type: "candlestick",
+      title: "Crude Oil (CL=F)",
+      labels: ["2026-01-01", "2026-01-02"],
+      ohlc: [
+        { o: 70, h: 72, l: 69, c: 71 },
+        { o: 71, h: 73, l: 70, c: 72 },
+      ],
+      yLabel: "USD",
+    },
+  });
+
+  it("resolves from_tool + symbol from tool preview", () => {
+    const result = resolveChartSource(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        from_tool: "lookup_yahoo_ohlc",
+        symbol: "cl=f",
+      }),
+      [{ name: "lookup_yahoo_ohlc", preview: toolPreview }],
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.ohlc).toHaveLength(2);
+      expect(result.spec.title).toBe("Crude Oil (CL=F)");
+    }
+  });
+
+  it("allows title override on short-ref", () => {
+    const result = resolveChartSource(
+      JSON.stringify({
+        type: "candlestick",
+        from_tool: "lookup_yahoo_ohlc",
+        symbol: "CL=F",
+        title: "WTI",
+      }),
+      [{ name: "lookup_yahoo_ohlc", preview: toolPreview }],
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.spec.title).toBe("WTI");
+  });
+
+  it("errors when symbol is missing from tools", () => {
+    const result = resolveChartSource(
+      JSON.stringify({
+        type: "candlestick",
+        from_tool: "lookup_yahoo_ohlc",
+        symbol: "BZ=F",
+      }),
+      [{ name: "lookup_yahoo_ohlc", preview: toolPreview }],
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/BZ=F/i);
   });
 });

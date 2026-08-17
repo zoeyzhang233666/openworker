@@ -41,6 +41,14 @@ def select_verified_tool_names(
     if re.search(r"(汇率|fx\b|exchange rate|usd/?cny|欧元汇率)", t, re.I):
         candidates.append("lookup_fx_rate")
 
+    if re.search(
+        r"(期货|原油期货|wti|brent|股票|股价|k线|蜡烛|ohlc|yahoo|"
+        r"\bcl=f\b|\bbz=f\b|futures?\b|\bstock\b)",
+        t,
+        re.I,
+    ):
+        candidates.append("lookup_yahoo_ohlc")
+
     if re.search(r"(\bvat\b|增值税号|eu\s*vat)", t, re.I):
         candidates.append("validate_eu_vat")
 
