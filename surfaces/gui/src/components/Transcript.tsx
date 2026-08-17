@@ -374,7 +374,7 @@ function TurnGroup({
               className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]"
               data-testid="turn-live-stream"
             >
-              <Markdown text={streamingText} renderMermaid={false} />
+              <Markdown text={streamingText} renderMermaid={false} renderCharts={false} />
               <span className="stream-cursor">▍</span>
             </div>
           )}

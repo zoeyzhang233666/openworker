@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
 import { MermaidBlock, type MermaidRepairContext } from "./MermaidBlock";
+import { ChartBlock } from "./ChartBlock";
 import { REQUEST_WEBPAGE_EVENT } from "../requestWebpage";
 
 // §34 (UX-016): the agent ends a deliverable turn with plain markdown —
@@ -134,13 +135,24 @@ function ArtifactChip({ path, title }: { path: string; title: string }) {
   );
 }
 
-function mermaidSourceFromPreChildren(children: ReactNode): string | null {
+function fencedSourceFromPreChildren(
+  children: ReactNode,
+  language: string,
+): string | null {
   const arr = Children.toArray(children);
   if (arr.length !== 1 || !isValidElement(arr[0])) return null;
   const el = arr[0] as ReactElement<{ className?: string; children?: ReactNode }>;
   const cls = el.props.className || "";
-  if (!cls.includes("language-mermaid")) return null;
+  if (!cls.includes(`language-${language}`)) return null;
   return String(el.props.children ?? "");
+}
+
+function mermaidSourceFromPreChildren(children: ReactNode): string | null {
+  return fencedSourceFromPreChildren(children, "mermaid");
+}
+
+function chartSourceFromPreChildren(children: ReactNode): string | null {
+  return fencedSourceFromPreChildren(children, "chart");
 }
 
 function MarkdownLink({
@@ -167,8 +179,8 @@ function MarkdownLink({
 
 // Assistant messages rendered as GitHub-flavored markdown (headings, lists, tables, code,
 // links). Links open externally — never navigate the app shell — except artifact: links,
-// which open the session's artifact viewer. Fenced ```mermaid blocks become MermaidBlock
-// unless renderMermaid is false (live streaming).
+// which open the session's artifact viewer. Fenced ```mermaid / ```chart blocks become
+// MermaidBlock / ChartBlock unless the matching render* flag is false (live streaming).
 //
 // remarkPlugins / urlTransform / components MUST stay referentially stable across parent
 // re-renders. Inline object/array identities made react-markdown remount custom nodes,
@@ -176,10 +188,12 @@ function MarkdownLink({
 export function Markdown({
   text,
   renderMermaid = true,
+  renderCharts = true,
   repairContext,
 }: {
   text: string;
   renderMermaid?: boolean;
+  renderCharts?: boolean;
   repairContext?: MermaidRepairContext;
 }) {
   // Keep components identity stable across parent re-renders (scroll follow, etc.).
@@ -190,9 +204,13 @@ export function Markdown({
   const components = useMemo((): Components => {
     const Pre: Components["pre"] = ({ children }) => {
       if (renderMermaid) {
-        const src = mermaidSourceFromPreChildren(children);
-        if (src !== null)
-          return <MermaidBlock source={src} repairContext={repairRef.current} />;
+        const mermaidSrc = mermaidSourceFromPreChildren(children);
+        if (mermaidSrc !== null)
+          return <MermaidBlock source={mermaidSrc} repairContext={repairRef.current} />;
+      }
+      if (renderCharts) {
+        const chartSrc = chartSourceFromPreChildren(children);
+        if (chartSrc !== null) return <ChartBlock source={chartSrc} />;
       }
       return <pre>{children}</pre>;
     };
@@ -200,7 +218,7 @@ export function Markdown({
       a: MarkdownLink as Components["a"],
       pre: Pre,
     };
-  }, [renderMermaid]);
+  }, [renderMermaid, renderCharts]);
 
   return (
     <div className="md">

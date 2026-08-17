@@ -6,6 +6,7 @@ from coworker.chemclaw_paths import (
     chemclaw_charts_workdir,
     chemclaw_internal_dir,
     relativize_markdown_asset_hrefs,
+    stable_session_workspace,
     workspace_relpath_or_none,
 )
 
@@ -15,6 +16,12 @@ def test_internal_charts_dir_is_under_dot_chemclaw(tmp_path):
     ws.mkdir()
     assert chemclaw_internal_dir(ws) == ws / "._chemclaw"
     assert chemclaw_charts_workdir(ws) == ws / "._chemclaw" / "charts"
+
+
+def test_stable_session_workspace_unit():
+    assert str(stable_session_workspace(r"D:\a\b\._chemclaw\charts")).replace(
+        "\\", "/"
+    ) == "D:/a/b"
 
 
 def test_relative_posix_and_backslash_paths():

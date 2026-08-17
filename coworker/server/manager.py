@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from ..agent import build_engine
 from ..agents import get_agent
-from ..chemclaw_paths import workspace_relpath_or_none
+from ..chemclaw_paths import stable_session_workspace, workspace_relpath_or_none
 from ..connections import (
     PersonaConnectionStore,
     SessionConnectionStore,
@@ -389,7 +389,7 @@ class SessionManager:
         """The workspace `get_engine` would bind — for prepping MCP tools beforehand."""
         record = self.session_store.load(session_id)
         if record:
-            return record.workspace or None
+            return self._resolved_session_workspace(session_id) or None
         ag = get_agent(agent or "code")
         return self.resolve_workspace(workspace) if ag.needs_workspace else None
 
@@ -423,7 +423,7 @@ class SessionManager:
         ag = get_agent(agent_name)
 
         if record:
-            ws = record.workspace or None
+            ws = self._resolved_session_workspace(session_id) or None
             model, mode, messages = record.model, Mode(record.mode), record.messages
         else:
             ws = self.resolve_workspace(workspace) if ag.needs_workspace else None
@@ -1363,9 +1363,48 @@ class SessionManager:
         except Exception:
             return False
 
-    def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
+    def _resolved_session_workspace(
+        self, session_id: str, *, persist_heal: bool = True
+    ) -> Optional[str]:
+        """Stable session workspace for artifacts / engine bind — never a shell cwd under ._chemclaw/."""
         record = self.session_store.load(session_id)
-        workspace = record.workspace if record else self.default_workspace
+        raw = record.workspace if record else self.default_workspace
+        if not raw:
+            return None
+        healed = stable_session_workspace(raw)
+        try:
+            out = str(healed.expanduser().resolve())
+        except OSError:
+            out = str(healed)
+        if (
+            persist_heal
+            and record is not None
+            and os.path.normcase(os.path.normpath(str(record.workspace)))
+            != os.path.normcase(os.path.normpath(out))
+        ):
+            self.session_store.set_workspace(session_id, out)
+        return out
+
+    @staticmethod
+    def _stable_engine_workspace(engine: TurnEngine) -> str:
+        """Primary scratch / project root — not the transient shell cwd."""
+        roots = getattr(engine, "roots", None) or []
+        if roots:
+            primary = roots[0]
+            path = getattr(primary, "path", None)
+            if path is not None:
+                return str(Path(path).expanduser().resolve())
+        perms = getattr(engine, "permissions", None)
+        wr = getattr(perms, "workspace_root", None) if perms is not None else None
+        if wr is not None:
+            return str(Path(wr).expanduser().resolve())
+        executor = getattr(engine, "executor", None)
+        if executor is not None and getattr(executor, "cwd", None):
+            return os.path.realpath(str(executor.cwd))
+        return ""
+
+    def list_artifacts(self, session_id: str) -> list[dict[str, Any]]:
+        workspace = self._resolved_session_workspace(session_id)
         if not workspace:
             return []
         root = Path(workspace).expanduser().resolve()
@@ -1454,8 +1493,7 @@ class SessionManager:
 
         Error strings are stable English keys the GUI localizes (see interfaceMessages).
         """
-        record = self.session_store.load(session_id)
-        workspace = record.workspace if record else self.default_workspace
+        workspace = self._resolved_session_workspace(session_id)
         if not workspace:
             return None, "artifact_no_workspace"
         root = Path(workspace).expanduser().resolve()
@@ -3720,8 +3758,9 @@ class SessionManager:
         return {"ok": True, "run": run.to_dict()}
 
     def save(self, session_id: str, engine: TurnEngine) -> None:
-        executor = getattr(engine, "executor", None)
-        workspace = os.path.realpath(str(executor.cwd)) if executor else ""
+        workspace = self._stable_engine_workspace(engine)
+        if workspace:
+            workspace = str(stable_session_workspace(workspace))
         self.session_store.save(
             SessionRecord(
                 session_id=session_id,

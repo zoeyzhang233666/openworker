@@ -31,7 +31,10 @@ agent_created: true
 2. 严格按 Tool 的 JSON Schema 传参调用 MCP（例如 `get_compound` 只要 `cas_no`；
    仅有中文名时先 `search_compound` 再查详情）。
 3. 基于 Tool 返回整理答案；失败时说明错误并给出可重试建议。
-4. 输出结构清晰的中文结论（要点列表 + 必要原文字段）。
+4. 输出结构清晰的中文结论：**价格表 + 简要要点**；若 Tool 返回可用时间序列（≥2 个
+   日期点），同一条回复还必须附一条 fenced ```chart`（ChartSpec v1、`type: line`），
+   数值与表一致。聊天内出图勿调用 `chart-image` / shell / Node；仅用户明确要 PNG/
+   报告附件时才用 chart-image。
 
 ## 示例提示词
 

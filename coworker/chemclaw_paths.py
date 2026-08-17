@@ -26,6 +26,37 @@ def chemclaw_charts_workdir(workspace: str | Path) -> Path:
     return chemclaw_internal_dir(workspace) / CHEMCLAW_CHARTS_DIRNAME
 
 
+def stable_session_workspace(path: str | Path) -> Path:
+    """Snap a path that drifted under ``._chemclaw/`` back to the session root.
+
+    Shell cwd may follow the model into ``._chemclaw/charts/...``; that must never become
+    the persisted session workspace used by the artifacts panel.
+    """
+    raw = str(path)
+    part_lists: list[tuple[str, ...]] = []
+    if is_windows_absolute_path(raw) or "\\" in raw:
+        part_lists.append(PureWindowsPath(raw).parts)
+    part_lists.append(Path(raw).parts)
+    part_lists.append(PurePosixPath(raw.replace("\\", "/")).parts)
+
+    for parts in part_lists:
+        for i, part in enumerate(parts):
+            if part != CHEMCLAW_INTERNAL_DIRNAME:
+                continue
+            if i == 0:
+                break
+            head = parts[:i]
+            # Drive paths (C:\, \\server\share) must stay Windows-shaped even on Linux CI.
+            if head and (
+                is_windows_absolute_path(raw)
+                or (len(head[0]) == 2 and head[0][1] == ":")
+                or head[0].startswith("\\\\")
+            ):
+                return Path(str(PureWindowsPath(*head)))
+            return Path(*head)
+    return Path(path)
+
+
 def is_windows_absolute_path(path: str) -> bool:
     raw = str(path or "")
     return bool(_WIN_ABS.match(raw))

@@ -191,6 +191,24 @@ style over neon/glow.
 - Prefer `graph LR` for value-chain style flows when it fits; do not force a fixed subgraph \
 checklist."""
 
+_INLINE_CHART_GUIDANCE = """\
+Inline charts (all conversations):
+- For charts shown directly in normal chat, prefer a fenced ```chart JSON block (ChartSpec \
+version 1) instead of invoking chart-image.
+- Use chart-image only when the user explicitly needs a PNG/SVG/image file, report asset, \
+attachment, or other static exported chart.
+- When answering chemical price trend / recent prices and the tool/MCP result contains a \
+time series (≥2 dated points), include one fenced ```chart` line ChartSpec in the same \
+reply (alongside any price table and highlights). Skip the chart only if there is no \
+usable time series.
+- When structured tool/MCP data already contains the values, preserve those numeric values \
+exactly; do not invent or interpolate missing prices unless explicitly requested (use null).
+- Do not invoke shell, Node, npm, chart.mjs, Vega, or chart-image merely to visualize data \
+in the conversation.
+- Emit ChartSpec version 1. Every series.values length must exactly match labels length.
+- Put `labels` as a top-level string array (not nested under `x: { labels: [...] }`). \
+Parsers may accept `x.labels` as a fallback, but the canonical shape is flat."""
+
 # ChemClaw D-072 G4 / D-078: process-skill pointer + optional webpage align + short bubble.
 _CLARIFY_POINTER = """\
 Clarification: when the user's goal, scope, or deliverable shape is unclear, call `load_skill` \
@@ -454,7 +472,7 @@ def build_engine(
         f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}\n\n"
         f"{_TOOL_BATCHING_GUIDANCE}\n\n"
         f"{_LONG_TASK_GUIDANCE}\n\n"
-        f"{_DIAGRAM_GUIDANCE}\n\n{_CLARIFY_POINTER}"
+        f"{_DIAGRAM_GUIDANCE}\n\n{_INLINE_CHART_GUIDANCE}\n\n{_CLARIFY_POINTER}"
     )
     if default_skill_ids:
         listed = ", ".join(f"`{s}`" for s in default_skill_ids)

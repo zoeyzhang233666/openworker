@@ -11,6 +11,27 @@ vi.mock("mermaid", () => ({
   },
 }));
 
+vi.mock("chart.js", () => ({
+  Chart: Object.assign(
+    function Chart() {
+      return { destroy: vi.fn() };
+    },
+    { register: vi.fn(), getChart: vi.fn() },
+  ),
+  LineController: {},
+  BarController: {},
+  ScatterController: {},
+  CategoryScale: {},
+  LinearScale: {},
+  PointElement: {},
+  LineElement: {},
+  BarElement: {},
+  Filler: {},
+  Legend: {},
+  Title: {},
+  Tooltip: {},
+}));
+
 afterEach(cleanup);
 
 // §34 (UX-016): [Title](artifact:path) renders as a chip that opens the artifact viewer via
@@ -134,5 +155,33 @@ describe("Markdown mermaid fence", () => {
     expect(renderFn.mock.calls.length).toBe(callsAfterFirst);
     expect(screen.getByTestId("mermaid-diagram")).toBeTruthy();
     expect(screen.queryByText(/正在渲染|Rendering/i)).toBeNull();
+  });
+});
+
+const chartFixture = JSON.stringify({
+  version: 1,
+  type: "line",
+  labels: ["A", "B"],
+  series: [{ name: "s", values: [1, 2] }],
+});
+
+describe("Markdown chart fence", () => {
+  it("renders ChartBlock for ```chart when enabled", async () => {
+    const text = `见下图\n\n\`\`\`chart\n${chartFixture}\n\`\`\`\n`;
+    render(<Markdown text={text} />);
+    await waitFor(() => expect(screen.getByTestId("chart-block")).toBeTruthy());
+  });
+
+  it("keeps ordinary ```json as pre/code", () => {
+    render(<Markdown text={"```json\n{}\n```"} />);
+    expect(screen.queryByTestId("chart-block")).toBeNull();
+    expect(document.querySelector("pre code")?.className || "").toMatch(/language-json/);
+  });
+
+  it("skips ChartBlock when renderCharts is false", () => {
+    const text = `\`\`\`chart\n${chartFixture}\n\`\`\``;
+    render(<Markdown text={text} renderCharts={false} />);
+    expect(screen.queryByTestId("chart-block")).toBeNull();
+    expect(document.querySelector("pre code")?.className || "").toMatch(/language-chart/);
   });
 });

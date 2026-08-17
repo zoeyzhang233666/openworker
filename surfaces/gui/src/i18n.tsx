@@ -166,9 +166,9 @@ const messages = {
     "intro.task.memo.prompt":
       "请围绕某个化工品或材料主题整理一份研究备忘录。请先问清主题、用途边界与期望的交付形式，再开始检索与写作；最终以 Markdown 产物交付。",
     "intro.task.price.title": "查某化工品近期价格与走势要点",
-    "intro.task.price.sub": "有数据则给价格表与要点，无数据标明暂无行情",
+    "intro.task.price.sub": "有数据则给价格表、趋势图与要点，无数据标明暂无行情",
     "intro.task.price.prompt":
-      "请查询某个化工品的近期价格与走势要点。请先确认品种与区域（或市场），用可用的价格技能/数据源取数，禁止编造；有数据则给出价格表与简要要点，取不到则标明暂无行情。",
+      "请查询某个化工品的近期价格与走势要点。请先确认品种与区域（或市场），用可用的价格技能/数据源取数，禁止编造；有数据则给出价格表、简要要点，以及一条 fenced ```chart`（ChartSpec v1、line）趋势图（时间序列至少 2 个点时必须出图，数值与表一致）；不要用 chart-image/shell/Node 仅为聊天出图；取不到则标明暂无行情。",
     "intro.task.folder.title": "阅读本地文件夹里的资料并提炼要点",
     "intro.task.folder.sub": "我会读取已共享文件夹并总结与化工问题相关的重点",
     "intro.task.folder.act": "选择文件夹 →",
@@ -411,6 +411,9 @@ const messages = {
     "mermaid.repairFailed": "无法自动修复此图表",
     "mermaid.loadFailed": "图表库加载失败",
     "mermaid.retryLoad": "重新加载",
+    "chart.chart": "图表",
+    "chart.source": "源码",
+    "chart.renderError": "无法渲染此图表",
     "ask.recommended": "推荐",
     "ask.previous": "上一个问题",
     "ask.question": "问题",
@@ -580,9 +583,9 @@ const messages = {
     "intro.task.memo.prompt":
       "Please prepare a research memo on a chemical product or material topic. First clarify the topic, end-use boundary, and desired deliverable format, then research and write; deliver as a Markdown artifact.",
     "intro.task.price.title": "Look up recent prices and trend highlights for a chemical",
-    "intro.task.price.sub": "Include a price table and highlights when data exists; otherwise say no market data",
+    "intro.task.price.sub": "Include a price table, trend chart, and highlights when data exists; otherwise say no market data",
     "intro.task.price.prompt":
-      "Please look up recent prices and trend highlights for a chemical. First confirm the product and region (or market), use available price skills/data sources, and never invent numbers; if data exists, give a price table and brief highlights, otherwise say no market data is available.",
+      "Please look up recent prices and trend highlights for a chemical. First confirm the product and region (or market), use available price skills/data sources, and never invent numbers; if data exists, give a price table, brief highlights, and one fenced ```chart` (ChartSpec v1, line) trend chart whenever the time series has at least 2 points (numbers must match the table); do not use chart-image/shell/Node merely to visualize in chat; otherwise say no market data is available.",
     "intro.task.folder.title": "Read a local folder and extract the key points",
     "intro.task.folder.sub": "I'll read shared folders and summarize what matters for chemical questions",
     "intro.task.folder.act": "Pick a folder →",
@@ -829,6 +832,9 @@ const messages = {
     "mermaid.repairFailed": "Could not automatically fix this diagram",
     "mermaid.loadFailed": "Could not load the diagram library",
     "mermaid.retryLoad": "Retry load",
+    "chart.chart": "Chart",
+    "chart.source": "Source",
+    "chart.renderError": "Unable to render chart",
     "ask.recommended": "Recommended",
     "ask.previous": "Previous question",
     "ask.question": "Question",

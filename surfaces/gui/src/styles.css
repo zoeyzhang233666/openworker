@@ -1693,6 +1693,52 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
 .mermaid-block-error { color: var(--danger); font-size: 12.5px; padding: 8px 12px; }
 .mermaid-block-hint { color: var(--muted); font-size: 12px; padding: 6px 12px 0; }
 
+/* Inline Chart.js blocks (```chart) — mirror Mermaid chrome */
+.chart-block {
+  margin: 4px 0 14px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  overflow: hidden;
+}
+.chart-block-toolbar {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  padding: 6px 10px; border-bottom: 1px solid transparent;
+  font-size: 12px;
+  visibility: hidden;
+}
+.chart-block:hover,
+.chart-block:focus-within,
+.chart-block.is-error {
+  border-color: var(--line);
+  background: var(--paper);
+}
+.chart-block:hover .chart-block-toolbar,
+.chart-block:focus-within .chart-block-toolbar,
+.chart-block.is-error .chart-block-toolbar {
+  visibility: visible;
+  border-bottom-color: var(--line);
+}
+.chart-block-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 320px;
+  padding: 8px 12px 12px;
+}
+.chart-block-canvas-wrap[hidden] {
+  display: none !important;
+}
+.chart-block-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+.chart-block-source {
+  margin: 0; padding: 12px 14px; overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px; line-height: 1.55; white-space: pre;
+}
+.chart-block-error { color: var(--danger); font-size: 12.5px; padding: 8px 12px; }
+
 /* Mermaid fullscreen lightbox: fixed portal; does not affect document flow height */
 .mermaid-lightbox {
   position: fixed;

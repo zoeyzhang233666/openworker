@@ -287,6 +287,16 @@ class ConversationStore:
             )
             self._conn.commit()
 
+    def set_workspace(self, session_id: str, workspace: str) -> None:
+        """Persist only the session workspace root (e.g. heal cwd pollution under ._chemclaw/)."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE sessions SET workspace = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+                (workspace, session_id),
+            )
+            self._conn.commit()
+        self.touch_workspace(workspace)
+
     def list(self, *, workspace: Optional[str] = None) -> list[SessionRecord]:
         with self._lock:
             if workspace is None:

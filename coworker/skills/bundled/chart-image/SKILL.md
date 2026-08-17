@@ -1,15 +1,31 @@
 ---
 name: chart-image
 version: 2.5.1
-description: Generate publication-quality chart images from data. Supports line, bar, area, point, candlestick, pie/donut, heatmap, multi-series, and stacked charts. Use when visualizing data, creating graphs, plotting time series, or generating chart images for reports/alerts. Designed for Fly.io/VPS deployments - no native compilation, no Puppeteer, no browser required. Pure Node.js with prebuilt binaries.
+description: Generate static PNG chart image files for reports, attachments, and exports (Vega-Lite + Sharp). Use ONLY when the user explicitly needs a PNG/SVG/image file, report asset, email/Slack attachment, or other static exported chart. Do NOT use for ordinary in-chat trends or comparisons — those use an inline fenced ```chart ChartSpec block rendered in the GUI.
 provides:
   - capability: chart-generation
     methods: [lineChart, barChart, areaChart, pieChart, candlestickChart, heatmap]
 ---
 
-# Chart Image Generator
+# Chart Image Generator (static export)
 
-Generate PNG chart images from data using Vega-Lite. Perfect for headless server environments.
+Generate **PNG chart image files** from data using Vega-Lite. This skill is for **STATIC IMAGE EXPORT**, not for everyday chat visualization.
+
+## When to use
+
+Use chart-image when:
+
+- User asks for PNG / SVG / image file
+- Chart must be embedded in a report, PDF, PPT, or Word export
+- Chart must be sent as an email / Slack / attachment
+
+Do **NOT** use chart-image when:
+
+- The graph is only displayed in the current chat
+- User asks to “show the last 30 days trend” or regional price comparison in conversation
+- An inline ```chart block is enough
+
+For in-chat charts, emit ChartSpec version 1 in a fenced ```chart JSON block instead (no shell, Node, npm, or chart.mjs).
 
 ## Why This Skill?
 
