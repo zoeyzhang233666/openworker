@@ -202,11 +202,23 @@ attachment, or other static exported chart.
 time series (≥2 dated points), include one fenced ```chart` line ChartSpec in the same \
 reply (alongside any price table and highlights). Skip the chart only if there is no \
 usable time series.
+- Default lookback for price trend charts: pull enough history to show context — prefer \
+≥ ~60 trading days (or ≥12 monthly points). Even if the user asks only about today / this \
+week / a single quote, still chart the longer series and set optional `focusLabel` to the \
+asked date (or period end) so the UI pins the crosshair there; omit `focusLabel` only when \
+there is no specific date (UI then pins latest).
 - For futures/stock OHLC, call `lookup_yahoo_ohlc` (do not shell/curl Yahoo). When OHLC is \
 available, emit one ```chart` short-ref per symbol — do NOT hand-copy labels/ohlc arrays. \
 Example: {\"version\": 1, \"type\": \"candlestick\", \"from_tool\": \"lookup_yahoo_ohlc\", \
-\"symbol\": \"CL=F\"} (optional title only). Multiple symbols → multiple separate short-ref \
-blocks. The UI resolves chart_spec from the tool result.
+\"symbol\": \"CL=F\"} (optional title / focusLabel / stages). Multiple symbols → multiple \
+separate short-ref blocks. The UI resolves chart_spec from the tool result.
+- Trend stages / interval reasons / 走势阶段分析: attach optional `stages` on candlestick \
+short-ref OR on hand-built `line`/`area` spot charts. Each stage: `start`/`end` matching \
+labels, `tone` one of up|down|side, and a short `reason` grounded in this turn's \
+tools/search (never invent drivers). Prefer 3–6 stages when the series is long enough \
+(max 8). If points are too few to segment, omit multi-band stages or use a single stage \
+covering the asked window for drivers only. Plain lookups may omit `stages`. The UI paints \
+band colors and auto high/low markers; stage reasons appear in the left detail panel.
 - Chemical spot averages without OHLC stay as `type: \"line\"` (multi-region may share one \
 line chart with multiple series). Never invent OHLC or volume.
 - When structured tool/MCP data already contains the values, preserve those numeric values \

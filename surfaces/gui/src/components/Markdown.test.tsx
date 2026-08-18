@@ -29,12 +29,20 @@ vi.mock("chart.js", () => ({
   Filler: {},
   Legend: {},
   Title: {},
-  Tooltip: {},
+  Tooltip: { positioners: {} as Record<string, unknown> },
 }));
 
 vi.mock("chartjs-chart-financial", () => ({
   CandlestickController: {},
   CandlestickElement: {},
+}));
+
+vi.mock("chartjs-plugin-annotation", () => ({
+  default: {},
+}));
+
+vi.mock("chartjs-plugin-zoom", () => ({
+  default: {},
 }));
 
 afterEach(cleanup);

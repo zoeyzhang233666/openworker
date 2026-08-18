@@ -14,6 +14,18 @@ export type ChartOhlcBar = {
   c: number;
 };
 
+/** Trend stage for candlestick annotations (model-authored; UI paints bands/arrows). */
+export type ChartStageTone = "up" | "down" | "side";
+
+export type ChartStage = {
+  /** Match against labels (exact, then suffix/prefix soft match). */
+  start: string;
+  end: string;
+  tone: ChartStageTone;
+  /** Short reason (1–3 lines); truncated at parse. */
+  reason: string;
+};
+
 export type ChartSpec = {
   version: 1;
   type: ChartType;
@@ -25,12 +37,20 @@ export type ChartSpec = {
   series: ChartSeries[];
   /** Single-instrument OHLC aligned with labels (candlestick only). */
   ohlc?: ChartOhlcBar[];
+  /** Stage bands for candlestick and line/area trend charts. */
+  stages?: ChartStage[];
+  /** Pin crosshair/panel to this label on mount (exact/soft match via findLabelIndex). */
+  focusLabel?: string;
   xTitle?: string;
   yTitle?: string;
   yMin?: number;
   yMax?: number;
   showLegend?: boolean;
 };
+
+export const MAX_CHART_STAGES = 8;
+export const MAX_STAGE_REASON_LEN = 160;
+const STAGE_TONES = new Set<ChartStageTone>(["up", "down", "side"]);
 
 export type ParseChartSpecResult =
   | { ok: true; spec: ChartSpec }
@@ -97,7 +117,27 @@ function parseSeries(raw: unknown, labelsLen: number, index: number): ChartSerie
 }
 
 function parseOhlcBar(raw: unknown, index: number): ChartOhlcBar | { error: string } {
-  if (!isPlainObject(raw)) return { error: `ohlc[${index}] must be an object` };
+  // LLM hand-copy often emits [o, h, l, c] tuples instead of objects.
+  if (Array.isArray(raw)) {
+    if (raw.length !== 4) {
+      return { error: `ohlc[${index}] must be [o,h,l,c] or {o,h,l,c}` };
+    }
+    const [o, h, l, c] = raw;
+    for (const [key, val] of [
+      ["o", o],
+      ["h", h],
+      ["l", l],
+      ["c", c],
+    ] as const) {
+      if (typeof val !== "number" || !Number.isFinite(val)) {
+        return { error: `ohlc[${index}].${key} must be a finite number` };
+      }
+    }
+    return { o: o as number, h: h as number, l: l as number, c: c as number };
+  }
+  if (!isPlainObject(raw)) {
+    return { error: `ohlc[${index}] must be [o,h,l,c] or {o,h,l,c}` };
+  }
   const o = raw.o ?? raw.open;
   const h = raw.h ?? raw.high;
   const l = raw.l ?? raw.low;
@@ -113,6 +153,44 @@ function parseOhlcBar(raw: unknown, index: number): ChartOhlcBar | { error: stri
     }
   }
   return { o: o as number, h: h as number, l: l as number, c: c as number };
+}
+
+/** Resolve a stage boundary string against chart labels. */
+export function findLabelIndex(labels: string[], needle: string): number {
+  const n = needle.trim();
+  if (!n) return -1;
+  const exact = labels.findIndex((l) => l === n);
+  if (exact >= 0) return exact;
+  const soft = labels.findIndex((l) => l.endsWith(n) || n.endsWith(l));
+  if (soft >= 0) return soft;
+  return labels.findIndex((l) => l.includes(n) || n.includes(l));
+}
+
+/**
+ * Parse optional stages array. Invalid entries are dropped (not fatal).
+ * Used for candlestick and line/area trend charts.
+ */
+export function parseStages(raw: unknown): ChartStage[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return undefined;
+  const stages: ChartStage[] = [];
+  for (let i = 0; i < raw.length && stages.length < MAX_CHART_STAGES; i++) {
+    const item = raw[i];
+    if (!isPlainObject(item)) continue;
+    if (typeof item.start !== "string" || !item.start.trim()) continue;
+    if (typeof item.end !== "string" || !item.end.trim()) continue;
+    if (typeof item.tone !== "string" || !STAGE_TONES.has(item.tone as ChartStageTone)) continue;
+    if (typeof item.reason !== "string") continue;
+    const reason = item.reason.trim().slice(0, MAX_STAGE_REASON_LEN);
+    if (!reason) continue;
+    stages.push({
+      start: item.start.trim(),
+      end: item.end.trim(),
+      tone: item.tone as ChartStageTone,
+      reason,
+    });
+  }
+  return stages.length > 0 ? stages : undefined;
 }
 
 /** Prefer top-level `labels`; fall back to nested `x.labels` (common LLM drift). */
@@ -134,7 +212,10 @@ function resolveXTitleRaw(parsed: Record<string, unknown>): unknown {
 
 function parseCommonMeta(parsed: Record<string, unknown>): {
   ok: true;
-  meta: Pick<ChartSpec, "title" | "subtitle" | "unit" | "xTitle" | "yTitle" | "yMin" | "yMax" | "showLegend">;
+  meta: Pick<
+    ChartSpec,
+    "title" | "subtitle" | "unit" | "xTitle" | "yTitle" | "yMin" | "yMax" | "showLegend" | "focusLabel"
+  >;
 } | { ok: false; error: string } {
   const title = optionalString(parsed.title, "title");
   if (title && typeof title === "object") return { ok: false, error: title.error };
@@ -142,6 +223,8 @@ function parseCommonMeta(parsed: Record<string, unknown>): {
   if (subtitle && typeof subtitle === "object") return { ok: false, error: subtitle.error };
   const unit = optionalString(parsed.unit, "unit");
   if (unit && typeof unit === "object") return { ok: false, error: unit.error };
+  const focusLabel = optionalString(parsed.focusLabel ?? parsed.focus_label, "focusLabel");
+  if (focusLabel && typeof focusLabel === "object") return { ok: false, error: focusLabel.error };
   const xTitleRaw = resolveXTitleRaw(parsed);
   const yTitleRaw = parsed.yTitle ?? parsed.yLabel ?? parsed.y_label;
   const xTitle = optionalString(xTitleRaw, "xTitle");
@@ -157,11 +240,12 @@ function parseCommonMeta(parsed: Record<string, unknown>): {
 
   const meta: Pick<
     ChartSpec,
-    "title" | "subtitle" | "unit" | "xTitle" | "yTitle" | "yMin" | "yMax" | "showLegend"
+    "title" | "subtitle" | "unit" | "xTitle" | "yTitle" | "yMin" | "yMax" | "showLegend" | "focusLabel"
   > = {};
   if (typeof title === "string") meta.title = title;
   if (typeof subtitle === "string") meta.subtitle = subtitle;
   if (typeof unit === "string") meta.unit = unit;
+  if (typeof focusLabel === "string" && focusLabel.trim()) meta.focusLabel = focusLabel.trim();
   if (typeof xTitle === "string") meta.xTitle = xTitle;
   if (typeof yTitle === "string") meta.yTitle = yTitle;
   if (typeof yMin === "number") meta.yMin = yMin;
@@ -245,10 +329,13 @@ export function resolveChartSource(
     if (typeof found !== "string") return { ok: false, error: found.error };
     const resolved = parseChartSpec(found);
     if (!resolved.ok) return resolved;
+    const stages = parseStages(parsed.stages);
+    const next: ChartSpec = { ...resolved.spec };
     if (typeof parsed.title === "string" && parsed.title.trim()) {
-      return { ok: true, spec: { ...resolved.spec, title: parsed.title } };
+      next.title = parsed.title;
     }
-    return resolved;
+    if (stages) next.stages = stages;
+    return { ok: true, spec: next };
   }
 
   return parseChartSpec(source);
@@ -310,6 +397,7 @@ export function parseChartSpec(source: string): ParseChartSpecResult {
       if ("error" in bar) return { ok: false, error: bar.error };
       ohlc.push(bar);
     }
+    const stages = parseStages(parsed.stages);
     const spec: ChartSpec = {
       version: 1,
       type: "candlestick",
@@ -318,6 +406,7 @@ export function parseChartSpec(source: string): ParseChartSpecResult {
       ohlc,
       ...metaResult.meta,
     };
+    if (stages) spec.stages = stages;
     return { ok: true, spec };
   }
 
@@ -333,6 +422,8 @@ export function parseChartSpec(source: string): ParseChartSpecResult {
   }
 
   // Strip unknown keys (e.g. options / plugins) — never forward to Chart.js.
+  const stages =
+    chartType === "line" || chartType === "area" ? parseStages(parsed.stages) : undefined;
   const spec: ChartSpec = {
     version: 1,
     type: chartType,
@@ -340,6 +431,7 @@ export function parseChartSpec(source: string): ParseChartSpecResult {
     series,
     ...metaResult.meta,
   };
+  if (stages) spec.stages = stages;
 
   return { ok: true, spec };
 }

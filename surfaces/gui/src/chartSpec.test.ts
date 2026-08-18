@@ -194,6 +194,54 @@ describe("parseChartSpec", () => {
     }
   });
 
+  it("accepts candlestick ohlc as [o,h,l,c] tuples", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        title: "沥青期货",
+        labels: ["2026-05-15", "2026-05-18"],
+        ohlc: [
+          [4203, 4292, 4203, 4275],
+          [4294, 4373, 4269, 4334],
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.ohlc).toEqual([
+        { o: 4203, h: 4292, l: 4203, c: 4275 },
+        { o: 4294, h: 4373, l: 4269, c: 4334 },
+      ]);
+    }
+  });
+
+  it("rejects ohlc tuple with wrong length", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["D1"],
+        ohlc: [[70, 72, 69]],
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/\[o,h,l,c\]/);
+  });
+
+  it("rejects ohlc tuple with non-finite number", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["D1"],
+        ohlc: [[70, 72, 69, "x"]],
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/ohlc\[0\]\.c/);
+  });
+
   it("truncates candlestick to min(labels, ohlc) prefix when lengths differ", () => {
     const result = parseChartSpec(
       JSON.stringify({
@@ -224,6 +272,64 @@ describe("parseChartSpec", () => {
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/ohlc/i);
+  });
+
+  it("accepts candlestick stages and drops invalid tones", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["2026-01-01", "2026-01-02", "2026-01-03"],
+        ohlc: [
+          { o: 1, h: 2, l: 0.5, c: 1.5 },
+          { o: 2, h: 3, l: 1.5, c: 2.5 },
+          { o: 2.5, h: 2.8, l: 2, c: 2.2 },
+        ],
+        stages: [
+          { start: "2026-01-01", end: "2026-01-02", tone: "up", reason: "地缘溢价" },
+          { start: "2026-01-02", end: "2026-01-03", tone: "bogus", reason: "无效" },
+          { start: "2026-01-03", end: "2026-01-03", tone: "side", reason: "横盘" },
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.stages).toEqual([
+        { start: "2026-01-01", end: "2026-01-02", tone: "up", reason: "地缘溢价" },
+        { start: "2026-01-03", end: "2026-01-03", tone: "side", reason: "横盘" },
+      ]);
+    }
+  });
+
+  it("accepts stages and focusLabel on line charts", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        ...validLine,
+        focusLabel: "D1",
+        stages: [{ start: "D1", end: "D2", tone: "up", reason: "涨" }],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.focusLabel).toBe("D1");
+      expect(result.spec.stages).toEqual([
+        { start: "D1", end: "D2", tone: "up", reason: "涨" },
+      ]);
+    }
+  });
+
+  it("ignores stages on bar charts", () => {
+    const result = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "bar",
+        labels: ["A", "B"],
+        series: [{ name: "s", values: [1, 2] }],
+        stages: [{ start: "A", end: "B", tone: "up", reason: "涨" }],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.spec.stages).toBeUndefined();
   });
 });
 
@@ -273,6 +379,29 @@ describe("resolveChartSource Yahoo short-ref", () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.spec.title).toBe("WTI");
+  });
+
+  it("merges stages from short-ref onto tool chart_spec", () => {
+    const result = resolveChartSource(
+      JSON.stringify({
+        type: "candlestick",
+        from_tool: "lookup_yahoo_ohlc",
+        symbol: "CL=F",
+        title: "WTI 走势阶段",
+        stages: [
+          { start: "2026-01-01", end: "2026-01-02", tone: "up", reason: "地缘溢价抬升" },
+        ],
+      }),
+      [{ name: "lookup_yahoo_ohlc", preview: toolPreview }],
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.spec.ohlc).toHaveLength(2);
+      expect(result.spec.title).toBe("WTI 走势阶段");
+      expect(result.spec.stages).toEqual([
+        { start: "2026-01-01", end: "2026-01-02", tone: "up", reason: "地缘溢价抬升" },
+      ]);
+    }
   });
 
   it("errors when symbol is missing from tools", () => {

@@ -249,6 +249,13 @@
 - **D-135（2026-08-17）**：**Yahoo 非官方 OHLC + 蜡烛图**：第一方 `lookup_yahoo_ohlc`（Yahoo Chart API，免密钥，best-effort，非持牌行情；支持 `CHEMCLAW_HTTP_PROXY`）；ChartSpec 增加 `candlestick` + `ohlc[{o,h,l,c}]`（`chartjs-chart-financial`）；缺省缺写 `version` 时按 1；多标的 = 多块独立蜡烛图。化工现货仍走 chem-data-hub + line；禁止为拉 Yahoo 而 shell/curl。
 - **D-136（2026-08-17）**：**Yahoo K 线短引用、禁止手抄 OHLC**：`lookup_yahoo_ohlc` 返回确定性 `chart_spec`；助手气泡内 ````chart` 只写 `from_tool`+`symbol`（可选 title）；GUI 按本轮 tool preview 回查出图。完整手抄 candlestick 若 labels/ohlc 长度不齐则按 `min` 前缀截齐兜底。化工现货 line 仍可手抄。
 - **D-137（2026-08-17）**：**K 线国内配色（红涨绿跌）**：蜡烛图 `up`/`down` 对齐同花顺/文华习惯（红阳绿阴）；折线多 series 色板不变；不做空心阳线。
+- **D-138（2026-08-17）**：**K 线走势阶段标注**：ChartSpec `candlestick` 可选 `stages[{start,end,tone,reason}]`；GUI 用 `chartjs-plugin-annotation` 画背景色带；高低价由前端从 OHLC 自动计算（全局极值 + 涨/跌段极值）。**不做方向箭头**（色带已够）。**阶段原因不常驻画布**：悬停详情在 **左预留栏**（`layout.padding.left`，不进入 `chartArea`），顺序为 **日期 → 开高低收 → 阶段性区间/驱动**；**单击 K 线固定详情**（再点切换，Esc/移出取消），固定后可任意移动并滚动读完驱动；十字线锁在固定 bar。**不用浮动磨砂卡**；Chart.js OHLC tooltip 关闭。**图表全屏**（更大字号左栏、默认约 180 根窗）；极值 label 用 yAdjust + 上下 padding，防裁切；K 线提示含拖动/滚轮与固定说明。Yahoo short-ref 可同级附带 `stages` 并 merge，仍禁止手抄 OHLC。普通查价可不附 stages；原因须 grounded 本轮工具/检索。不做空心阳线/成交量副图/自动分段。
+- **D-139（2026-08-17）**：**手抄 OHLC 数组兼容**：`parseOhlcBar` 接受 `[o,h,l,c]` 四元组与 `{o,h,l,c}`/`open|high|low|close` 对象，统一归一成对象；长度≠4 或非有限数仍报错。Yahoo 路径仍优先 short-ref（D-136）。
+- **D-140（2026-08-17）**：**K 线默认最新窗口 + 滚轮缩放/拖动**：蜡烛图默认 X 窗为最新 **90** 根（不足则全显）；`chartjs-plugin-zoom` 支持滚轮缩放与左右拖动（仅 X，limits 锁在数据范围）；可见区 OHLC 高低驱动 Y 自适应（忽略全序列 yMin/yMax）；`offset: false` 收紧左右空白；X 刻度仍为连续 index→日期均匀抽样，不改成只标转折点。line/bar 本刀不动。
+- **D-141（2026-08-17）**：**现货图十字线 + 融文铬层**：`line`/`area`/`bar` 与 K 线共用左栏详情 + 按 X 吸附十字线 + 单击固定；挂载默认最新价，移出/Esc 回退最新（左栏不空）；成功态去掉「图表/源码」切换与灰外框，仅悬停显示全屏图标按钮；芯片式操作提示。`scatter` 仍用 Chart.js tooltip。不改 ChartSpec。
+- **D-142（2026-08-17）**：**全屏不透 + 现货区间/焦点**：Chart lightbox 近不透明遮罩（不用弱 `--scrim`）+ lightbox 内强制实底；`line`/`area` 支持 `stages` 色带与左栏驱动；可选 `focusLabel` 挂载默认固定到询问日否则最新且 pinned；短内容左栏垂直居中。guidance + `chem-price-daily`：默认拉够历史（约 ≥60 交易日/月线 ≥12 点），短问也出长图+焦点。不改 MCP 工具代码。
+- **D-143（2026-08-18）**：**行情图操作提示悬停才显**：对话内操作芯片在**画布上方**固定 32px 槽位；平时透明、悬停/聚焦淡入，不叠在 Chart.js 标题/图例上，也不因浮现改变图画布位置；全屏 lightbox 内仍常显于顶部。不改 ChartSpec / 交互模型。
+- **D-144（2026-08-18）**：**行情图左栏详情始终垂直居中**：K 线/现货左栏卡片固定左中（`top: 50%` + `translateY(-50%)`），不再仅短内容居中、长内容贴顶；超高内容仍在卡内滚动。不改 ChartSpec。
 
 ## 协作治理
 

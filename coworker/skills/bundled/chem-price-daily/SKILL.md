@@ -29,11 +29,16 @@ agent_created: true
 
 1. 确认用户目标与关键参数（CAS、信用代码、品名等）。缺参先追问。
 2. 严格按 Tool 的 JSON Schema 传参调用 MCP（例如 `get_compound` 只要 `cas_no`；
-   仅有中文名时先 `search_compound` 再查详情）。
+   仅有中文名时先 `search_compound` 再查详情）。查趋势时默认拉够画上下文的历史：
+   优先约 ≥60 个交易日（或月线 ≥12 点）。即使用户只问「今天/本周/某一个价」，
+   也尽量拉更长序列作图。
 3. 基于 Tool 返回整理答案；失败时说明错误并给出可重试建议。
 4. 输出结构清晰的中文结论：**价格表 + 简要要点**；若 Tool 返回可用时间序列（≥2 个
    日期点），同一条回复还必须附一条 fenced ```chart`（ChartSpec v1、`type: line`），
-   数值与表一致。聊天内出图勿调用 `chart-image` / shell / Node；仅用户明确要 PNG/
+   数值与表一致。用户点名某日/某周时设 `focusLabel` 为对应标签；无特定日期则省略
+   （UI 默认钉最新）。序列足够长时可附 `stages`（up|down|side + grounded `reason`）；
+   点数不足划多段时可用单段覆盖询问窗只写驱动，或省略色带。禁止编造驱动。
+   聊天内出图勿调用 `chart-image` / shell / Node；仅用户明确要 PNG/
    报告附件时才用 chart-image。
 
 ## 示例提示词
