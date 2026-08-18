@@ -88,6 +88,19 @@ def test_verified_cas_targets_chemical_identity_only():
     assert selected == ("lookup_chemical_identity",)
 
 
+def test_verified_yahoo_keywords_include_a_share_market():
+    available = {
+        "lookup_yahoo_ohlc",
+        "web_search",
+        "web_fetch",
+        "read_file",
+        "ask_user",
+    }
+    selected = select_verified_tool_names("分析今天 A 股市场", available)
+    assert selected is not None
+    assert "lookup_yahoo_ohlc" in selected
+
+
 def test_verified_projection_filters_to_allowed_subset():
     cfg = Config(tool_projection_enabled=True)
     registry = _reg(

@@ -88,6 +88,7 @@ from ..skills import (
     SkillLoader,
     SkillStore,
     effective_skills,
+    refresh_finance_skills_without_wind,
     seed_bundled_skills,
     sync_managed_lexicon,
 )
@@ -250,6 +251,7 @@ class SessionManager:
         )
         seed_bundled_skills(self.skill_store)
         sync_managed_lexicon(self.skill_store)
+        refresh_finance_skills_without_wind(self.skill_store)
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).

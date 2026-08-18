@@ -15,6 +15,14 @@ BUNDLED_DIR = bundled_skills_dir()
 # Skills whose managed lexicon may hot-upgrade without reseeding the whole tree (M3).
 _MANAGED_LEXICON_SKILLS = ("chem-content-policy",)
 
+# Finance skills that historically hard-required a non-existent Wind tool (D-145).
+_WIND_FREE_FINANCE_SKILLS = (
+    "market-analysis",
+    "stock-analysis",
+    "macro-analysis",
+)
+_WIND_TOOL_NAME = "wind_financial_reference_content"
+
 _USER_CSV_HEADER = (
     "rule_id,term,platform,locale,category,severity,action,"
     "replacement_strategy,notes\n"
@@ -103,6 +111,45 @@ def _migrate_legacy_lexicon(installed_skill: Path) -> None:
         return
     managed_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(legacy), str(managed_csv))
+
+
+def refresh_finance_skills_without_wind(
+    skill_store: SkillStore | None = None,
+) -> list[str]:
+    """Overwrite installed finance SKILL.md copies that still mention Wind.
+
+    ChemClaw does not register Wind tools. Seed only copies missing skills, so
+    already-installed Serenity finance skills keep the old Wind-only text until
+    this narrow refresh runs. Skips ``uninstalled_bundled`` names. Only replaces
+    ``SKILL.md`` (not the whole tree) when the installed file still contains
+    ``wind_financial_reference_content``.
+    """
+    store = skill_store or SkillStore()
+    updated: list[str] = []
+    if not BUNDLED_DIR.is_dir():
+        return updated
+    uninstalled = store.uninstalled_bundled_names()
+    for name in _WIND_FREE_FINANCE_SKILLS:
+        if name in uninstalled:
+            continue
+        bundled_md = BUNDLED_DIR / name / "SKILL.md"
+        installed_md = store.global_dir / name / "SKILL.md"
+        if not bundled_md.is_file() or not installed_md.is_file():
+            continue
+        try:
+            old = installed_md.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if _WIND_TOOL_NAME not in old:
+            continue
+        try:
+            installed_md.write_text(
+                bundled_md.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+        except OSError:
+            continue
+        updated.append(name)
+    return updated
 
 
 def sync_managed_lexicon(skill_store: SkillStore | None = None) -> list[str]:

@@ -11,7 +11,7 @@ const ChartMock = vi.fn().mockImplementation(() => ({
   destroy: destroyMock,
   draw: vi.fn(),
   scales: { x: { getValueForPixel: getValueForPixelMock } },
-  chartArea: { left: 148, right: 400, top: 0, bottom: 300 },
+  chartArea: { left: 188, right: 400, top: 0, bottom: 300 },
   getDatasetMeta: () => ({ data: [] }),
   data: { datasets: [{ data: [] }] },
 }));
@@ -530,6 +530,32 @@ describe("candlestick stage annotations", () => {
     expect(screen.getByTestId("chart-axis-panel").getAttribute("data-centered")).toBe("true");
   });
 
+  it("long series name keeps full four-digit price in axis panel", async () => {
+    const longName = JSON.stringify({
+      version: 1,
+      type: "line",
+      labels: ["07-23"],
+      series: [
+        { name: "黄埔区·聚合级均价", values: [8350.5] },
+        { name: "西北·均价", values: [8219] },
+      ],
+    });
+    render(<ChartBlock source={longName} />);
+    await waitFor(() => expect(screen.getByTestId("chart-axis-panel-series")).toBeTruthy());
+    const seriesEl = screen.getByTestId("chart-axis-panel-series");
+    expect(seriesEl.textContent).toMatch(/8350\.50/);
+    expect(seriesEl.textContent).toMatch(/8219\.00/);
+    expect(seriesEl.textContent).toContain("黄埔区·聚合级均价");
+    const kv = seriesEl.querySelector(".chart-axis-panel-kv");
+    expect(kv).toBeTruthy();
+    expect(kv!.className).toMatch(/chart-axis-panel-kv--stack/);
+    const nameEl = kv!.querySelector(".chart-axis-panel-k");
+    const priceEl = kv!.querySelector(".chart-axis-panel-v");
+    expect(nameEl?.textContent).toContain("黄埔区·聚合级均价");
+    expect(priceEl?.textContent).toMatch(/8350\.50/);
+    expect(nameEl!.compareDocumentPosition(priceEl!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("axis panel shows OHLC without stage section when no stages", async () => {
     getValueForPixelMock.mockReturnValue(0);
     const candle = JSON.stringify({
@@ -559,6 +585,9 @@ describe("candlestick stage annotations", () => {
     expect(screen.getByTestId("chart-axis-panel-ohlc").textContent).toMatch(/开盘|Open/);
     expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/2026-01-01/);
     expect(screen.getByTestId("chart-axis-panel").getAttribute("data-centered")).toBe("true");
+    const ohlcKv = screen.getByTestId("chart-axis-panel-ohlc").querySelector(".chart-axis-panel-kv");
+    expect(ohlcKv?.className).toMatch(/chart-axis-panel-kv--row/);
+    expect(ohlcKv?.className).not.toMatch(/chart-axis-panel-kv--stack/);
   });
 
   it("opens chart lightbox from fullscreen and closes on Escape", async () => {
@@ -601,7 +630,7 @@ describe("candlestick stage annotations", () => {
       AXIS_PANEL_RAIL,
     );
     expect((cfg.options as { layout?: { padding?: { top?: number } } })?.layout?.padding?.top).toBe(18);
-    expect(AXIS_PANEL_RAIL).toBe(148);
+    expect(AXIS_PANEL_RAIL).toBe(188);
     expect(cfg.plugins?.some((p) => (p as { id?: string }).id === "axisCrosshair")).toBe(true);
   });
 
@@ -618,8 +647,8 @@ describe("candlestick stage annotations", () => {
       axisPanelRail: AXIS_PANEL_RAIL_LIGHTBOX,
     });
     expect(LIGHTBOX_CANDLE_WINDOW).toBe(180);
-    expect(AXIS_PANEL_RAIL_LIGHTBOX).toBe(168);
-    expect((cfg.options as { layout?: { padding?: { left?: number } } })?.layout?.padding?.left).toBe(168);
+    expect(AXIS_PANEL_RAIL_LIGHTBOX).toBe(208);
+    expect((cfg.options as { layout?: { padding?: { left?: number } } })?.layout?.padding?.left).toBe(208);
     expect((cfg.options as { scales?: { x?: { min?: number; max?: number } } })?.scales?.x?.min).toBe(20);
     expect((cfg.options as { scales?: { x?: { max?: number } } })?.scales?.x?.max).toBe(199);
   });

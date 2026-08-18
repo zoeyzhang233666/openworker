@@ -433,6 +433,8 @@ def build_engine(
     # FX: keyless Frankfurter (convert user-supplied amounts only; never invent prices).
     registry.register(make_lookup_fx_rate_tool())
     # Futures/stock OHLC: unofficial Yahoo chart (best-effort; prefer over shell/curl).
+    # Future CN market structured tools (coworker/cn_market/ lookup_cn_*) register here.
+    # ChemClaw does not register Wind / wind_financial_reference_content (D-145).
     registry.register(make_lookup_yahoo_ohlc_tool())
     # Wikipedia: encyclopedia background for SKU/synonyms (never sole Qualified evidence).
     registry.register(make_lookup_wikipedia_tool())

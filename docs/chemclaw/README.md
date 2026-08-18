@@ -2,6 +2,9 @@
 
 ## 当前状态
 
+- **左栏空白收紧（2026-08-18，D-147）**：左卡 `fit-content`；OHLC 左右排、系列上下排；开/收随当根涨跌（红涨绿跌），最高红、最低绿。
+- **左栏价格不截断（2026-08-18，D-146）**：左栏 KV 上下排 + 加宽轨；长系列名不再把上千价裁成上百。
+- **去掉 Wind 金融 Skill 路径（2026-08-18，D-145）**：确认 ChemClaw 无可用 Wind 工具；`market-analysis` / `stock-analysis` / `macro-analysis` 删除 `wind_financial_reference_content`；改走 `lookup_yahoo_ohlc` + `web_search`/`web_fetch`；缺指标 unavailable；启动窄刷新已安装旧文案；产业链龙虾金融为验证层。不实现 CN Market。
 - **左栏详情始终左中（2026-08-18，D-144）**：K 线/现货左栏卡片一律垂直居中，不再因内容长短贴顶。
 - **行情操作芯片悬停才显（2026-08-18，D-143）**：对话内顶部固定占位、悬停只淡入（不挡标题/图例、图画布不位移）；全屏 lightbox 仍常显。
 - **全屏不透 + 现货区间/焦点（2026-08-17，D-142）**：lightbox 近不透明；line/area 支持 stages + focusLabel 默认固定；短左栏垂直居中；guidance 默认拉够历史。

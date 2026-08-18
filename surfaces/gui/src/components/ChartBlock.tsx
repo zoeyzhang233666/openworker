@@ -58,10 +58,10 @@ export const DEFAULT_CANDLE_WINDOW = 90;
 export const LIGHTBOX_CANDLE_WINDOW = 180;
 
 /** Left rail reserved for hover axis panel (outside chartArea). */
-export const AXIS_PANEL_RAIL = 148;
+export const AXIS_PANEL_RAIL = 188;
 
 /** Wider left rail in lightbox for larger detail panel. */
-export const AXIS_PANEL_RAIL_LIGHTBOX = 168;
+export const AXIS_PANEL_RAIL_LIGHTBOX = 208;
 
 function isDarkTheme(): boolean {
   const attr = document.documentElement.getAttribute("data-theme");
@@ -1229,25 +1229,25 @@ export function ChartBlock({
             </div>
             {axisHover.kind === "ohlc" && axisHover.ohlc && (
               <div className="chart-axis-panel-ohlc" data-testid="chart-axis-panel-ohlc">
-                <div className="chart-axis-panel-kv">
+                <div className="chart-axis-panel-kv chart-axis-panel-kv--row">
                   <span className="chart-axis-panel-k">{t("chart.ohlc.open")}</span>
                   <span className="chart-axis-panel-v" style={{ color: openCloseColor }}>
                     {formatChartPrice(axisHover.ohlc.o)}
                   </span>
                 </div>
-                <div className="chart-axis-panel-kv">
+                <div className="chart-axis-panel-kv chart-axis-panel-kv--row">
                   <span className="chart-axis-panel-k">{t("chart.ohlc.high")}</span>
                   <span className="chart-axis-panel-v" style={{ color: upColor }}>
                     {formatChartPrice(axisHover.ohlc.h)}
                   </span>
                 </div>
-                <div className="chart-axis-panel-kv">
+                <div className="chart-axis-panel-kv chart-axis-panel-kv--row">
                   <span className="chart-axis-panel-k">{t("chart.ohlc.low")}</span>
                   <span className="chart-axis-panel-v" style={{ color: downColor }}>
                     {formatChartPrice(axisHover.ohlc.l)}
                   </span>
                 </div>
-                <div className="chart-axis-panel-kv">
+                <div className="chart-axis-panel-kv chart-axis-panel-kv--row">
                   <span className="chart-axis-panel-k">{t("chart.ohlc.close")}</span>
                   <span className="chart-axis-panel-v" style={{ color: openCloseColor }}>
                     {formatChartPrice(axisHover.ohlc.c)}
@@ -1258,7 +1258,7 @@ export function ChartBlock({
             {axisHover.kind === "series" && axisHover.seriesRows && (
               <div className="chart-axis-panel-ohlc" data-testid="chart-axis-panel-series">
                 {axisHover.seriesRows.map((row) => (
-                  <div className="chart-axis-panel-kv" key={row.name}>
+                  <div className="chart-axis-panel-kv chart-axis-panel-kv--stack" key={row.name}>
                     <span className="chart-axis-panel-k" style={{ color: row.color }}>
                       {row.name}
                     </span>

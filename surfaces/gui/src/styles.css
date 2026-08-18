@@ -1820,8 +1820,9 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
 .chart-axis-panel {
   position: absolute;
   z-index: 3;
-  width: 140px;
-  max-width: 140px;
+  width: fit-content;
+  min-width: 112px;
+  max-width: 172px;
   max-height: calc(100% - 8px);
   padding: 8px 10px 9px;
   border-radius: 2px;
@@ -1906,25 +1907,46 @@ html[data-platform="linux"] ::-webkit-scrollbar-thumb:hover { background-color: 
   font-weight: 500;
   line-height: 1.45;
 }
-.chart-axis-panel-kv {
+.chart-axis-panel-kv--stack {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+}
+.chart-axis-panel-kv--row {
+  display: flex;
+  flex-direction: row;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
+  width: 100%;
 }
 .chart-axis-panel-k {
   color: var(--ink);
   font-size: 12px;
   flex: none;
+  max-width: 100%;
+  word-break: break-word;
+}
+.chart-axis-panel-kv--row .chart-axis-panel-k {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .chart-axis-panel-v {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  text-align: left;
+  flex: none;
+  white-space: nowrap;
+}
+.chart-axis-panel-kv--row .chart-axis-panel-v {
   text-align: right;
 }
 .chart-block--lightbox .chart-axis-panel {
-  width: 176px;
-  max-width: 176px;
+  width: fit-content;
+  min-width: 128px;
+  max-width: 192px;
   font-size: 13.5px;
   padding: 10px 12px 11px;
 }

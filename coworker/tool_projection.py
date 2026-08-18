@@ -43,6 +43,7 @@ def select_verified_tool_names(
 
     if re.search(
         r"(期货|原油期货|wti|brent|股票|股价|k线|蜡烛|ohlc|yahoo|"
+        r"A\s*股|港股|美股|大盘|上证|深证|恒生|"
         r"\bcl=f\b|\bbz=f\b|futures?\b|\bstock\b)",
         t,
         re.I,
