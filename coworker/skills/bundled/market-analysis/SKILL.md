@@ -30,17 +30,21 @@ ChemClaw **没有**万得或其它商业金融语料工具。禁止调用不存�
 
 按数据类型选择**当前已注册**的工具：
 
-1. **结构化行情（OHLC / 指数走势）**：优先 `lookup_yahoo_ohlc`（非官方 Yahoo Chart，best-effort）。
-2. **公告 / 新闻 / 盘面事件背景**：`web_search` + `web_fetch`（公司公告、交易所、权威媒体）。
-3. **无可靠来源**：明确写「当前无可靠结构化来源」或 unavailable；**禁止猜测** PE、北向精确持仓、龙虎榜席位成交额等数字。
+1. **A 股结构化行情（OHLC / 指数成分股）**：优先 `lookup_cn_stock_ohlc` / `lookup_cn_stock_quote`。
+2. **国内期货**：`lookup_cn_futures_ohlc` / `lookup_cn_futures_quote`（不要用 Yahoo 查甲醇/液化气）。
+3. **龙虎榜 / 两融 / 北向历史**：`lookup_cn_stock_feature`。
+4. **全球/美股/港股 OHLC**：`lookup_yahoo_ohlc`（非官方 Yahoo Chart，best-effort）。
+5. **公告 / 新闻 / 盘面事件背景**：`web_search` + `web_fetch`（公司公告、交易所、权威媒体）。
+6. **无可靠来源**：明确写「当前无可靠结构化来源」或 unavailable；**禁止猜测** PE、北向精确持仓、龙虎榜席位成交额等数字。
 
-Web 内容只能作公开证据，**不得伪装成**结构化行情库或金融数据库。化工现货价格走 `chem-price-daily` / chem-data-hub，不用本技能的 Yahoo 路径。
+Web 内容只能作公开证据，**不得伪装成**结构化行情库或金融数据库。化工现货价格走 `chem-price-daily` / chem-data-hub。CN 结构化失败后禁止用网页探测补同一数字。
 
-### Yahoo 代码约定
+### 出图约定
 
-- A 股：`{代码}.SS`（沪/科创）或 `{代码}.SZ`（深）；**不要用 `.SH`**
-- 指数示例：`^SSEC`（上证）、`^HSI`（恒生）、`^GSPC`（标普）
-- 有 OHLC 时出图用 ```chart` short-ref（`from_tool`+`symbol`），禁止手抄 labels/ohlc
+- A 股 short-ref：`from_tool`=`lookup_cn_stock_ohlc`，symbol 如 `600519.SH`
+- 国内期货 short-ref：`from_tool`=`lookup_cn_futures_ohlc`，symbol 如 `PG` / `MA`
+- 全球标的 short-ref：`from_tool`=`lookup_yahoo_ohlc`（指数示例：`^HSI`、`^GSPC`）
+- 禁止手抄 labels/ohlc
 
 ---
 
@@ -70,12 +74,14 @@ Web 内容只能作公开证据，**不得伪装成**结构化行情库或金融
 
 | 主题类型 | 工具路径 |
 | --- | --- |
-| 全球/指数/盘面走势 | `lookup_yahoo_ohlc`（指数或代表性标的） |
-| 盘前 / 盘中 / 盘后综述 | Yahoo 事实 + `web_search` / `web_fetch` 事件 |
+| A 股/国内盘面走势 | `lookup_cn_stock_ohlc`（代表性标的） |
+| 国内期货走势 | `lookup_cn_futures_ohlc` |
+| 全球/美股/港股指数 | `lookup_yahoo_ohlc` |
+| 盘前 / 盘中 / 盘后综述 | 结构化事实 + `web_search` / `web_fetch` 事件 |
 | 新股 / 再融资 / 情绪背景 | `web_search` / `web_fetch`；无来源不编「机构情绪指标」 |
-| 龙虎榜 / 大宗 / 沪深港通**精确数** | 当前无结构化工具 → **unavailable**；可用 Web 作背景叙述，不得把网页语气写成库表 |
+| 龙虎榜 / 两融 / 北向历史 | `lookup_cn_stock_feature`；字段空则标 unavailable，不得把网页语气写成库表 |
 
-Yahoo 失败或无序列时：OHLC/涨跌幅数字标 unavailable，禁止用网页摘要估出 OHLC。
+CN 或 Yahoo 失败且无序列时：OHLC/涨跌幅数字标 unavailable，禁止用网页摘要估出 OHLC。
 
 ---
 

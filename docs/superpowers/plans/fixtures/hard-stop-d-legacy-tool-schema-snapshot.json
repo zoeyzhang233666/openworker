@@ -6,7 +6,7 @@
     {
       "label": "cowork_default_session",
       "agent_name": "cowork",
-      "tool_count": 46,
+      "tool_count": 58,
       "tool_names": [
         "apply_patch",
         "apply_unified_diff",
@@ -22,6 +22,7 @@
         "browser_type",
         "browser_upload_file",
         "browser_wait",
+        "calculate_cn_futures_margin",
         "calculate_quote",
         "create_huagongshe_reaction",
         "fetch_huagongshe_svg",
@@ -31,11 +32,22 @@
         "list_files",
         "load_skill",
         "lookup_chemical_identity",
+        "lookup_cn_futures_l1",
+        "lookup_cn_futures_minute",
+        "lookup_cn_futures_ohlc",
+        "lookup_cn_futures_quote",
+        "lookup_cn_option_market",
+        "lookup_cn_stock_feature",
+        "lookup_cn_stock_financials",
+        "lookup_cn_stock_minute",
+        "lookup_cn_stock_ohlc",
+        "lookup_cn_stock_quote",
         "lookup_fx_rate",
         "lookup_huagongshe_chemical",
         "lookup_legal_entity",
         "lookup_trade_flow",
         "lookup_wikipedia",
+        "lookup_yahoo_ohlc",
         "propose_plan",
         "read_file",
         "read_file_lines",
@@ -263,6 +275,100 @@
             "amount",
             "base",
             "quote"
+          ]
+        },
+        "lookup_yahoo_ohlc": {
+          "fingerprint": "0b32540e1a65885b",
+          "param_keys": [
+            "interval",
+            "range",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_quote": {
+          "fingerprint": "d07262d84675bfac",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_ohlc": {
+          "fingerprint": "8dd2443a9d245c39",
+          "param_keys": [
+            "adjustment",
+            "range",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_minute": {
+          "fingerprint": "fccd9e366c16075f",
+          "param_keys": [
+            "interval",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_financials": {
+          "fingerprint": "e37ad31ca76288dd",
+          "param_keys": [
+            "statement_type",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_feature": {
+          "fingerprint": "905d04f8e93ac4af",
+          "param_keys": [
+            "dataset",
+            "end_date",
+            "start_date",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_quote": {
+          "fingerprint": "488a4f9130b73fcf",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_ohlc": {
+          "fingerprint": "0bd5f4eae9aa8312",
+          "param_keys": [
+            "range",
+            "series",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_minute": {
+          "fingerprint": "7de83b4fc60bf92d",
+          "param_keys": [
+            "interval",
+            "series",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_l1": {
+          "fingerprint": "7f3650e502c0b3cd",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "calculate_cn_futures_margin": {
+          "fingerprint": "e3206ffc9e956c07",
+          "param_keys": [
+            "lots",
+            "margin_rate",
+            "multiplier",
+            "price",
+            "symbol"
+          ]
+        },
+        "lookup_cn_option_market": {
+          "fingerprint": "a5512d415a36c891",
+          "param_keys": [
+            "action",
+            "contract",
+            "expiry",
+            "option_type",
+            "range",
+            "underlying"
           ]
         },
         "lookup_wikipedia": {
@@ -413,8 +519,9 @@
     {
       "label": "chat_agent_session",
       "agent_name": "chat",
-      "tool_count": 21,
+      "tool_count": 33,
       "tool_names": [
+        "calculate_cn_futures_margin",
         "calculate_quote",
         "create_huagongshe_reaction",
         "fetch_huagongshe_svg",
@@ -422,11 +529,22 @@
         "format_lead_list",
         "load_skill",
         "lookup_chemical_identity",
+        "lookup_cn_futures_l1",
+        "lookup_cn_futures_minute",
+        "lookup_cn_futures_ohlc",
+        "lookup_cn_futures_quote",
+        "lookup_cn_option_market",
+        "lookup_cn_stock_feature",
+        "lookup_cn_stock_financials",
+        "lookup_cn_stock_minute",
+        "lookup_cn_stock_ohlc",
+        "lookup_cn_stock_quote",
         "lookup_fx_rate",
         "lookup_huagongshe_chemical",
         "lookup_legal_entity",
         "lookup_trade_flow",
         "lookup_wikipedia",
+        "lookup_yahoo_ohlc",
         "propose_plan",
         "save_skill",
         "search_huagongshe",
@@ -478,6 +596,100 @@
             "amount",
             "base",
             "quote"
+          ]
+        },
+        "lookup_yahoo_ohlc": {
+          "fingerprint": "0b32540e1a65885b",
+          "param_keys": [
+            "interval",
+            "range",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_quote": {
+          "fingerprint": "d07262d84675bfac",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_ohlc": {
+          "fingerprint": "8dd2443a9d245c39",
+          "param_keys": [
+            "adjustment",
+            "range",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_minute": {
+          "fingerprint": "fccd9e366c16075f",
+          "param_keys": [
+            "interval",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_financials": {
+          "fingerprint": "e37ad31ca76288dd",
+          "param_keys": [
+            "statement_type",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_feature": {
+          "fingerprint": "905d04f8e93ac4af",
+          "param_keys": [
+            "dataset",
+            "end_date",
+            "start_date",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_quote": {
+          "fingerprint": "488a4f9130b73fcf",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_ohlc": {
+          "fingerprint": "0bd5f4eae9aa8312",
+          "param_keys": [
+            "range",
+            "series",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_minute": {
+          "fingerprint": "7de83b4fc60bf92d",
+          "param_keys": [
+            "interval",
+            "series",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_l1": {
+          "fingerprint": "7f3650e502c0b3cd",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "calculate_cn_futures_margin": {
+          "fingerprint": "e3206ffc9e956c07",
+          "param_keys": [
+            "lots",
+            "margin_rate",
+            "multiplier",
+            "price",
+            "symbol"
+          ]
+        },
+        "lookup_cn_option_market": {
+          "fingerprint": "a5512d415a36c891",
+          "param_keys": [
+            "action",
+            "contract",
+            "expiry",
+            "option_type",
+            "range",
+            "underlying"
           ]
         },
         "lookup_wikipedia": {
@@ -617,7 +829,7 @@
     {
       "label": "persona_chain-lobster",
       "agent_name": "chain-lobster",
-      "tool_count": 46,
+      "tool_count": 58,
       "tool_names": [
         "apply_patch",
         "apply_unified_diff",
@@ -633,6 +845,7 @@
         "browser_type",
         "browser_upload_file",
         "browser_wait",
+        "calculate_cn_futures_margin",
         "calculate_quote",
         "create_huagongshe_reaction",
         "fetch_huagongshe_svg",
@@ -642,11 +855,22 @@
         "list_files",
         "load_skill",
         "lookup_chemical_identity",
+        "lookup_cn_futures_l1",
+        "lookup_cn_futures_minute",
+        "lookup_cn_futures_ohlc",
+        "lookup_cn_futures_quote",
+        "lookup_cn_option_market",
+        "lookup_cn_stock_feature",
+        "lookup_cn_stock_financials",
+        "lookup_cn_stock_minute",
+        "lookup_cn_stock_ohlc",
+        "lookup_cn_stock_quote",
         "lookup_fx_rate",
         "lookup_huagongshe_chemical",
         "lookup_legal_entity",
         "lookup_trade_flow",
         "lookup_wikipedia",
+        "lookup_yahoo_ohlc",
         "propose_plan",
         "read_file",
         "read_file_lines",
@@ -874,6 +1098,100 @@
             "amount",
             "base",
             "quote"
+          ]
+        },
+        "lookup_yahoo_ohlc": {
+          "fingerprint": "0b32540e1a65885b",
+          "param_keys": [
+            "interval",
+            "range",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_quote": {
+          "fingerprint": "d07262d84675bfac",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_ohlc": {
+          "fingerprint": "8dd2443a9d245c39",
+          "param_keys": [
+            "adjustment",
+            "range",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_minute": {
+          "fingerprint": "fccd9e366c16075f",
+          "param_keys": [
+            "interval",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_financials": {
+          "fingerprint": "e37ad31ca76288dd",
+          "param_keys": [
+            "statement_type",
+            "symbol"
+          ]
+        },
+        "lookup_cn_stock_feature": {
+          "fingerprint": "905d04f8e93ac4af",
+          "param_keys": [
+            "dataset",
+            "end_date",
+            "start_date",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_quote": {
+          "fingerprint": "488a4f9130b73fcf",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_ohlc": {
+          "fingerprint": "0bd5f4eae9aa8312",
+          "param_keys": [
+            "range",
+            "series",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_minute": {
+          "fingerprint": "7de83b4fc60bf92d",
+          "param_keys": [
+            "interval",
+            "series",
+            "symbol"
+          ]
+        },
+        "lookup_cn_futures_l1": {
+          "fingerprint": "7f3650e502c0b3cd",
+          "param_keys": [
+            "symbol"
+          ]
+        },
+        "calculate_cn_futures_margin": {
+          "fingerprint": "e3206ffc9e956c07",
+          "param_keys": [
+            "lots",
+            "margin_rate",
+            "multiplier",
+            "price",
+            "symbol"
+          ]
+        },
+        "lookup_cn_option_market": {
+          "fingerprint": "a5512d415a36c891",
+          "param_keys": [
+            "action",
+            "contract",
+            "expiry",
+            "option_type",
+            "range",
+            "underlying"
           ]
         },
         "lookup_wikipedia": {

@@ -22,9 +22,11 @@ import zoomPlugin from "chartjs-plugin-zoom";
 import {
   findLabelIndex,
   resolveChartSource,
+  isOhlcChartTool,
   type ChartOhlcBar,
   type ChartSpec,
   type ChartStage,
+  type ChartStageTone,
   type ChartToolResult,
 } from "../chartSpec";
 import { useI18n } from "../i18n";
@@ -56,6 +58,27 @@ export const DEFAULT_CANDLE_WINDOW = 90;
 
 /** Fullscreen / lightbox default visible bars. */
 export const LIGHTBOX_CANDLE_WINDOW = 180;
+
+/** Hide line/area dots when this many X points are in the visible window. */
+export const DENSE_POINT_THRESHOLD = 24;
+
+/** Extra canvas room so last-point price labels are not clipped. */
+export const CHART_PAD_RIGHT = 36;
+
+/** Extra canvas room so high price labels are not clipped by the title edge. */
+export const CHART_PAD_TOP = 32;
+
+/** Extra canvas room so low price labels sit clear of X-axis ticks. */
+export const CHART_PAD_BOTTOM = 20;
+
+/** @deprecated use CHART_PAD_BOTTOM */
+export const CHART_PAD_BOTTOM_SERIES = CHART_PAD_BOTTOM;
+
+/** Drop a later extreme of the same kind within this many X indices. */
+export const MIN_EXTREME_INDEX_GAP = 5;
+
+/** Default Y padding ratio so extremes leave room for labels. */
+export const Y_RANGE_PAD_RATIO = 0.12;
 
 /** Left rail reserved for hover axis panel (outside chartArea). */
 export const AXIS_PANEL_RAIL = 188;
@@ -135,8 +158,6 @@ export const STAGE_TONE_COLORS = {
   },
 } as const;
 
-const MAX_EXTREME_LABELS = 8;
-
 /** Format chart prices for tooltips — at most two decimal places. */
 export function formatChartPrice(value: unknown): string {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
@@ -158,6 +179,55 @@ const DEFAULT_OHLC_UI: ChartTooltipUi = {
 };
 
 export type ResolvedStage = ChartStage & { startIndex: number; endIndex: number };
+
+/** Close-to-close (or series) return; null when the start price is unusable. */
+export function stageReturnPct(
+  startPx: number | null | undefined,
+  endPx: number | null | undefined,
+): number | null {
+  if (typeof startPx !== "number" || typeof endPx !== "number") return null;
+  if (!Number.isFinite(startPx) || !Number.isFinite(endPx) || startPx === 0) return null;
+  return (endPx - startPx) / startPx;
+}
+
+/** Whole-series noise floor: below this, every stage is side. */
+export const SIDE_ABS_FLOOR = 0.008;
+
+/** A stage is side only if |r| is below this fraction of the largest |r|. */
+export const SIDE_REL_RATIO = 0.4;
+
+/** Classify interval returns so no side |r| is ≥ any up/down |r|. */
+export function classifyStageTones(returns: Array<number | null>): ChartStageTone[] {
+  const abs = returns.map((r) => (r == null ? 0 : Math.abs(r)));
+  const rmax = abs.reduce((m, v) => (v > m ? v : m), 0);
+  if (rmax < SIDE_ABS_FLOOR) return returns.map(() => "side");
+  const sideMax = SIDE_REL_RATIO * rmax;
+  return returns.map((r) => {
+    if (r == null || Math.abs(r) < sideMax) return "side";
+    return r > 0 ? "up" : "down";
+  });
+}
+
+export function overlayComputedStageTones(
+  stages: ResolvedStage[],
+  priceAt: (index: number) => number | null,
+): ResolvedStage[] {
+  if (!stages.length) return stages;
+  const returns = stages.map((s) => stageReturnPct(priceAt(s.startIndex), priceAt(s.endIndex)));
+  const tones = classifyStageTones(returns);
+  return stages.map((s, i) => ({ ...s, tone: tones[i] ?? "side" }));
+}
+
+/** Strip plotted-style prices from driver copy; keep the why. */
+export function sanitizeStageReason(reason: string): string {
+  return reason
+    .replace(/(?:¥|￥|\$|€|£)\s*\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?/g, " ")
+    .replace(/\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?/g, " ")
+    .replace(/\d+\.\d{2}(?!\d)/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[，。,.\s]+|[，。,.\s]+$/g, "")
+    .trim();
+}
 
 /** Resolve stage date strings to label indices (invalid stages dropped). */
 export function resolveChartStages(
@@ -189,6 +259,43 @@ export function findStageAtIndex(stages: ResolvedStage[], index: number): Resolv
     if (i >= stage.startIndex && i <= stage.endIndex) found = stage;
   }
   return found;
+}
+
+/**
+ * Last-wins occupancy: each index belongs to the last covering stage, then
+ * collapsed into contiguous exclusive ranges so translucent bands never mix.
+ */
+export function exclusiveStageRanges(stages: ResolvedStage[]): ResolvedStage[] {
+  if (!stages.length) return [];
+  let maxIndex = 0;
+  for (const stage of stages) {
+    if (stage.endIndex > maxIndex) maxIndex = stage.endIndex;
+  }
+  const owner: Array<ResolvedStage | null> = Array.from({ length: maxIndex + 1 }, () => null);
+  for (const stage of stages) {
+    const lo = Math.max(0, stage.startIndex);
+    const hi = stage.endIndex;
+    if (hi < lo) continue;
+    for (let i = lo; i <= hi; i++) owner[i] = stage;
+  }
+  const out: ResolvedStage[] = [];
+  let runStart = -1;
+  let runStage: ResolvedStage | null = null;
+  const flush = (end: number) => {
+    if (runStage && runStart >= 0) {
+      out.push({ ...runStage, startIndex: runStart, endIndex: end });
+    }
+  };
+  for (let i = 0; i <= maxIndex; i++) {
+    const cur = owner[i];
+    if (cur !== runStage) {
+      if (runStage) flush(i - 1);
+      runStart = cur ? i : -1;
+      runStage = cur;
+    }
+  }
+  if (runStage) flush(maxIndex);
+  return out;
 }
 
 function extremumInRange(
@@ -242,8 +349,8 @@ function paintStageBands(
     const paint = STAGE_TONE_COLORS[stage.tone];
     annotations[`stageBand${si}`] = {
       type: "box",
-      xMin: stage.startIndex - 0.45,
-      xMax: stage.endIndex + 0.45,
+      xMin: stage.startIndex - 0.5,
+      xMax: stage.endIndex + 0.5,
       backgroundColor: dark ? paint.bandDark : paint.band,
       borderWidth: 0,
       drawTime: "beforeDatasetsDraw",
@@ -254,20 +361,24 @@ function paintStageBands(
 
 function paintExtremeLabels(
   extremes: Array<{ index: number; value: number; kind: "high" | "low" }>,
+  lastIndex = -1,
 ): Record<string, unknown> {
   const annotations: Record<string, unknown> = {};
   for (let ei = 0; ei < extremes.length; ei++) {
     const ex = extremes[ei]!;
     const isHigh = ex.kind === "high";
+    const nearRight = lastIndex >= 0 && ex.index >= Math.max(0, lastIndex - 1);
     annotations[`extreme${ei}`] = {
       type: "label",
       xValue: ex.index,
       yValue: ex.value,
-      yAdjust: isHigh ? -10 : 10,
+      // High above the point; low below — avoids stacking both on the top edge.
+      yAdjust: isHigh ? -14 : 14,
+      xAdjust: nearRight ? -24 : 0,
       content: formatChartPrice(ex.value),
       color: isHigh ? STAGE_TONE_COLORS.up.text : STAGE_TONE_COLORS.down.text,
       font: { size: 11, weight: "600" },
-      textAlign: "center",
+      textAlign: nearRight ? "right" : "center",
       drawTime: "afterDatasetsDraw",
       clip: false,
     };
@@ -275,9 +386,93 @@ function paintExtremeLabels(
   return annotations;
 }
 
+export type ExtremePoint = { index: number; value: number; kind: "high" | "low" };
+
+/** Keep earlier (higher-priority) extremes; drop same-kind neighbors within gap. */
+export function dedupeExtremes(
+  extremes: ExtremePoint[],
+  minGap: number = MIN_EXTREME_INDEX_GAP,
+): ExtremePoint[] {
+  const kept: ExtremePoint[] = [];
+  for (const ex of extremes) {
+    const conflict = kept.some(
+      (prev) => prev.kind === ex.kind && Math.abs(prev.index - ex.index) < minGap,
+    );
+    if (conflict) continue;
+    kept.push(ex);
+  }
+  return kept;
+}
+
+export type StageAnnotationOpts = {
+  /** Lightbox only: paint visible-window global high/low. Inline omits labels. */
+  showExtremes?: boolean;
+  xMin?: number;
+  xMax?: number;
+};
+
+function visibleIndexRange(length: number, xMin?: number, xMax?: number): { lo: number; hi: number } {
+  if (length <= 0) return { lo: 0, hi: 0 };
+  const rawMin = xMin ?? 0;
+  const rawMax = xMax ?? length - 1;
+  const lo = Math.max(0, Math.floor(Math.min(rawMin, rawMax)));
+  const hi = Math.min(length - 1, Math.ceil(Math.max(rawMin, rawMax)));
+  return { lo, hi };
+}
+
+/** Visible-window global high and low (at most two labels). */
+export function visibleOhlcExtremes(
+  ohlc: ChartOhlcBar[],
+  xMin?: number,
+  xMax?: number,
+): ExtremePoint[] {
+  const { lo, hi } = visibleIndexRange(ohlc.length, xMin, xMax);
+  const extremes: ExtremePoint[] = [];
+  const high = extremumInRange(ohlc, lo, hi, "high");
+  const low = extremumInRange(ohlc, lo, hi, "low");
+  if (high) extremes.push({ ...high, kind: "high" });
+  if (low) extremes.push({ ...low, kind: "low" });
+  return extremes;
+}
+
+export function visibleSeriesExtremes(
+  values: Array<number | null>,
+  xMin?: number,
+  xMax?: number,
+): ExtremePoint[] {
+  const { lo, hi } = visibleIndexRange(values.length, xMin, xMax);
+  const extremes: ExtremePoint[] = [];
+  const high = extremumInSeriesRange(values, lo, hi, "high");
+  const low = extremumInSeriesRange(values, lo, hi, "low");
+  if (high) extremes.push({ ...high, kind: "high" });
+  if (low) extremes.push({ ...low, kind: "low" });
+  return extremes;
+}
+
+function paintVisibleExtremes(extremes: ExtremePoint[], lastIndex: number): Record<string, unknown> {
+  return paintExtremeLabels(dedupeExtremes(extremes).slice(0, 2), lastIndex);
+}
+
+function syncVisibleExtremeAnnotations(
+  chart: Chart,
+  extremes: ExtremePoint[],
+  lastIndex: number,
+): void {
+  const plugins = chart.options.plugins as
+    | { annotation?: { annotations?: Record<string, unknown> } }
+    | undefined;
+  if (!plugins) return;
+  if (!plugins.annotation) plugins.annotation = { annotations: {} };
+  const anns = plugins.annotation.annotations ?? (plugins.annotation.annotations = {});
+  for (const key of Object.keys(anns)) {
+    if (key.startsWith("extreme")) delete anns[key];
+  }
+  Object.assign(anns, paintVisibleExtremes(extremes, lastIndex));
+}
+
 /**
  * Build chartjs-plugin-annotation config from stages + OHLC.
- * Bands + extreme labels only — no directional arrows; stage reasons via axis hover panel.
+ * Bands always (when stages exist). Extreme labels only when showExtremes.
  * Deterministic — never forwards model-supplied Chart.js options.
  */
 export function buildStageAnnotations(
@@ -285,74 +480,42 @@ export function buildStageAnnotations(
   ohlc: ChartOhlcBar[],
   stages: ChartStage[] | undefined,
   dark: boolean,
+  opts: StageAnnotationOpts = {},
 ): Record<string, unknown> {
-  const resolved = resolveChartStages(labels, stages);
-  if (!resolved.length || !ohlc.length) return {};
-
-  const annotations = paintStageBands(resolved, dark);
-
-  type Extreme = { index: number; value: number; kind: "high" | "low" };
-  const extremes: Extreme[] = [];
-  const seen = new Set<string>();
-  const pushExtreme = (kind: "high" | "low", ex: { index: number; value: number } | null) => {
-    if (!ex) return;
-    const key = `${kind}:${ex.index}`;
-    if (seen.has(key)) return;
-    if (extremes.length >= MAX_EXTREME_LABELS) return;
-    seen.add(key);
-    extremes.push({ ...ex, kind });
+  const resolved = overlayComputedStageTones(
+    resolveChartStages(labels, stages),
+    (i) => ohlc[i]?.c ?? null,
+  );
+  const annotations = resolved.length ? paintStageBands(exclusiveStageRanges(resolved), dark) : {};
+  if (!opts.showExtremes || !ohlc.length) return annotations;
+  const { hi } = visibleIndexRange(ohlc.length, opts.xMin, opts.xMax);
+  return {
+    ...annotations,
+    ...paintVisibleExtremes(visibleOhlcExtremes(ohlc, opts.xMin, opts.xMax), hi),
   };
-
-  pushExtreme("high", extremumInRange(ohlc, 0, ohlc.length - 1, "high"));
-  pushExtreme("low", extremumInRange(ohlc, 0, ohlc.length - 1, "low"));
-  for (const stage of resolved) {
-    if (stage.tone === "up") {
-      pushExtreme("high", extremumInRange(ohlc, stage.startIndex, stage.endIndex, "high"));
-    } else if (stage.tone === "down") {
-      pushExtreme("low", extremumInRange(ohlc, stage.startIndex, stage.endIndex, "low"));
-    }
-  }
-
-  return { ...annotations, ...paintExtremeLabels(extremes) };
 }
 
 /**
- * Stage bands + extremes for line/area using the first series' numeric values.
+ * Stage bands + optional visible-window extremes for line/area (first series).
  */
 export function buildSeriesStageAnnotations(
   labels: string[],
   values: Array<number | null>,
   stages: ChartStage[] | undefined,
   dark: boolean,
+  opts: StageAnnotationOpts = {},
 ): Record<string, unknown> {
-  const resolved = resolveChartStages(labels, stages);
-  if (!resolved.length || !values.length) return {};
-
-  const annotations = paintStageBands(resolved, dark);
-
-  type Extreme = { index: number; value: number; kind: "high" | "low" };
-  const extremes: Extreme[] = [];
-  const seen = new Set<string>();
-  const pushExtreme = (kind: "high" | "low", ex: { index: number; value: number } | null) => {
-    if (!ex) return;
-    const key = `${kind}:${ex.index}`;
-    if (seen.has(key)) return;
-    if (extremes.length >= MAX_EXTREME_LABELS) return;
-    seen.add(key);
-    extremes.push({ ...ex, kind });
+  const resolved = overlayComputedStageTones(resolveChartStages(labels, stages), (i) => {
+    const v = values[i];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  });
+  const annotations = resolved.length ? paintStageBands(exclusiveStageRanges(resolved), dark) : {};
+  if (!opts.showExtremes || !values.length) return annotations;
+  const { hi } = visibleIndexRange(values.length, opts.xMin, opts.xMax);
+  return {
+    ...annotations,
+    ...paintVisibleExtremes(visibleSeriesExtremes(values, opts.xMin, opts.xMax), hi),
   };
-
-  pushExtreme("high", extremumInSeriesRange(values, 0, values.length - 1, "high"));
-  pushExtreme("low", extremumInSeriesRange(values, 0, values.length - 1, "low"));
-  for (const stage of resolved) {
-    if (stage.tone === "up") {
-      pushExtreme("high", extremumInSeriesRange(values, stage.startIndex, stage.endIndex, "high"));
-    } else if (stage.tone === "down") {
-      pushExtreme("low", extremumInSeriesRange(values, stage.startIndex, stage.endIndex, "low"));
-    }
-  }
-
-  return { ...annotations, ...paintExtremeLabels(extremes) };
 }
 
 type ChartWithHover = Chart & { $hoverIndex?: number | null };
@@ -443,7 +606,7 @@ export function yRangeForVisibleBars(
   ohlc: ChartOhlcBar[],
   xMin: number,
   xMax: number,
-  padRatio = 0.08,
+  padRatio = Y_RANGE_PAD_RATIO,
 ): { min: number; max: number } | null {
   if (!ohlc.length) return null;
   const lo = Math.max(0, Math.floor(Math.min(xMin, xMax)));
@@ -463,7 +626,11 @@ export function yRangeForVisibleBars(
 }
 
 /** Refit Y scale to bars currently visible on X (after zoom/pan). */
-export function fitYToVisibleBars(chart: Chart, ohlc: ChartOhlcBar[]): void {
+export function fitYToVisibleBars(
+  chart: Chart,
+  ohlc: ChartOhlcBar[],
+  showExtremes = false,
+): void {
   const xScale = chart.scales.x;
   const yScale = chart.scales.y;
   if (!xScale || !yScale) return;
@@ -471,13 +638,117 @@ export function fitYToVisibleBars(chart: Chart, ohlc: ChartOhlcBar[]): void {
   if (!range) return;
   yScale.options.min = range.min;
   yScale.options.max = range.max;
+  if (showExtremes) {
+    const { hi } = visibleIndexRange(ohlc.length, xScale.min, xScale.max);
+    syncVisibleExtremeAnnotations(
+      chart,
+      visibleOhlcExtremes(ohlc, xScale.min, xScale.max),
+      hi,
+    );
+  }
+  chart.update("none");
+}
+
+/** Y range from series values inside [xMin, xMax], with padding. */
+export function yRangeForVisibleSeries(
+  values: Array<number | null>,
+  xMin: number,
+  xMax: number,
+  padRatio = Y_RANGE_PAD_RATIO,
+): { min: number; max: number } | null {
+  if (!values.length) return null;
+  const lo = Math.max(0, Math.floor(Math.min(xMin, xMax)));
+  const hi = Math.min(values.length - 1, Math.ceil(Math.max(xMin, xMax)));
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (let i = lo; i <= hi; i++) {
+    const v = values[i];
+    if (typeof v !== "number" || !Number.isFinite(v)) continue;
+    if (v < yMin) yMin = v;
+    if (v > yMax) yMax = v;
+  }
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) return null;
+  const span = Math.max(yMax - yMin, Math.abs(yMax) * 0.01, 1e-6);
+  const pad = span * padRatio;
+  return { min: yMin - pad, max: yMax + pad };
+}
+
+function yRangeForAllSeries(
+  seriesValues: Array<Array<number | null>>,
+  xMin: number,
+  xMax: number,
+  padRatio = Y_RANGE_PAD_RATIO,
+): { min: number; max: number } | null {
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (const values of seriesValues) {
+    const range = yRangeForVisibleSeries(values, xMin, xMax, 0);
+    if (!range) continue;
+    yMin = Math.min(yMin, range.min);
+    yMax = Math.max(yMax, range.max);
+  }
+  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) return null;
+  const span = Math.max(yMax - yMin, Math.abs(yMax) * 0.01, 1e-6);
+  const pad = span * padRatio;
+  return { min: yMin - pad, max: yMax + pad };
+}
+
+/** Hide dots when the visible X window is dense; keep a hover target. */
+export function seriesPointRadius(ctx: {
+  chart?: { scales?: Record<string, { min?: unknown; max?: unknown } | undefined> };
+}): number {
+  const x = ctx.chart?.scales?.x;
+  const min = Number(x?.min);
+  const max = Number(x?.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return 3;
+  return Math.abs(max - min) + 1 > DENSE_POINT_THRESHOLD ? 0 : 3;
+}
+
+/** Refit Y scale to series currently visible on X (after zoom/pan). */
+export function fitYToVisibleSeries(
+  chart: Chart,
+  seriesValues: Array<Array<number | null>>,
+  showExtremes = false,
+): void {
+  const xScale = chart.scales.x;
+  const yScale = chart.scales.y;
+  if (!xScale || !yScale) return;
+  const range = yRangeForAllSeries(seriesValues, xScale.min, xScale.max);
+  if (!range) return;
+  yScale.options.min = range.min;
+  yScale.options.max = range.max;
+  if (showExtremes) {
+    const first = seriesValues[0] ?? [];
+    const { hi } = visibleIndexRange(first.length, xScale.min, xScale.max);
+    syncVisibleExtremeAnnotations(
+      chart,
+      visibleSeriesExtremes(first, xScale.min, xScale.max),
+      hi,
+    );
+  }
   chart.update("none");
 }
 
 export type ChartJsConfigOpts = {
   candleWindow?: number;
+  xWindow?: number;
   axisPanelRail?: number;
+  showExtremes?: boolean;
 };
+
+function layoutPadding(axisRail: number, showExtremes: boolean): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+} {
+  return {
+    left: axisRail,
+    top: showExtremes ? CHART_PAD_TOP : 8,
+    right: showExtremes ? CHART_PAD_RIGHT : 0,
+    bottom: showExtremes ? CHART_PAD_BOTTOM : 8,
+  };
+}
 
 /** Build Chart.js config from a validated ChartSpec (never from raw model options). */
 export function chartJsConfigFromSpec(
@@ -491,12 +762,17 @@ export function chartJsConfigFromSpec(
 
   if (spec.type === "candlestick") {
     const bars = spec.ohlc ?? [];
-    const stageAnnotations = buildStageAnnotations(spec.labels, bars, spec.stages, dark);
-    const candleWindow = opts.candleWindow ?? DEFAULT_CANDLE_WINDOW;
+    const showExtremes = opts.showExtremes === true;
+    const candleWindow = opts.xWindow ?? opts.candleWindow ?? DEFAULT_CANDLE_WINDOW;
     const axisRail = opts.axisPanelRail ?? AXIS_PANEL_RAIL;
     const xWindow = defaultCandleXWindow(bars.length, candleWindow);
     const yWindow = yRangeForVisibleBars(bars, xWindow.min, xWindow.max);
     const xLimitMax = Math.max(0, bars.length - 1);
+    const stageAnnotations = buildStageAnnotations(spec.labels, bars, spec.stages, dark, {
+      showExtremes,
+      xMin: xWindow.min,
+      xMax: xWindow.max,
+    });
 
     return {
       type: "candlestick",
@@ -514,7 +790,9 @@ export function chartJsConfigFromSpec(
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        layout: { padding: { left: axisRail, top: 18, bottom: 8 } },
+        layout: {
+          padding: layoutPadding(axisRail, showExtremes),
+        },
         interaction: { mode: "index", intersect: false },
         plugins: {
           legend: {
@@ -537,7 +815,7 @@ export function chartJsConfigFromSpec(
               enabled: true,
               mode: "x",
               onPanComplete({ chart }: { chart: Chart }) {
-                fitYToVisibleBars(chart, bars);
+                fitYToVisibleBars(chart, bars, showExtremes);
               },
             },
             zoom: {
@@ -545,7 +823,7 @@ export function chartJsConfigFromSpec(
               pinch: { enabled: true },
               mode: "x",
               onZoomComplete({ chart }: { chart: Chart }) {
-                fitYToVisibleBars(chart, bars);
+                fitYToVisibleBars(chart, bars, showExtremes);
               },
             },
           },
@@ -576,6 +854,125 @@ export function chartJsConfigFromSpec(
           },
           y: {
             // Fit visible window; ignore full-series yMin/yMax from spec.
+            min: yWindow?.min,
+            max: yWindow?.max,
+            title: yTitle
+              ? { display: true, text: yTitle, color: colors.muted }
+              : undefined,
+            ticks: { color: colors.muted },
+            grid: { color: colors.grid },
+          },
+        },
+      },
+    } as ChartConfiguration;
+  }
+
+  if (spec.type === "line" || spec.type === "area") {
+    const fill = spec.type === "area";
+    const showExtremes = opts.showExtremes === true;
+    const axisRail = opts.axisPanelRail ?? AXIS_PANEL_RAIL;
+    const windowSize = opts.xWindow ?? opts.candleWindow ?? DEFAULT_CANDLE_WINDOW;
+    const n = spec.labels.length;
+    const xWindow = defaultCandleXWindow(n, windowSize);
+    const seriesValues = spec.series.map((s) => s.values);
+    const yWindow = yRangeForAllSeries(seriesValues, xWindow.min, xWindow.max);
+    const xLimitMax = Math.max(0, n - 1);
+    const stageAnnotations = buildSeriesStageAnnotations(
+      spec.labels,
+      spec.series[0]?.values ?? [],
+      spec.stages,
+      dark,
+      { showExtremes, xMin: xWindow.min, xMax: xWindow.max },
+    );
+
+    const datasets = spec.series.map((s, i) => {
+      const paint = seriesPaint(i);
+      return {
+        label: s.name,
+        data: s.values.map((y, idx) =>
+          typeof y === "number" && Number.isFinite(y) ? { x: idx, y } : { x: idx, y: Number.NaN },
+        ),
+        fill,
+        tension: 0.25,
+        borderColor: paint.border,
+        backgroundColor: fill ? paint.fill : paint.border,
+        pointBackgroundColor: paint.border,
+        pointBorderColor: paint.border,
+        borderWidth: 2,
+        pointRadius: seriesPointRadius,
+        pointHoverRadius: 4,
+        spanGaps: true,
+      };
+    });
+
+    return {
+      type: "line",
+      data: { datasets },
+      plugins: [axisCrosshairPlugin],
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: {
+          padding: layoutPadding(axisRail, showExtremes),
+        },
+        interaction: { mode: "index" as const, intersect: false },
+        plugins: {
+          legend: {
+            display: spec.showLegend !== false,
+            labels: { color: colors.text },
+          },
+          title: {
+            display: !!spec.title,
+            text: spec.subtitle ? [spec.title!, spec.subtitle] : spec.title,
+            color: colors.text,
+          },
+          tooltip: { enabled: false },
+          zoom: {
+            limits: {
+              x: { min: 0, max: xLimitMax, minRange: Math.min(5, Math.max(1, n)) },
+            },
+            pan: {
+              enabled: true,
+              mode: "x" as const,
+              onPanComplete({ chart }: { chart: Chart }) {
+                fitYToVisibleSeries(chart, seriesValues, showExtremes);
+              },
+            },
+            zoom: {
+              wheel: { enabled: true },
+              pinch: { enabled: true },
+              mode: "x" as const,
+              onZoomComplete({ chart }: { chart: Chart }) {
+                fitYToVisibleSeries(chart, seriesValues, showExtremes);
+              },
+            },
+          },
+          ...(Object.keys(stageAnnotations).length > 0
+            ? { annotation: { annotations: stageAnnotations } }
+            : {}),
+        },
+        scales: {
+          x: {
+            type: "linear" as const,
+            offset: false,
+            min: xWindow.min,
+            max: xWindow.max,
+            bounds: "ticks",
+            title: spec.xTitle
+              ? { display: true, text: spec.xTitle, color: colors.muted }
+              : undefined,
+            ticks: {
+              color: colors.muted,
+              autoSkip: true,
+              maxTicksLimit: 8,
+              callback(value: string | number) {
+                const i = Number(value);
+                return Number.isInteger(i) && spec.labels[i] != null ? spec.labels[i] : "";
+              },
+            },
+            grid: { color: colors.grid },
+          },
+          y: {
             min: yWindow?.min,
             max: yWindow?.max,
             title: yTitle
@@ -809,7 +1206,7 @@ export function ChartBlock({
 
   // Stable signature so parent re-renders with a new array identity do not rebuild Chart.js.
   const toolsSig = (chartToolResults || [])
-    .filter((tr) => tr.name === "lookup_yahoo_ohlc" && tr.preview)
+    .filter((tr) => isOhlcChartTool(tr.name) && tr.preview)
     .map((tr) => tr.preview!)
     .join("\0");
 
@@ -819,7 +1216,11 @@ export function ChartBlock({
     [source, toolsSig],
   );
 
-  const isCandlestick = parsed.ok && parsed.spec.type === "candlestick";
+  const isZoomable =
+    parsed.ok &&
+    (parsed.spec.type === "candlestick" ||
+      parsed.spec.type === "line" ||
+      parsed.spec.type === "area");
   const isAxisChart = parsed.ok && isAxisChartType(parsed.spec.type);
 
   const resolvedStages = useMemo(() => {
@@ -831,7 +1232,16 @@ export function ChartBlock({
     ) {
       return [];
     }
-    return resolveChartStages(parsed.spec.labels, parsed.spec.stages);
+    return exclusiveStageRanges(
+      overlayComputedStageTones(resolveChartStages(parsed.spec.labels, parsed.spec.stages), (i) => {
+        if (parsed.spec.type === "candlestick") {
+          const c = parsed.spec.ohlc?.[i]?.c;
+          return typeof c === "number" && Number.isFinite(c) ? c : null;
+        }
+        const v = parsed.spec.series[0]?.values[i];
+        return typeof v === "number" && Number.isFinite(v) ? v : null;
+      }),
+    );
   }, [parsed]);
 
   const tooltipUi = useMemo(
@@ -1016,11 +1426,15 @@ export function ChartBlock({
     setAxisPinned(false);
 
     const isCandle = parsed.spec.type === "candlestick";
+    const isZoomableType =
+      isCandle || parsed.spec.type === "line" || parsed.spec.type === "area";
     const axisChart = isAxisChartType(parsed.spec.type);
     const configOpts: ChartJsConfigOpts =
       variant === "lightbox" && axisChart
         ? {
-            ...(isCandle ? { candleWindow: LIGHTBOX_CANDLE_WINDOW } : {}),
+            ...(isZoomableType
+              ? { xWindow: LIGHTBOX_CANDLE_WINDOW, showExtremes: true }
+              : {}),
             axisPanelRail: AXIS_PANEL_RAIL_LIGHTBOX,
           }
         : {};
@@ -1048,7 +1462,7 @@ export function ChartBlock({
   // Non-passive wheel so zoom does not scroll the chat transcript.
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el || !isCandlestick) return;
+    if (!el || !isZoomable) return;
     const onWheel = (e: WheelEvent) => {
       const target = e.target as HTMLElement | null;
       if (target?.closest?.(".chart-axis-panel")) return;
@@ -1056,7 +1470,7 @@ export function ChartBlock({
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [isCandlestick, parsed.ok, error]);
+  }, [isZoomable, parsed.ok, error]);
 
   useEffect(() => {
     if (!isAxisChart || !axisPinned) return;
@@ -1136,6 +1550,7 @@ export function ChartBlock({
       : axisHover.stage.tone === "down"
         ? t("chart.stage.tone.down")
         : t("chart.stage.tone.side"));
+  const driverText = axisHover?.stage ? sanitizeStageReason(axisHover.stage.reason) : "";
   const barUp =
     axisHover?.kind === "ohlc" && axisHover.ohlc
       ? axisHover.ohlc.c >= axisHover.ohlc.o
@@ -1162,7 +1577,7 @@ export function ChartBlock({
           data-reveal={variant === "lightbox" ? "always" : "hover"}
           data-slot="top"
         >
-          {isCandlestick ? (
+          {isZoomable ? (
             <>
               <span className="chart-hint-chip">
                 <HintIconPan />
@@ -1189,7 +1604,7 @@ export function ChartBlock({
       )}
       <div
         ref={wrapRef}
-        className={`chart-block-canvas-wrap${isCandlestick ? " chart-block-canvas-wrap--candle" : ""}${isAxisChart && !isCandlestick ? " chart-block-canvas-wrap--axis" : ""}`}
+        className={`chart-block-canvas-wrap${isZoomable ? " chart-block-canvas-wrap--candle" : ""}${isAxisChart && !isZoomable ? " chart-block-canvas-wrap--axis" : ""}`}
         data-testid="chart-canvas-wrap"
         hidden={!showChart}
         onMouseMove={isAxisChart ? handleAxisMouseMove : undefined}
@@ -1289,12 +1704,17 @@ export function ChartBlock({
                     {axisHover.stage.start} – {axisHover.stage.end}
                   </span>
                 </div>
-                <div className="chart-axis-panel-row">
-                  <span className="chart-axis-panel-label">{t("chart.stage.drivers")}</span>
-                  <span className="chart-axis-panel-value chart-axis-panel-reason">
-                    {axisHover.stage.reason}
-                  </span>
-                </div>
+                {driverText ? (
+                  <div className="chart-axis-panel-row">
+                    <span className="chart-axis-panel-label">{t("chart.stage.drivers")}</span>
+                    <span
+                      className="chart-axis-panel-value chart-axis-panel-reason"
+                      data-testid="chart-axis-panel-reason"
+                    >
+                      {driverText}
+                    </span>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

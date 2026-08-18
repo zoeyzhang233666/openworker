@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ApprovalDecision, Item } from "../types";
 import type { ChartToolResult } from "../chartSpec";
+import { isOhlcChartTool } from "../chartSpec";
 import { shortArgs } from "./ApprovalCard";
 import { humanizeAsk, humanizeTool, type HumanLine } from "../humanize";
 import { Markdown } from "./Markdown";
@@ -137,11 +138,15 @@ type ApprovalItem = Extract<Item, { kind: "approval" }>;
 type AssistantItem = Extract<Item, { kind: "assistant" }>;
 type TurnItem = ToolItem | ApprovalItem | AssistantItem;
 
-/** Yahoo OHLC previews from a turn — for ```chart short-ref resolve (D-136). */
+/** OHLC previews from a turn — for ```chart short-ref resolve (D-136/D-152/D-159). */
 export function yahooChartToolsFromItems(items: Item[]): ChartToolResult[] {
   return items
-    .filter((it): it is ToolItem => it.kind === "tool" && it.name === "lookup_yahoo_ohlc")
-    .map((t) => ({ name: t.name, preview: t.preview }));
+    .filter((it): it is ToolItem => it.kind === "tool" && isOhlcChartTool(it.name))
+    .map((t) => ({
+      name: t.name,
+      preview: t.chartPreview || t.preview,
+      args: t.args,
+    }));
 }
 
 // TurnGroup (§33, absorbs §7's StepGroup): the whole user-message → final-answer span collapses
@@ -300,21 +305,23 @@ function TurnGroup({
   live,
   streamingText,
   aborted,
+  chartToolResults,
 }: {
   items: TurnItem[];
   live?: boolean;
   // Sub-threshold streamed text belongs to THIS group (§33 ref #3): collapsed → it rides
   // the header as the live line; expanded → the small quiet line under the steps.
   streamingText?: string;
-  /** True when the next transcript block is a warn notice after this turn settled. */
+  /** Settled turn followed by a warn notice after this turn settled. */
   aborted?: boolean;
+  chartToolResults?: ChartToolResult[];
 }) {
   const { t } = useI18n();
   // D-069: in-flight / failed / interrupted → default open; successful settle → default closed.
   // Manual toggle sticks for this TurnGroup instance (userToggle !== null).
   const rows = buildRows(items);
   const tools = items.filter((it): it is ToolItem => it.kind === "tool");
-  const chartToolResults = yahooChartToolsFromItems(items);
+  const resolvedChartTools = chartToolResults ?? yahooChartToolsFromItems(items);
   const running = live || tools.some((t) => t.status === "…");
   const [userToggle, setUserToggle] = useState<boolean | null>(null);
   const open = userToggle ?? turnGroupAutoOpen({ live, tools, aborted });
@@ -366,7 +373,7 @@ function TurnGroup({
           {rows.map((row, i) =>
             row.type === "narr" ? (
               <div className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]" key={i} data-testid="turn-narration">
-                <Markdown text={row.text} chartToolResults={chartToolResults} />
+                <Markdown text={row.text} chartToolResults={resolvedChartTools} />
               </div>
             ) : row.type === "ask" ? (
               <div className="flex items-baseline gap-2 px-2 py-0.5" key={i} data-testid="turn-ask">
@@ -498,6 +505,7 @@ export function Transcript({
   });
   flush(!!running);
 
+  const sessionChartTools = yahooChartToolsFromItems(items);
   const lastTurnIndex = blocks.reduce((acc, b, i) => ("turn" in b ? i : acc), -1);
   return (
     <div className="transcript">
@@ -512,6 +520,7 @@ export function Transcript({
               live={block.live}
               aborted={aborted}
               streamingText={block.live && bi === lastTurnIndex ? streamingText : undefined}
+              chartToolResults={sessionChartTools}
               key={bi}
             />
           );
@@ -548,17 +557,13 @@ export function Transcript({
                   <ThinkingBlock text={item.reasoning} />
                 </div>
               );
-            {
-              const prev = blocks[bi - 1];
-              const chartToolResults =
-                prev && "turn" in prev ? yahooChartToolsFromItems(prev.turn) : [];
-              return (
+            return (
               <div className="group bubble-assistant" key={bi}>
                 <div className="who">{who}</div>
                 {item.reasoning && <ThinkingBlock text={item.reasoning} />}
                 <Markdown
                   text={item.text}
-                  chartToolResults={chartToolResults}
+                  chartToolResults={sessionChartTools}
                   repairContext={
                     sessionId
                       ? {
@@ -668,7 +673,6 @@ export function Transcript({
                 <BubbleMeta text={item.text} ts={item.ts} align="left" />
               </div>
             );
-            }
           case "dirreq":
             if (!item.resolved) return null;
             return (

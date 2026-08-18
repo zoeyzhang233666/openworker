@@ -472,3 +472,39 @@ def test_outbound_replaces_images_for_non_vision_models(tmp_path):
     assert all(p["type"] != "image_url" for p in parts)
     assert "not viewable" in parts[-1]["text"]
     assert engine.messages[-1]["content"][1]["type"] == "image_url"  # history untouched
+
+
+def test_chart_finished_sidecar_extracts_chart_spec_not_full_ohlc_dump():
+    from coworker.engine import chart_finished_sidecar
+
+    spec = {
+        "version": 1,
+        "type": "candlestick",
+        "labels": ["2026-01-01", "2026-01-02"],
+        "ohlc": [{"o": 1.0, "h": 2.0, "l": 0.5, "c": 1.5}, {"o": 1.5, "h": 2.2, "l": 1.4, "c": 2.0}],
+    }
+    extra = chart_finished_sidecar(
+        {
+            "status": "ok",
+            "symbol": "GC=F",
+            "name": "Gold",
+            "aliases": ["gold"],
+            "labels": ["2026-01-01"] * 200,
+            "ohlc": [{"o": 1, "h": 2, "l": 0, "c": 1}] * 200,
+            "chart_spec": spec,
+        }
+    )
+    assert extra["chart_spec"] == spec
+    assert extra["symbol"] == "GC=F"
+    assert extra["plot_status"] == "ok"
+    assert extra["name"] == "Gold"
+    assert extra["aliases"] == ["gold"]
+    assert "labels" not in extra
+    assert "ohlc" not in extra
+
+
+def test_chart_finished_sidecar_empty_without_spec_or_error():
+    from coworker.engine import chart_finished_sidecar
+
+    assert chart_finished_sidecar({"ok": True}) == {}
+    assert chart_finished_sidecar("not a dict") == {}

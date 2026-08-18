@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ChartBlock, chartJsConfigFromSpec, formatChartPrice, CN_CANDLE_COLORS, STAGE_TONE_COLORS, buildStageAnnotations, findStageAtIndex, resolveChartStages, defaultCandleXWindow, yRangeForVisibleBars, DEFAULT_CANDLE_WINDOW, AXIS_PANEL_RAIL, AXIS_PANEL_RAIL_LIGHTBOX, LIGHTBOX_CANDLE_WINDOW } from "./ChartBlock";
+import { ChartBlock, chartJsConfigFromSpec, formatChartPrice, CN_CANDLE_COLORS, STAGE_TONE_COLORS, buildStageAnnotations, buildSeriesStageAnnotations, findStageAtIndex, resolveChartStages, overlayComputedStageTones, exclusiveStageRanges, classifyStageTones, stageReturnPct, sanitizeStageReason, defaultCandleXWindow, yRangeForVisibleBars, yRangeForVisibleSeries, DEFAULT_CANDLE_WINDOW, DENSE_POINT_THRESHOLD, CHART_PAD_TOP, AXIS_PANEL_RAIL, AXIS_PANEL_RAIL_LIGHTBOX, LIGHTBOX_CANDLE_WINDOW } from "./ChartBlock";
 import { parseChartSpec } from "../chartSpec";
 
 const destroyMock = vi.fn();
@@ -167,6 +167,37 @@ describe("ChartBlock", () => {
     expect(screen.queryByTestId("chart-error")).toBeNull();
   });
 
+  it("resolves CN futures short-ref from chartToolResults", async () => {
+    const ref = JSON.stringify({
+      version: 1,
+      type: "candlestick",
+      from_tool: "lookup_cn_futures_ohlc",
+      symbol: "PG",
+    });
+    const preview = JSON.stringify({
+      status: "ok",
+      symbol: "PG2609.DCE",
+      chart_spec: {
+        version: 1,
+        type: "candlestick",
+        title: "液化气",
+        labels: ["D1", "D2"],
+        ohlc: [
+          { o: 4000, h: 4100, l: 3900, c: 4050 },
+          { o: 4050, h: 4200, l: 4000, c: 4180 },
+        ],
+      },
+    });
+    render(
+      <ChartBlock
+        source={ref}
+        chartToolResults={[{ name: "lookup_cn_futures_ohlc", preview }]}
+      />,
+    );
+    await waitFor(() => expect(ChartMock).toHaveBeenCalled());
+    expect(screen.queryByTestId("chart-error")).toBeNull();
+  });
+
   it("shows error when series length mismatches labels", async () => {
     const bad = JSON.stringify({
       version: 1,
@@ -319,8 +350,14 @@ describe("chart tooltip formatting", () => {
   });
 });
 
+function extremeContents(anns: Record<string, unknown>): string[] {
+  return Object.entries(anns)
+    .filter(([k]) => k.startsWith("extreme"))
+    .map(([, v]) => (v as { content: string }).content);
+}
+
 describe("candlestick stage annotations", () => {
-  it("buildStageAnnotations emits bands and extremes without arrows or reason text", () => {
+  it("buildStageAnnotations emits bands without extremes by default", () => {
     const labels = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"];
     const ohlc = [
       { o: 70, h: 72, l: 69, c: 71 },
@@ -347,11 +384,48 @@ describe("candlestick stage annotations", () => {
     });
     expect(anns.stageReason0).toBeUndefined();
     expect(anns.stageArrow0).toBeUndefined();
-    const extremeContents = Object.entries(anns)
-      .filter(([k]) => k.startsWith("extreme"))
-      .map(([, v]) => (v as { content: string }).content);
-    expect(extremeContents).toContain("80.00");
-    expect(extremeContents).toContain("55.00");
+    expect(extremeContents(anns)).toEqual([]);
+  });
+
+  it("showExtremes paints only visible-window global high and low", () => {
+    const labels = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"];
+    const ohlc = [
+      { o: 90, h: 100, l: 89, c: 91 },
+      { o: 70, h: 72, l: 69, c: 71 },
+      { o: 71, h: 80, l: 70, c: 79 },
+      { o: 79, h: 79, l: 60, c: 61 },
+      { o: 61, h: 62, l: 55, c: 56 },
+    ];
+    const anns = buildStageAnnotations(
+      labels,
+      ohlc,
+      [
+        { start: "2026-01-02", end: "2026-01-03", tone: "up", reason: "地缘溢价" },
+        { start: "2026-01-04", end: "2026-01-05", tone: "down", reason: "供应宽松" },
+      ],
+      false,
+      { showExtremes: true, xMin: 1, xMax: 4 },
+    );
+    const contents = extremeContents(anns);
+    expect(contents).toHaveLength(2);
+    expect(contents).toContain("80.00");
+    expect(contents).toContain("55.00");
+    expect(contents).not.toContain("100.00");
+  });
+
+  it("showExtremes without stages still paints two global extremes", () => {
+    const labels = ["D1", "D2", "D3"];
+    const ohlc = [
+      { o: 1, h: 9, l: 1, c: 2 },
+      { o: 2, h: 3, l: 0.5, c: 1 },
+      { o: 1, h: 2, l: 1, c: 1.5 },
+    ];
+    const anns = buildStageAnnotations(labels, ohlc, undefined, false, { showExtremes: true });
+    const contents = extremeContents(anns);
+    expect(contents).toHaveLength(2);
+    expect(contents).toContain("9.00");
+    expect(contents).toContain("0.50");
+    expect(anns.stageBand0).toBeUndefined();
   });
 
   it("findStageAtIndex prefers last overlapping stage", () => {
@@ -365,6 +439,76 @@ describe("candlestick stage annotations", () => {
     expect(findStageAtIndex(stages, 1)?.reason).toBe("二");
     expect(findStageAtIndex(stages, 0)?.reason).toBe("一");
     expect(findStageAtIndex(stages, 9)).toBeNull();
+  });
+
+  function bandRanges(anns: Record<string, unknown>): Array<{ xMin: number; xMax: number; color: string }> {
+    return Object.entries(anns)
+      .filter(([k]) => k.startsWith("stageBand"))
+      .map(([, v]) => {
+        const box = v as { xMin: number; xMax: number; backgroundColor: string };
+        return { xMin: box.xMin, xMax: box.xMax, color: box.backgroundColor };
+      })
+      .sort((a, b) => a.xMin - b.xMin);
+  }
+
+  it("exclusiveStageRanges last-wins shared endpoint so later stage owns the boundary bar", () => {
+    const raw = resolveChartStages(
+      ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"],
+      [
+        { start: "2026-01-01", end: "2026-01-02", tone: "up", reason: "补库" },
+        { start: "2026-01-02", end: "2026-01-04", tone: "down", reason: "获利了结" },
+      ],
+    );
+    const clipped = exclusiveStageRanges(raw);
+    expect(clipped).toHaveLength(2);
+    expect(clipped[0]).toMatchObject({ startIndex: 0, endIndex: 0, reason: "补库" });
+    expect(clipped[1]).toMatchObject({ startIndex: 1, endIndex: 3, reason: "获利了结" });
+    expect(findStageAtIndex(clipped, 1)?.reason).toBe("获利了结");
+  });
+
+  it("buildStageAnnotations abut exclusive bands at shared daily endpoint", () => {
+    const labels = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04"];
+    const ohlc = [
+      { o: 100, h: 110, l: 99, c: 108 },
+      { o: 108, h: 109, l: 90, c: 92 },
+      { o: 92, h: 93, l: 80, c: 82 },
+      { o: 82, h: 84, l: 70, c: 72 },
+    ];
+    const bands = bandRanges(
+      buildStageAnnotations(
+        labels,
+        ohlc,
+        [
+          { start: "2026-01-01", end: "2026-01-02", tone: "up", reason: "补库" },
+          { start: "2026-01-02", end: "2026-01-04", tone: "down", reason: "获利了结" },
+        ],
+        false,
+      ),
+    );
+    expect(bands).toHaveLength(2);
+    expect(bands[0]!.xMax).toBe(bands[1]!.xMin);
+  });
+
+  it("monthly labels with daily stages keep one tone per bar", () => {
+    const labels = ["2026-05", "2026-06", "2026-07", "2026-08"];
+    const ohlc = [
+      { o: 100, h: 110, l: 99, c: 108 },
+      { o: 108, h: 109, l: 100, c: 101 },
+      { o: 101, h: 102, l: 80, c: 82 },
+      { o: 82, h: 120, l: 80, c: 118 },
+    ];
+    const stages = [
+      { start: "2026-07-31", end: "2026-08-04", tone: "down" as const, reason: "急跌" },
+      { start: "2026-08-04", end: "2026-08-17", tone: "up" as const, reason: "反弹" },
+    ];
+    const clipped = exclusiveStageRanges(resolveChartStages(labels, stages));
+    const august = clipped.filter((s) => s.startIndex <= 3 && s.endIndex >= 3);
+    expect(august).toHaveLength(1);
+    expect(august[0]?.reason).toBe("反弹");
+    const bands = bandRanges(buildStageAnnotations(labels, ohlc, stages, false));
+    for (let i = 1; i < bands.length; i++) {
+      expect(bands[i - 1]!.xMax).toBeLessThanOrEqual(bands[i]!.xMin);
+    }
   });
 
   it("shows left axis hover panel; click pins so rail move keeps date", async () => {
@@ -463,7 +607,7 @@ describe("candlestick stage annotations", () => {
     expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("true");
     expect(screen.getByTestId("chart-axis-panel").getAttribute("data-centered")).toBe("true");
     expect(screen.getByTestId("chart-axis-panel-series").textContent).toMatch(/6035\.00/);
-    expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/十字线|Crosshair/);
+    expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/拖动平移|Drag to pan/);
     expect(screen.getByTestId("chart-hint-row").getAttribute("data-reveal")).toBe("hover");
     expect(screen.getByTestId("chart-hint-row").getAttribute("data-slot")).toBe("top");
     expect(
@@ -624,12 +768,14 @@ describe("candlestick stage annotations", () => {
     expect(annotation?.annotations?.stageBand0).toBeTruthy();
     expect(annotation?.annotations?.stageArrow0).toBeUndefined();
     expect(annotation?.annotations?.stageReason0).toBeUndefined();
-    expect(annotation?.annotations?.extreme0).toBeTruthy();
+    expect(annotation?.annotations?.extreme0).toBeUndefined();
     expect((cfg.options?.plugins?.tooltip as { enabled?: boolean } | undefined)?.enabled).toBe(false);
     expect((cfg.options as { layout?: { padding?: { left?: number; top?: number } } })?.layout?.padding?.left).toBe(
       AXIS_PANEL_RAIL,
     );
-    expect((cfg.options as { layout?: { padding?: { top?: number } } })?.layout?.padding?.top).toBe(18);
+    expect((cfg.options as { layout?: { padding?: { top?: number } } })?.layout?.padding?.top).toBeLessThan(
+      CHART_PAD_TOP,
+    );
     expect(AXIS_PANEL_RAIL).toBe(188);
     expect(cfg.plugins?.some((p) => (p as { id?: string }).id === "axisCrosshair")).toBe(true);
   });
@@ -668,6 +814,33 @@ describe("candlestick stage annotations", () => {
     expect((cfg.options?.plugins as { annotation?: unknown })?.annotation).toBeUndefined();
     expect((cfg.options?.plugins?.tooltip as { enabled?: boolean } | undefined)?.enabled).toBe(false);
     expect(cfg.plugins?.some((p) => (p as { id?: string }).id === "axisCrosshair")).toBe(true);
+  });
+
+  it("lightbox showExtremes paints two extremes even without stages", () => {
+    const parsed = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["D1", "D2"],
+        ohlc: [
+          { o: 1, h: 4, l: 1, c: 2 },
+          { o: 2, h: 3, l: 0.5, c: 1 },
+        ],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec, undefined, { showExtremes: true });
+    const anns = (cfg.options?.plugins as { annotation?: { annotations: Record<string, unknown> } })
+      ?.annotation?.annotations;
+    expect(anns).toBeTruthy();
+    const contents = extremeContents(anns ?? {});
+    expect(contents).toHaveLength(2);
+    expect(contents).toContain("4.00");
+    expect(contents).toContain("0.50");
+    expect(
+      (cfg.options as { layout?: { padding?: { top?: number } } })?.layout?.padding?.top,
+    ).toBe(CHART_PAD_TOP);
   });
 });
 
@@ -724,5 +897,278 @@ describe("candlestick default window and zoom", () => {
       ?.zoom;
     expect(zoom?.pan?.enabled).toBe(true);
     expect(zoom?.zoom?.wheel?.enabled).toBe(true);
+  });
+});
+
+describe("spot line default window, zoom, density, and label room", () => {
+  function lineSpec(n: number, values?: number[]) {
+    const labels = Array.from({ length: n }, (_, i) => `2026-01-${String(i + 1).padStart(2, "0")}`);
+    const seriesValues = values ?? labels.map((_, i) => 2000 + i);
+    return JSON.stringify({
+      version: 1,
+      type: "line",
+      title: "甲醇现货均价",
+      labels,
+      series: [{ name: "现货均价", values: seriesValues }],
+    });
+  }
+
+  it("yRangeForVisibleSeries pads visible slice", () => {
+    const values = [10, 50, 1];
+    const range = yRangeForVisibleSeries(values, 1, 1, 0);
+    expect(range).toEqual({ min: 50, max: 50 });
+    const padded = yRangeForVisibleSeries(values, 1, 1, 0.08);
+    expect(padded!.min).toBeLessThan(50);
+    expect(padded!.max).toBeGreaterThan(50);
+  });
+
+  it("chartJsConfigFromSpec enables pan/zoom and latest window for long line series", () => {
+    const parsed = parseChartSpec(lineSpec(120));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec);
+    const x = cfg.options?.scales?.x as {
+      min?: number;
+      max?: number;
+      ticks?: { maxTicksLimit?: number; autoSkip?: boolean };
+    } | undefined;
+    expect(x?.min).toBe(30);
+    expect(x?.max).toBe(119);
+    expect(x?.ticks?.maxTicksLimit).toBe(8);
+    expect(x?.ticks?.autoSkip).toBe(true);
+    const y = cfg.options?.scales?.y as { min?: number; max?: number } | undefined;
+    expect(y?.min).toBeDefined();
+    expect(y?.max).toBeDefined();
+    // Visible window starts at 2030, not full-series floor 2000.
+    expect(y!.min!).toBeGreaterThan(2015);
+    const zoom = (cfg.options?.plugins as { zoom?: { pan?: { enabled?: boolean }; zoom?: { wheel?: { enabled?: boolean } } } })
+      ?.zoom;
+    expect(zoom?.pan?.enabled).toBe(true);
+    expect(zoom?.zoom?.wheel?.enabled).toBe(true);
+    const pad = (cfg.options as { layout?: { padding?: { right?: number; bottom?: number; top?: number } } })
+      ?.layout?.padding;
+    expect(pad?.right ?? 0).toBe(0);
+    expect(pad?.bottom).toBeLessThan(16);
+    expect(pad?.top).toBeLessThan(28);
+  });
+
+  it("hides point markers when many points are visible, shows them when zoomed in", () => {
+    const parsed = parseChartSpec(lineSpec(60));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec);
+    const ds = cfg.data?.datasets?.[0] as {
+      pointRadius?: number | ((ctx: { chart: { scales: { x?: { min: number; max: number } } } }) => number);
+    };
+    expect(DENSE_POINT_THRESHOLD).toBeLessThanOrEqual(24);
+    expect(typeof ds.pointRadius).toBe("function");
+    const dense = ds.pointRadius as (ctx: {
+      chart: { scales: { x?: { min: number; max: number } } };
+    }) => number;
+    expect(dense({ chart: { scales: { x: { min: 0, max: 59 } } } })).toBe(0);
+    expect(dense({ chart: { scales: { x: { min: 50, max: 59 } } } })).toBeGreaterThan(0);
+  });
+
+  it("shifts right-edge extreme labels left so last price is not clipped", () => {
+    const labels = Array.from({ length: 10 }, (_, i) => `D${i}`);
+    const values = [10, 11, 12, 13, 14, 15, 16, 17, 18, 50];
+    const anns = buildSeriesStageAnnotations(
+      labels,
+      values,
+      [{ start: "D0", end: "D9", tone: "up", reason: "尾盘走强" }],
+      false,
+      { showExtremes: true },
+    );
+    const high = Object.values(anns).find(
+      (v) => (v as { content?: string }).content === "50.00",
+    ) as { xAdjust?: number; yAdjust?: number } | undefined;
+    expect(high).toBeTruthy();
+    expect(high!.xAdjust!).toBeLessThan(0);
+  });
+
+  it("places high labels above and low labels below the point", () => {
+    const labels = ["D0", "D1", "D2", "D3"];
+    const values = [50, 40, 10, 30];
+    const anns = buildSeriesStageAnnotations(
+      labels,
+      values,
+      [{ start: "D0", end: "D3", tone: "down", reason: "探底" }],
+      false,
+      { showExtremes: true },
+    );
+    const high = Object.values(anns).find(
+      (v) => (v as { content?: string }).content === "50.00",
+    ) as { yAdjust?: number } | undefined;
+    const low = Object.values(anns).find(
+      (v) => (v as { content?: string }).content === "10.00",
+    ) as { yAdjust?: number } | undefined;
+    expect(high).toBeTruthy();
+    expect(low).toBeTruthy();
+    expect(high!.yAdjust!).toBeLessThan(0);
+    expect(low!.yAdjust!).toBeGreaterThan(0);
+  });
+
+  it("fullscreen extremes keep only global high and low, not nearby stage lows", () => {
+    const labels = ["D0", "D1", "D2", "D3", "D4", "D5"];
+    const values = [3000, 2900, 2374, 2348, 2500, 2600];
+    const anns = buildSeriesStageAnnotations(
+      labels,
+      values,
+      [
+        { start: "D0", end: "D2", tone: "down", reason: "探底一" },
+        { start: "D3", end: "D5", tone: "up", reason: "反弹" },
+      ],
+      false,
+      { showExtremes: true },
+    );
+    const contents = extremeContents(anns);
+    expect(contents).toHaveLength(2);
+    expect(contents).toContain("3000.00");
+    expect(contents).toContain("2348.00");
+    expect(contents).not.toContain("2374.00");
+  });
+
+  it("candlestick and line reserve top pad for high labels only when showing extremes", () => {
+    expect(CHART_PAD_TOP).toBeGreaterThanOrEqual(28);
+    const candle = parseChartSpec(
+      JSON.stringify({
+        version: 1,
+        type: "candlestick",
+        labels: ["A", "B"],
+        ohlc: [
+          { o: 1, h: 2, l: 0.5, c: 1.5 },
+          { o: 2, h: 3, l: 1, c: 2.5 },
+        ],
+      }),
+    );
+    expect(candle.ok).toBe(true);
+    if (!candle.ok) return;
+    const inlinePad = (chartJsConfigFromSpec(candle.spec).options as {
+      layout?: { padding?: { top?: number; bottom?: number } };
+    })?.layout?.padding;
+    expect(inlinePad?.top).toBeLessThan(28);
+    const lightboxPad = (chartJsConfigFromSpec(candle.spec, undefined, { showExtremes: true })
+      .options as { layout?: { padding?: { top?: number; bottom?: number } } })?.layout?.padding;
+    expect(lightboxPad?.top).toBeGreaterThanOrEqual(28);
+    expect(lightboxPad?.bottom).toBeGreaterThanOrEqual(16);
+
+    const line = parseChartSpec(lineSpec(5));
+    expect(line.ok).toBe(true);
+    if (!line.ok) return;
+    const linePad = (chartJsConfigFromSpec(line.spec).options as {
+      layout?: { padding?: { top?: number } };
+    })?.layout?.padding;
+    expect(linePad?.top).toBeLessThan(28);
+  });
+
+  it("bar charts stay without zoom pan", () => {
+    const parsed = parseChartSpec(validBar);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cfg = chartJsConfigFromSpec(parsed.spec);
+    const zoom = (cfg.options?.plugins as { zoom?: { pan?: { enabled?: boolean } } } | undefined)?.zoom;
+    expect(zoom?.pan?.enabled).not.toBe(true);
+  });
+});
+
+describe("stage tone recompute and driver sanitization", () => {
+  it("classifyStageTones maps relative returns to up/down/side", () => {
+    expect(classifyStageTones([0.08, -0.06, 0.012, 0.07])).toEqual(["up", "down", "side", "up"]);
+  });
+
+  it("does not keep a larger-move interval as side versus a smaller up/down", () => {
+    const tones = classifyStageTones([0.05, 0.03]);
+    expect(tones[0]).not.toBe("side");
+    const sideAbs = tones
+      .map((tone, i) => (tone === "side" ? Math.abs([0.05, 0.03][i]!) : null))
+      .filter((v): v is number => v != null);
+    const dirAbs = tones
+      .map((tone, i) => (tone === "up" || tone === "down" ? Math.abs([0.05, 0.03][i]!) : null))
+      .filter((v): v is number => v != null);
+    for (const s of sideAbs) {
+      for (const d of dirAbs) expect(s).toBeLessThan(d);
+    }
+  });
+
+  it("treats a nearly flat set as all side", () => {
+    expect(classifyStageTones([0.001, -0.002, 0.0015])).toEqual(["side", "side", "side"]);
+  });
+
+  it("stageReturnPct is null when start is zero or non-finite", () => {
+    expect(stageReturnPct(0, 10)).toBeNull();
+    expect(stageReturnPct(Number.NaN, 10)).toBeNull();
+    expect(stageReturnPct(100, 108)).toBeCloseTo(0.08);
+  });
+
+  it("overlayComputedStageTones overrides a mistaken LLM side label", () => {
+    const stages = resolveChartStages(
+      ["A", "B", "C", "D"],
+      [
+        { start: "A", end: "B", tone: "side", reason: "横盘" },
+        { start: "C", end: "D", tone: "up", reason: "反弹" },
+      ],
+    );
+    const closes = [100, 105, 103, 106];
+    const painted = overlayComputedStageTones(stages, (i) => closes[i] ?? null);
+    expect(painted[0]?.tone).not.toBe("side");
+    expect(painted[0]?.tone).toBe("up");
+  });
+
+  it("buildStageAnnotations uses recomputed tone for band color", () => {
+    const labels = ["D1", "D2"];
+    const ohlc = [
+      { o: 100, h: 101, l: 99, c: 100 },
+      { o: 100, h: 110, l: 100, c: 108 },
+    ];
+    const anns = buildStageAnnotations(
+      labels,
+      ohlc,
+      [{ start: "D1", end: "D2", tone: "side", reason: "横盘整理" }],
+      false,
+    );
+    expect(anns.stageBand0).toMatchObject({
+      type: "box",
+      backgroundColor: STAGE_TONE_COLORS.up.band,
+    });
+  });
+
+  it("sanitizeStageReason strips specific prices", () => {
+    expect(sanitizeStageReason("回落到 2374.00 附近，需求回暖")).not.toMatch(/2374/);
+    expect(sanitizeStageReason("装置检修收紧供应")).toBe("装置检修收紧供应");
+  });
+
+  it("axis panel hides drivers when reason is only a price, and strips prices otherwise", async () => {
+    const withPrice = JSON.stringify({
+      version: 1,
+      type: "candlestick",
+      labels: ["D1", "D2"],
+      ohlc: [
+        { o: 100, h: 110, l: 99, c: 100 },
+        { o: 100, h: 120, l: 100, c: 118 },
+      ],
+      stages: [{ start: "D1", end: "D2", tone: "up", reason: "回落到 2374.00 附近，需求回暖" }],
+      focusLabel: "D2",
+    });
+    render(<ChartBlock source={withPrice} />);
+    await waitFor(() => expect(screen.getByTestId("chart-axis-panel-stage")).toBeTruthy());
+    const reason = screen.getByTestId("chart-axis-panel-reason");
+    expect(reason.textContent).not.toMatch(/2374/);
+    expect(reason.textContent).toMatch(/需求回暖/);
+
+    cleanup();
+    const onlyPrice = JSON.stringify({
+      version: 1,
+      type: "candlestick",
+      labels: ["D1", "D2"],
+      ohlc: [
+        { o: 100, h: 110, l: 99, c: 100 },
+        { o: 100, h: 120, l: 100, c: 118 },
+      ],
+      stages: [{ start: "D1", end: "D2", tone: "up", reason: "2374.00" }],
+      focusLabel: "D2",
+    });
+    render(<ChartBlock source={onlyPrice} />);
+    await waitFor(() => expect(screen.getByTestId("chart-axis-panel-stage")).toBeTruthy());
+    expect(screen.queryByTestId("chart-axis-panel-reason")).toBeNull();
   });
 });

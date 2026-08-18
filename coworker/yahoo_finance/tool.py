@@ -13,10 +13,16 @@ _SCHEMA = {
     "function": {
         "name": "lookup_yahoo_ohlc",
         "description": (
-            "Fetch daily (or weekly/monthly) OHLC bars for a stock or futures symbol via "
-            "the unofficial Yahoo Finance chart endpoint (no API key). "
+            "Fetch OHLC bars for global stocks/futures via the unofficial Yahoo "
+            "Finance chart endpoint (no API key). Default is daily (interval=1d, "
+            "range=3mo). Use 1wk/1mo only when the user explicitly asks for weekly "
+            "or monthly bars. There is no yearly interval — if they ask 年线, use "
+            "1mo with enough range and say it is monthly. "
             "Examples: CL=F (WTI), BZ=F (Brent), AAPL, GC=F. "
-            "Prefer this tool over shell/curl for futures/stock OHLC. "
+            "Use lookup_cn_stock_* / lookup_cn_futures_* / lookup_cn_option_market for "
+            "mainland China A-shares (A股, 茅台, 600519), China futures (甲醇, 液化气), "
+            "and China listed options — do not use Yahoo for those when CN tools exist. "
+            "Prefer this tool over shell/curl for global futures/stock OHLC. "
             "Best-effort only — not licensed market data; not investment advice. "
             "For chemical spot prices use chem-data-hub MCP instead. "
             "When plotting, emit one ```chart short-ref per symbol "
@@ -36,7 +42,10 @@ _SCHEMA = {
                 },
                 "interval": {
                     "type": "string",
-                    "description": "Bar size: 1d (default), 1wk, or 1mo.",
+                    "description": (
+                        "Bar size: 1d (default when unspecified), 1wk, or 1mo. "
+                        "Use 1wk/1mo only if the user asked for weekly/monthly."
+                    ),
                 },
             },
             "required": ["symbol"],

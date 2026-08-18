@@ -78,6 +78,7 @@ def test_lookup_yahoo_ohlc_tool_ok():
     assert out["chart_spec"]["labels"] == out["labels"]
     assert out["chart_spec"]["ohlc"] == out["ohlc"]
     assert len(out["chart_spec"]["labels"]) == len(out["chart_spec"]["ohlc"])
+    assert out["interval"] == "1d"
 
 
 def test_yahoo_error_has_null_chart_spec():

@@ -824,6 +824,7 @@ export function App() {
               d.result_preview || d.reason,
               d.display?.hidden_by_filters,
               d.standing_rule,
+              ohlcChartPreviewFromEvent(d),
             ),
           );
           // Refresh the right rail when something it shows may have changed: browser state, or a
@@ -2082,6 +2083,25 @@ function WaitingForAgent({ label }: { label?: string }) {
   );
 }
 
+function ohlcChartPreviewFromEvent(d: {
+  chart_spec?: unknown;
+  symbol?: unknown;
+  name?: unknown;
+  aliases?: unknown;
+  plot_status?: unknown;
+  plot_error?: unknown;
+}): string | undefined {
+  if (!d || typeof d.chart_spec !== "object" || d.chart_spec === null) return undefined;
+  return JSON.stringify({
+    status: typeof d.plot_status === "string" && d.plot_status ? d.plot_status : "ok",
+    symbol: d.symbol,
+    name: d.name,
+    aliases: d.aliases,
+    chart_spec: d.chart_spec,
+    error: d.plot_error,
+  });
+}
+
 function updateLastTool(
   items: Item[],
   name: string,
@@ -2089,6 +2109,7 @@ function updateLastTool(
   preview?: string,
   hidden?: number,
   standingRule?: string,
+  chartPreview?: string,
 ): Item[] {
   const copy = [...items];
   for (let i = copy.length - 1; i >= 0; i--) {
@@ -2098,6 +2119,7 @@ function updateLastTool(
         ...it,
         status,
         preview,
+        ...(chartPreview ? { chartPreview } : {}),
         ...(hidden ? { hidden } : {}),
         ...(standingRule ? { standingRule } : {}),
       };

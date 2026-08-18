@@ -49,18 +49,34 @@ export type ChartSpec = {
 };
 
 export const MAX_CHART_STAGES = 8;
-export const MAX_STAGE_REASON_LEN = 160;
+export const MAX_STAGE_REASON_LEN = 80;
 const STAGE_TONES = new Set<ChartStageTone>(["up", "down", "side"]);
 
 export type ParseChartSpecResult =
   | { ok: true; spec: ChartSpec }
   | { ok: false; error: string };
 
-/** Tool row preview used to resolve Yahoo short-ref charts. */
+/** Tool row preview used to resolve OHLC short-ref charts. */
 export type ChartToolResult = {
   name: string;
   preview?: string;
+  args?: { symbol?: unknown; [key: string]: unknown };
 };
+
+const OHLC_CHART_TOOLS = new Set([
+  "lookup_yahoo_ohlc",
+  "lookup_cn_stock_ohlc",
+  "lookup_cn_stock_minute",
+  "lookup_cn_futures_ohlc",
+  "lookup_cn_futures_minute",
+  "lookup_cn_option_market",
+]);
+
+const PLOT_OK_STATUS = new Set(["ok", "partial", "stale_cache"]);
+
+export function isOhlcChartTool(name: string): boolean {
+  return OHLC_CHART_TOOLS.has(name);
+}
 
 const CHART_TYPES = new Set<ChartType>(["line", "bar", "area", "scatter", "candlestick"]);
 
@@ -272,41 +288,113 @@ function parseLabels(labelsRaw: unknown): string[] | { error: string } {
   return labels;
 }
 
-/** True when fence is a Yahoo short-ref (no OHLC hand-copy). */
-export function isYahooChartRef(parsed: Record<string, unknown>): boolean {
+/** True when fence is an OHLC short-ref (no OHLC hand-copy). */
+export function isOhlcChartRef(parsed: Record<string, unknown>): boolean {
   const fromTool = typeof parsed.from_tool === "string" ? parsed.from_tool.trim() : "";
   const symbol = typeof parsed.symbol === "string" ? parsed.symbol.trim() : "";
-  return fromTool === "lookup_yahoo_ohlc" && !!symbol;
+  return isOhlcChartTool(fromTool) && !!symbol;
 }
 
-function findYahooChartSpecJson(
+/** @deprecated Yahoo-only alias; prefer isOhlcChartRef. */
+export function isYahooChartRef(parsed: Record<string, unknown>): boolean {
+  return isOhlcChartRef(parsed);
+}
+
+function chartSymbolKey(raw: string): string {
+  return raw.trim().toUpperCase();
+}
+
+function symbolsMatch(want: string, got: string): boolean {
+  const a = chartSymbolKey(want);
+  const b = chartSymbolKey(got);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aBase = a.split(".")[0] ?? "";
+  const bBase = b.split(".")[0] ?? "";
+  if (aBase && aBase === bBase) return true;
+  if (/^[A-Z]{1,3}$/.test(aBase) && bBase.startsWith(aBase) && /\d/.test(bBase.slice(aBase.length))) {
+    return true;
+  }
+  if (/^[A-Z]{1,3}$/.test(bBase) && aBase.startsWith(bBase) && /\d/.test(aBase.slice(bBase.length))) {
+    return true;
+  }
+  return false;
+}
+
+function payloadMatchesSymbol(want: string, payload: Record<string, unknown>): boolean {
+  const sym = typeof payload.symbol === "string" ? payload.symbol : "";
+  if (symbolsMatch(want, sym)) return true;
+  const name = typeof payload.name === "string" ? payload.name : "";
+  if (name && chartSymbolKey(want) === chartSymbolKey(name)) return true;
+  const aliases = payload.aliases;
+  if (!Array.isArray(aliases)) return false;
+  return aliases.some(
+    (alias) => typeof alias === "string" && chartSymbolKey(want) === chartSymbolKey(alias),
+  );
+}
+
+function toolArgSymbol(tool: ChartToolResult): string {
+  const raw = tool.args && typeof tool.args === "object" ? tool.args.symbol : undefined;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+function findOhlcChartSpecJson(
   toolResults: ChartToolResult[] | undefined,
+  fromTool: string,
   symbol: string,
 ): string | { error: string } {
-  const want = symbol.trim().toUpperCase();
-  const candidates = (toolResults || []).filter((t) => t.name === "lookup_yahoo_ohlc" && t.preview);
-  for (let i = candidates.length - 1; i >= 0; i--) {
-    const preview = candidates[i]!.preview!;
+  const named = (toolResults || []).filter((t) => t.name === fromTool);
+  if (!named.length) {
+    return { error: `no ${fromTool} result in this session for ${symbol}` };
+  }
+
+  let sawTruncated = false;
+  let sawParseable = false;
+  let toolError: string | null = null;
+  const withPreview = named.filter((t) => t.preview);
+  for (let i = withPreview.length - 1; i >= 0; i--) {
+    const tool = withPreview[i]!;
+    const preview = tool.preview!;
     let payload: unknown;
     try {
       payload = JSON.parse(preview);
     } catch {
+      sawTruncated = true;
       continue;
     }
-    if (!isPlainObject(payload)) continue;
-    if (payload.status !== "ok") continue;
-    const sym = typeof payload.symbol === "string" ? payload.symbol.trim().toUpperCase() : "";
-    if (sym !== want) continue;
+    if (!isPlainObject(payload)) {
+      sawTruncated = true;
+      continue;
+    }
+    sawParseable = true;
+    const status = String(payload.status ?? "");
+    const matches =
+      payloadMatchesSymbol(symbol, payload) || symbolsMatch(symbol, toolArgSymbol(tool));
+    if (!PLOT_OK_STATUS.has(status)) {
+      if (matches) {
+        const err = typeof payload.error === "string" ? payload.error.trim() : "";
+        toolError = err || status || toolError;
+      }
+      continue;
+    }
+    if (!matches) continue;
     if (!isPlainObject(payload.chart_spec)) {
-      return { error: `Yahoo OHLC for ${symbol} has no chart_spec` };
+      return { error: `OHLC for ${symbol} has no chart_spec` };
     }
     return JSON.stringify(payload.chart_spec);
   }
-  return { error: `no Yahoo OHLC for symbol ${symbol}` };
+
+  if (toolError) {
+    return { error: `${fromTool} failed for ${symbol}: ${toolError}` };
+  }
+  if (sawTruncated && !sawParseable) {
+    return { error: `OHLC preview for ${symbol} is truncated or invalid JSON` };
+  }
+  return { error: `no OHLC for symbol ${symbol}` };
 }
 
 /**
- * Resolve a fenced ```chart body: Yahoo short-ref → tool chart_spec; otherwise parseChartSpec.
+ * Resolve a fenced ```chart body: OHLC short-ref → tool chart_spec; otherwise parseChartSpec.
  * Optional title on the ref overrides the tool chart_spec title.
  */
 export function resolveChartSource(
@@ -323,9 +411,10 @@ export function resolveChartSource(
     return { ok: false, error: "Chart spec must be a JSON object" };
   }
 
-  if (isYahooChartRef(parsed)) {
+  if (isOhlcChartRef(parsed)) {
     const symbol = String(parsed.symbol).trim();
-    const found = findYahooChartSpecJson(toolResults, symbol);
+    const fromTool = String(parsed.from_tool).trim();
+    const found = findOhlcChartSpecJson(toolResults, fromTool, symbol);
     if (typeof found !== "string") return { ok: false, error: found.error };
     const resolved = parseChartSpec(found);
     if (!resolved.ok) return resolved;
@@ -364,7 +453,7 @@ export function parseChartSpec(source: string): ParseChartSpecResult {
   }
 
   // Short-ref without tool context cannot be fully parsed here.
-  if (isYahooChartRef(parsed)) {
+  if (isOhlcChartRef(parsed)) {
     return {
       ok: false,
       error: `candlestick short-ref requires tool resolve for symbol ${String(parsed.symbol).trim()}`,

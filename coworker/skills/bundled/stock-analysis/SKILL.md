@@ -29,17 +29,21 @@ ChemClaw **没有**万得或其它商业金融语料工具。禁止调用不存�
 
 按分析维度选择**当前已注册**的工具：
 
-1. **行情 / 技术（OHLC）**：优先 `lookup_yahoo_ohlc`。
-2. **公告 / 财报原文 / 重大事件 / IR**：`web_search` + `web_fetch`（优先公司公告、交易所、公司官网、权威新闻、投资者关系平台）。
-3. **无可靠来源**：明确 unavailable；**禁止猜测** PE、PB、市值、精确财务科目、资金流席位等。
+1. **A 股行情 / 技术（OHLC）**：默认 `lookup_cn_stock_quote` / `lookup_cn_stock_ohlc`（日线）。仅当用户点名分时/分钟时才用 `lookup_cn_stock_minute`。代码用 `600519` 或 `600519.SH`（不要用 Yahoo 的 `.SS` 作为 A 股主路径）。
+2. **A 股财务三张表**：`lookup_cn_stock_financials`。
+3. **A 股龙虎榜 / 两融 / 北向历史**：`lookup_cn_stock_feature`。
+4. **美股 / 港股 / 全球期货 OHLC**：`lookup_yahoo_ohlc`（未指定周期时 `interval=1d`；`1wk`/`1mo` 仅用户点名周线/月线）。
+5. **公告 / 财报原文 / 重大事件 / IR**：`web_search` + `web_fetch`（优先公司公告、交易所、公司官网、权威新闻、投资者关系平台）。
+6. **无可靠来源**：明确 unavailable；**禁止猜测** PE、PB、市值、精确财务科目、资金流席位等。
 
-Web 只能作公开证据，不得伪装成结构化财务/行情数据库。化工品现货仍走 `chem-price-daily` / chem-data-hub，不用 Yahoo 替代。
+Web 只能作公开证据，不得伪装成结构化财务/行情数据库。化工品现货仍走 `chem-price-daily` / chem-data-hub，不用 Yahoo 替代。CN 结构化工具失败后，**禁止**改用 Yahoo 或网页探测来「补」同一行情。
 
-### Yahoo 代码约定
+### 出图约定
 
-- A 股：`{代码}.SS`（沪/科创）或 `{代码}.SZ`（深）；**不要用 `.SH`**
-- 例：万华化学 `600309.SS`
 - 有 OHLC 时出图用 ```chart` short-ref（`from_tool`+`symbol`），禁止手抄 OHLC
+- 未指定周期时默认日线：A 股 `from_tool` 必须是 `lookup_cn_stock_ohlc`
+- 仅用户点名分时/分钟时才用 `lookup_cn_stock_minute`
+- 全球标的 `from_tool` 必须是 `lookup_yahoo_ohlc`（默认日线）
 
 ---
 
@@ -62,15 +66,16 @@ Web 只能作公开证据，不得伪装成结构化财务/行情数据库。化
 
 | 维度 | 工具路径 |
 | --- | --- |
-| 技术分析 / 行情 / 异动幅度 | `lookup_yahoo_ohlc`；失败则无均线/成交量/涨跌数字 |
-| 基本面 / 财务 / 财报 | 年报、季报、公告、官网（`web_search` + `web_fetch`）；数字必须来自页面，禁止凭记忆填表 |
+| A 股技术分析 / 行情 / 异动幅度 | 默认 `lookup_cn_stock_ohlc`（日线）；用户点名分时/分钟才用 `lookup_cn_stock_minute`；失败则无均线/成交量/涨跌数字，禁止改走 Yahoo |
+| 美股/港股/全球行情 | `lookup_yahoo_ohlc`（未指定周期用日线） |
+| 基本面 / 财务 / 财报 | A 股优先 `lookup_cn_stock_financials`；原文与附注用年报、季报、公告、官网（`web_search` + `web_fetch`）；数字必须来自工具或页面，禁止凭记忆填表 |
 | 重大事件 / 近期动态 / 异动原因 | `web_search` + `web_fetch` |
 | 机构观点 | 仅当检索到真实研报/报道时引用，并标明来源；无来源不得写「据机构观点」 |
 | 投资者问答 | 必须来自 IR 平台、公告或官网互动记录；不得生成「管理层回答」 |
 | 同业比较 | 只比较有来源的字段；缺的标 unavailable |
-| 资金面精确席位/北向持股 | 当前无结构化工具 → unavailable |
+| 资金面精确席位/北向持股 | `lookup_cn_stock_feature`；北向持股若 source_unavailable 则写明，禁止网页估数 |
 
-多维度时并行调用；Yahoo 与 Web 可同轮发起。
+多维度时并行调用；A 股 CN 工具与 Web 可同轮发起，不要对同一 A 股再调 Yahoo。
 
 ---
 

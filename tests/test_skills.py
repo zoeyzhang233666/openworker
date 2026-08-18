@@ -97,8 +97,16 @@ def test_build_engine_chat(tmp_path):
     assert "price trend" in sys_msg
     assert "top-level string array" in sys_msg
     assert "lookup_yahoo_ohlc" in sys_msg and "candlestick" in sys_msg
+    assert "lookup_cn_stock_ohlc" in sys_msg and "lookup_cn_futures_ohlc" in sys_msg
     assert "from_tool" in sys_msg and "short-ref" in sys_msg
+    assert "daily" in sys_msg.lower()
+    assert "never `lookup_cn_*_minute`" in sys_msg
+    assert "(or ≥12 monthly points)" not in sys_msg
+    assert "interval=1wk" in sys_msg and "1mo" in sys_msg
+    assert "Chinese name" in sys_msg
     assert "stages" in sys_msg and "tone" in sys_msg
+    assert "dominant driver" in sys_msg
+    assert "specific price" in sys_msg
     assert "load_skill" in sys_msg and "grilling" in sys_msg
     assert "nicer webpage" in sys_msg or "美观" in sys_msg or "网页" in sys_msg
     assert "align" in sys_msg.lower() or "对齐" in sys_msg

@@ -37,6 +37,12 @@ def test_web_and_remote_providers_are_remote():
         UsageClass.OTHER,
     )
     assert classify_tool("lookup_fx_rate")[0] is NetworkScope.REMOTE
+    assert classify_tool("lookup_cn_stock_ohlc") == (
+        NetworkScope.REMOTE,
+        UsageClass.OTHER,
+    )
+    assert classify_tool("lookup_cn_futures_l1")[0] is NetworkScope.REMOTE
+    assert classify_tool("lookup_cn_option_market")[0] is NetworkScope.REMOTE
     assert classify_tool("hubspot_create_task")[0] is NetworkScope.REMOTE
     assert classify_tool("mcp_custom_server_tool")[0] is NetworkScope.REMOTE
 

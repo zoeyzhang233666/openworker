@@ -41,13 +41,72 @@ def select_verified_tool_names(
     if re.search(r"(汇率|fx\b|exchange rate|usd/?cny|欧元汇率)", t, re.I):
         candidates.append("lookup_fx_rate")
 
-    if re.search(
-        r"(期货|原油期货|wti|brent|股票|股价|k线|蜡烛|ohlc|yahoo|"
-        r"A\s*股|港股|美股|大盘|上证|深证|恒生|"
-        r"\bcl=f\b|\bbz=f\b|futures?\b|\bstock\b)",
-        t,
-        re.I,
-    ):
+    cn_stock = bool(
+        re.search(
+            r"(A\s*股|上证|深证|创业板|科创板|沪市|深市|北向|南向|龙虎榜|两融|"
+            r"茅台|财务三张|三张表|年报|季报|A-?share)",
+            t,
+            re.I,
+        )
+        or re.search(r"\b\d{6}(\.(SH|SZ|SS|BJ))?\b", t, re.I)
+    )
+    cn_futures = bool(
+        re.search(
+            r"(甲醇|液化气|工业硅|郑醇|国内期货|中国期货|PTA|沪铜|螺纹钢)",
+            t,
+            re.I,
+        )
+        or re.search(
+            r"\b(MA|PG|EB|PP|SC|FU|RU|TA|SA|EG|SH|FG|SI|LC|PX|PF|BR|UR|BU)\d{0,4}\b",
+            t,
+        )
+    )
+    cn_options = bool(
+        re.search(
+            r"(期权|50ETF|300ETF|500ETF|科创50ETF|股指期权)",
+            t,
+            re.I,
+        )
+    )
+    if cn_stock:
+        candidates.extend(
+            [
+                "lookup_cn_stock_quote",
+                "lookup_cn_stock_ohlc",
+                "lookup_cn_stock_minute",
+                "lookup_cn_stock_financials",
+                "lookup_cn_stock_feature",
+            ]
+        )
+    if cn_futures:
+        candidates.extend(
+            [
+                "lookup_cn_futures_quote",
+                "lookup_cn_futures_ohlc",
+                "lookup_cn_futures_minute",
+                "lookup_cn_futures_l1",
+                "calculate_cn_futures_margin",
+            ]
+        )
+    if cn_options:
+        candidates.append("lookup_cn_option_market")
+
+    yahoo_global = bool(
+        re.search(
+            r"(yahoo|美股|港股|恒生|nasdaq|nyse|wti|brent|\bcl=f\b|\bbz=f\b|"
+            r"\baapl\b|\btsla\b|黄金期货|\bgc=f\b)",
+            t,
+            re.I,
+        )
+    )
+    generic_ohlc = bool(
+        re.search(
+            r"(期货|原油期货|股票|股价|k线|蜡烛|ohlc|大盘|futures?\b|\bstock\b)",
+            t,
+            re.I,
+        )
+    )
+    if yahoo_global or (generic_ohlc and not (cn_stock or cn_futures or cn_options)):
         candidates.append("lookup_yahoo_ohlc")
 
     if re.search(r"(\bvat\b|增值税号|eu\s*vat)", t, re.I):

@@ -52,6 +52,7 @@ from .trade import make_lookup_trade_flow_tool
 from .vat import make_validate_eu_vat_tool
 from .fx import make_lookup_fx_rate_tool
 from .yahoo_finance import make_lookup_yahoo_ohlc_tool
+from .cn_market.tools import make_cn_market_tools
 from .wiki import make_lookup_wikipedia_tool
 from .huagongshe import (
     make_create_huagongshe_reaction_tool,
@@ -203,22 +204,53 @@ time series (≥2 dated points), include one fenced ```chart` line ChartSpec in 
 reply (alongside any price table and highlights). Skip the chart only if there is no \
 usable time series.
 - Default lookback for price trend charts: pull enough history to show context — prefer \
-≥ ~60 trading days (or ≥12 monthly points). Even if the user asks only about today / this \
-week / a single quote, still chart the longer series and set optional `focusLabel` to the \
-asked date (or period end) so the UI pins the crosshair there; omit `focusLabel` only when \
-there is no specific date (UI then pins latest).
-- For futures/stock OHLC, call `lookup_yahoo_ohlc` (do not shell/curl Yahoo). When OHLC is \
-available, emit one ```chart` short-ref per symbol — do NOT hand-copy labels/ohlc arrays. \
-Example: {\"version\": 1, \"type\": \"candlestick\", \"from_tool\": \"lookup_yahoo_ohlc\", \
-\"symbol\": \"CL=F\"} (optional title / focusLabel / stages). Multiple symbols → multiple \
-separate short-ref blocks. The UI resolves chart_spec from the tool result.
-- Trend stages / interval reasons / 走势阶段分析: attach optional `stages` on candlestick \
+≥ ~60 trading days of **daily** bars (`range=3mo`, interval `1d`). Even if the user asks \
+only about today / this week / a single quote, still chart the longer daily series and \
+set optional `focusLabel` to the asked date (or period end) so the UI pins the \
+crosshair there; omit `focusLabel` only when there is no specific date (UI then pins \
+latest). Chemical spot MCP without OHLC may still use ≥12 monthly points.
+- Default bar interval for stocks / futures / listed-option price charts: **daily**. \
+When the user does not name a period (日线 / 周线 / 月线 / 年线 / 分时 / 1m / 5m / \
+15m / 30m / 60m), call the daily OHLC tool — never `lookup_cn_*_minute`, never Yahoo \
+`interval=1wk` or `1mo`. "最近一年" without naming weekly/monthly/yearly bars means \
+`range=1y` + daily. CN tools have no weekly/monthly/yearly K; do not resample daily \
+into fake higher-timeframe bars — say so and chart daily. Yahoo has no yearly \
+interval; if the user asks 年线, use `1mo` with enough `range` and say it is monthly, \
+not a true yearly bar. Use minute / weekly / monthly tools only when the user \
+explicitly asks.
+- Mainland China A-shares (茅台, 600519, 上证/深证): call `lookup_cn_stock_quote` / \
+`lookup_cn_stock_ohlc` / `lookup_cn_stock_financials` / `lookup_cn_stock_feature`. \
+Use `lookup_cn_stock_minute` only if the user asked for intraday/minutes. Never use \
+Yahoo or web_search to recover a CN structured failure.
+- China mainland futures (甲醇, 液化气, MA/PG): call `lookup_cn_futures_quote` / \
+`lookup_cn_futures_ohlc` / `lookup_cn_futures_l1`; theoretical \
+margin via `calculate_cn_futures_margin` (not broker occupancy). Use \
+`lookup_cn_futures_minute` only if the user asked for intraday/minutes. Never use \
+Yahoo for mainland China futures when CN tools support the request.
+- China listed options: `lookup_cn_option_market` (Greeks are upstream only). Price \
+charts default to `action=daily`; `action=minute` only if the user asked for \
+intraday/minutes.
+- Global equities / global futures (AAPL, CL=F, HK): call `lookup_yahoo_ohlc` \
+with daily bars (`interval=1d`, omit the param if unused). Do not shell/curl Yahoo.
+- When OHLC is available, emit one ```chart` short-ref per symbol — do NOT hand-copy \
+labels/ohlc arrays. from_tool MUST match the tool used. Example CN: {\"version\": 1, \
+\"type\": \"candlestick\", \"from_tool\": \"lookup_cn_stock_ohlc\", \"symbol\": \
+\"600519.SH\"}. Example Yahoo: {\"version\": 1, \"type\": \"candlestick\", \
+\"from_tool\": \"lookup_yahoo_ohlc\", \"symbol\": \"CL=F\"} (optional title / focusLabel / \
+stages). Multiple symbols → multiple separate short-ref blocks. Prefer copying the \
+tool result's `symbol` field; a Chinese name is also accepted when it matches that \
+turn's payload name/aliases. The UI resolves \
+chart_spec from the tool result.
+- Trend stages / interval drivers: attach optional `stages` on candlestick \
 short-ref OR on hand-built `line`/`area` spot charts. Each stage: `start`/`end` matching \
-labels, `tone` one of up|down|side, and a short `reason` grounded in this turn's \
-tools/search (never invent drivers). Prefer 3–6 stages when the series is long enough \
-(max 8). If points are too few to segment, omit multi-band stages or use a single stage \
-covering the asked window for drivers only. Plain lookups may omit `stages`. The UI paints \
-band colors and auto high/low markers; stage reasons appear in the left detail panel.
+labels, optional `tone` hint (up|down|side; UI recomputes direction from interval return), \
+and a short `reason` that names the dominant driver — why prices moved in that window — \
+grounded in this turn's tools/search. Never invent drivers. Do not restate the path \
+(up/down/sideways) and do not write specific price levels in `reason` (the left panel \
+already shows OHLC). Prefer 3–6 stages when the series is long enough (max 8). If points \
+are too few to segment, omit multi-band stages or use a single stage covering the asked \
+window for drivers only. Plain lookups may omit `stages`. The UI paints band colors from \
+recomputed direction; stage reasons appear in the left detail panel.
 - Chemical spot averages without OHLC stay as `type: \"line\"` (multi-region may share one \
 line chart with multiple series). Never invent OHLC or volume.
 - When structured tool/MCP data already contains the values, preserve those numeric values \
@@ -227,7 +259,7 @@ exactly; do not invent or interpolate missing prices unless explicitly requested
 in the conversation.
 - Emit ChartSpec version 1 (always include `\"version\": 1`; parsers may default a missing \
 version, but still write it). For hand-built line/bar charts, every series.values length must \
-exactly match labels length. Yahoo candlesticks use short-ref only.
+exactly match labels length. Yahoo and CN candlesticks use short-ref only.
 - Put `labels` as a top-level string array (not nested under `x: { labels: [...] }`). \
 Parsers may accept `x.labels` as a fallback, but the canonical shape is flat."""
 
@@ -432,10 +464,11 @@ def build_engine(
     registry.register(make_validate_eu_vat_tool())
     # FX: keyless Frankfurter (convert user-supplied amounts only; never invent prices).
     registry.register(make_lookup_fx_rate_tool())
-    # Futures/stock OHLC: unofficial Yahoo chart (best-effort; prefer over shell/curl).
-    # Future CN market structured tools (coworker/cn_market/ lookup_cn_*) register here.
+    # Global futures/stock OHLC: unofficial Yahoo chart (best-effort; prefer over shell/curl).
+    # Mainland CN A-share / futures / options: coworker/cn_market lookup_cn_* (D-152).
     # ChemClaw does not register Wind / wind_financial_reference_content (D-145).
     registry.register(make_lookup_yahoo_ohlc_tool())
+    registry.register_all(make_cn_market_tools())
     # Wikipedia: encyclopedia background for SKU/synonyms (never sole Qualified evidence).
     registry.register(make_lookup_wikipedia_tool())
     # Huagongshe: chemistry search + SVG asset save + reaction validate/create

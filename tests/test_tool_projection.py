@@ -88,17 +88,61 @@ def test_verified_cas_targets_chemical_identity_only():
     assert selected == ("lookup_chemical_identity",)
 
 
-def test_verified_yahoo_keywords_include_a_share_market():
-    available = {
-        "lookup_yahoo_ohlc",
-        "web_search",
-        "web_fetch",
-        "read_file",
-        "ask_user",
-    }
-    selected = select_verified_tool_names("分析今天 A 股市场", available)
+_CN_STOCK = (
+    "lookup_cn_stock_quote",
+    "lookup_cn_stock_ohlc",
+    "lookup_cn_stock_minute",
+    "lookup_cn_stock_financials",
+    "lookup_cn_stock_feature",
+)
+_CN_FUTURES = (
+    "lookup_cn_futures_quote",
+    "lookup_cn_futures_ohlc",
+    "lookup_cn_futures_minute",
+    "lookup_cn_futures_l1",
+    "calculate_cn_futures_margin",
+)
+_MARKET = {
+    "lookup_yahoo_ohlc",
+    "lookup_cn_option_market",
+    "web_search",
+    "web_fetch",
+    "read_file",
+    "ask_user",
+    *_CN_STOCK,
+    *_CN_FUTURES,
+}
+
+
+def test_verified_a_share_projects_cn_stock_not_yahoo():
+    selected = select_verified_tool_names("分析今天 A 股市场", _MARKET)
+    assert selected is not None
+    assert "lookup_cn_stock_ohlc" in selected
+    assert "lookup_cn_stock_quote" in selected
+    assert "lookup_yahoo_ohlc" not in selected
+    assert "web_search" not in selected
+
+
+def test_verified_cn_futures_projects_cn_not_yahoo():
+    selected = select_verified_tool_names("液化气最近一年走势", _MARKET)
+    assert selected is not None
+    assert "lookup_cn_futures_ohlc" in selected
+    assert "lookup_yahoo_ohlc" not in selected
+    assert "web_search" not in selected
+
+
+def test_verified_cn_options_project_option_tool():
+    selected = select_verified_tool_names("50ETF期权合约列表", _MARKET)
+    assert selected is not None
+    assert "lookup_cn_option_market" in selected
+    assert "lookup_yahoo_ohlc" not in selected
+
+
+def test_verified_global_futures_still_use_yahoo():
+    selected = select_verified_tool_names("CL=F 最近一年走势", _MARKET)
     assert selected is not None
     assert "lookup_yahoo_ohlc" in selected
+    assert "lookup_cn_futures_ohlc" not in selected
 
 
 def test_verified_projection_filters_to_allowed_subset():

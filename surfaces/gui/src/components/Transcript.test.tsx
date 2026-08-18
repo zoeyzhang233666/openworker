@@ -1,8 +1,42 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Transcript, turnGroupAutoOpen } from "./Transcript";
+import { Transcript, turnGroupAutoOpen, yahooChartToolsFromItems } from "./Transcript";
 import { humanizeTool } from "../humanize";
 import type { Item } from "../types";
+
+vi.mock("chart.js", () => ({
+  Chart: Object.assign(
+    function Chart() {
+      return { destroy: vi.fn() };
+    },
+    { register: vi.fn(), getChart: vi.fn() },
+  ),
+  LineController: {},
+  BarController: {},
+  ScatterController: {},
+  CategoryScale: {},
+  LinearScale: {},
+  PointElement: {},
+  LineElement: {},
+  BarElement: {},
+  Filler: {},
+  Legend: {},
+  Title: {},
+  Tooltip: { positioners: {} as Record<string, unknown> },
+}));
+
+vi.mock("chartjs-chart-financial", () => ({
+  CandlestickController: {},
+  CandlestickElement: {},
+}));
+
+vi.mock("chartjs-plugin-annotation", () => ({
+  default: {},
+}));
+
+vi.mock("chartjs-plugin-zoom", () => ({
+  default: {},
+}));
 
 afterEach(cleanup);
 
@@ -18,6 +52,55 @@ const TURN: Item[] = [
   { kind: "tool", id: "t2", name: "send_message", args: { target: "slack:T1/C9", text: "hi" }, status: "ok", preview: '{"ok": true}' },
   { kind: "assistant", text: "Posted to #all-openworker." },
 ];
+
+describe("yahooChartToolsFromItems (D-159)", () => {
+  it("prefers chartPreview over a truncated live preview", () => {
+    const sidecar = JSON.stringify({
+      status: "ok",
+      symbol: "GC=F",
+      chart_spec: { version: 1, type: "candlestick", labels: ["a"], ohlc: [{ o: 1, h: 2, l: 0, c: 1 }] },
+    });
+    const tools = yahooChartToolsFromItems([
+      {
+        kind: "tool",
+        id: "t1",
+        name: "lookup_yahoo_ohlc",
+        args: { symbol: "GC=F" },
+        status: "ok",
+        preview: '{"status": "ok", "symbol": "GC=F"...',
+        chartPreview: sidecar,
+      },
+    ]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.preview).toBe(sidecar);
+    expect(tools[0]?.args).toEqual({ symbol: "GC=F" });
+  });
+
+  it("collects OHLC tools from the whole item list, not only the last turn", () => {
+    const sidecar = JSON.stringify({
+      status: "ok",
+      symbol: "GLD",
+      chart_spec: { version: 1, type: "candlestick", labels: ["a"], ohlc: [{ o: 1, h: 2, l: 0, c: 1 }] },
+    });
+    const tools = yahooChartToolsFromItems([
+      { kind: "user", text: "gold" },
+      {
+        kind: "tool",
+        id: "t1",
+        name: "lookup_yahoo_ohlc",
+        args: { symbol: "GLD" },
+        status: "ok",
+        preview: sidecar,
+      },
+      { kind: "assistant", text: "here is gold" },
+      { kind: "notice", tone: "info", text: "上下文已自动压缩（较早轮次已摘要）" },
+      { kind: "user", text: "again" },
+      { kind: "assistant", text: "same chart" },
+    ]);
+    expect(tools).toHaveLength(1);
+    expect(tools[0]?.name).toBe("lookup_yahoo_ohlc");
+  });
+});
 
 describe("turnGroupAutoOpen (D-069)", () => {
   it("opens while live or a tool is in flight", () => {

@@ -36,7 +36,8 @@ agent_created: true
 4. 输出结构清晰的中文结论：**价格表 + 简要要点**；若 Tool 返回可用时间序列（≥2 个
    日期点），同一条回复还必须附一条 fenced ```chart`（ChartSpec v1、`type: line`），
    数值与表一致。用户点名某日/某周时设 `focusLabel` 为对应标签；无特定日期则省略
-   （UI 默认钉最新）。序列足够长时可附 `stages`（up|down|side + grounded `reason`）；
+   （UI 默认钉最新）。序列足够长时可附 `stages`（`start`/`end` + grounded `reason` 只写
+   主导因素/为什么，禁止复述涨跌横盘、禁止写入具体价格；UI 按区间涨跌幅重算方向）；
    点数不足划多段时可用单段覆盖询问窗只写驱动，或省略色带。禁止编造驱动。
    聊天内出图勿调用 `chart-image` / shell / Node；仅用户明确要 PNG/
    报告附件时才用 chart-image。

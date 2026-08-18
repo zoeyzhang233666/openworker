@@ -1228,6 +1228,7 @@ class TurnEngine:
                 "result_preview": _preview(result),
                 **({"display": display} if display else {}),
                 **({"standing_rule": rule} if rule else {}),
+                **chart_finished_sidecar(result),
             },
         )
 
@@ -1663,6 +1664,34 @@ def _tool_error_message(tool_call: ToolCall, reason: str) -> dict[str, Any]:
         "content": json.dumps({"error": "tool call not executed", "reason": reason}),
         "ts": time.time(),
     }
+
+
+def chart_finished_sidecar(result: Any) -> dict[str, Any]:
+    """Compact OHLC fields for GUI short-ref resolve (not the 300-char preview)."""
+    if not isinstance(result, dict):
+        return {}
+    extra: dict[str, Any] = {}
+    spec = result.get("chart_spec")
+    if isinstance(spec, dict) and spec:
+        extra["chart_spec"] = spec
+    symbol = result.get("symbol")
+    if isinstance(symbol, str) and symbol.strip():
+        extra["symbol"] = symbol.strip()
+    name = result.get("name")
+    if isinstance(name, str) and name.strip():
+        extra["name"] = name.strip()
+    aliases = result.get("aliases")
+    if isinstance(aliases, list):
+        extra["aliases"] = [item for item in aliases if isinstance(item, str) and item.strip()]
+    plot_status = result.get("status")
+    if isinstance(plot_status, str) and plot_status.strip():
+        extra["plot_status"] = plot_status.strip()
+    err = result.get("error")
+    if isinstance(err, str) and err.strip():
+        extra["plot_error"] = err.strip()
+    if "chart_spec" not in extra and "plot_error" not in extra:
+        return {}
+    return extra
 
 
 def _preview(value: Any, max_chars: int = 300) -> str:

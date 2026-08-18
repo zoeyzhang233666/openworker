@@ -24,6 +24,7 @@ def test_chain_lobster_builtin_manifest_and_skills():
     assert "验证层" in m.system_prompt or "不是单点故障" in m.system_prompt
     assert "wind_financial_reference_content" not in m.system_prompt
     assert "lookup_yahoo_ohlc" in m.system_prompt
+    assert "lookup_cn_" in m.system_prompt
     expected = {
         "产业链层级测绘",
         "稀缺环节识别",

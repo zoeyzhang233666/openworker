@@ -44,10 +44,37 @@ def test_finance_skills_use_yahoo_and_web_and_unavailable():
     for name in ("market-analysis", "stock-analysis"):
         text = (root / name / "SKILL.md").read_text(encoding="utf-8")
         assert "lookup_yahoo_ohlc" in text
+        assert "lookup_cn_stock_ohlc" in text
         assert "web_search" in text
         assert "web_fetch" in text
         assert "unavailable" in text.lower() or "无可靠结构化来源" in text
         assert WIND_TOOL not in text
+
+
+def test_stock_analysis_routes_a_share_to_cn_tools():
+    text = (bundled_skills_dir() / "stock-analysis" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "lookup_cn_stock_financials" in text
+    assert "lookup_cn_stock_feature" in text
+    assert "600519.SH" in text or "600519" in text
+
+
+def test_stock_analysis_defaults_to_daily_ohlc():
+    text = (bundled_skills_dir() / "stock-analysis" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "日线" in text
+    assert "点名分时" in text or "点名分时/分钟" in text
+    assert "优先 `lookup_cn_stock_quote` / `lookup_cn_stock_ohlc` / `lookup_cn_stock_minute`" not in text
+
+
+def test_market_analysis_lhb_uses_cn_feature_tool():
+    text = (bundled_skills_dir() / "market-analysis" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "lookup_cn_stock_feature" in text
+    assert "lookup_cn_futures_ohlc" in text or "lookup_cn_stock_ohlc" in text
 
 
 def test_macro_analysis_has_no_wind():
