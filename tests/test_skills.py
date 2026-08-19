@@ -5,7 +5,12 @@ from __future__ import annotations
 from coworker.agent import build_engine
 from coworker.agents import AgentContext, chat_agent, code_agent, get_agent
 from coworker.providers import ModelCapabilities
-from coworker.skills import SkillLoader, skill_catalog_text, skill_tools
+from coworker.skills import (
+    SkillLoader,
+    select_skill_names,
+    skill_catalog_text,
+    skill_tools,
+)
 from coworker.tools import ToolRegistry
 from coworker.tools.shell import LocalExecutor
 from coworker.tools.todo import TodoList
@@ -78,6 +83,30 @@ def test_skill_loader_catalog_and_load(tmp_path):
     loaded = reg.execute("load_skill", {"name": "pdf"})
     assert "pdfplumber" in loaded["instructions"]
     assert reg.execute("load_skill", {"name": "missing"})["error"]
+    assert reg.execute("search_skills", {"query": "extract PDF"}) == {
+        "skills": [{"name": "pdf", "description": "extract text from PDFs"}]
+    }
+
+
+def test_skill_metadata_search_caps_ordinary_but_keeps_preferred(tmp_path):
+    skills_dir = tmp_path / "skills"
+    for index in range(12):
+        _make_skill(
+            skills_dir,
+            f"chem-{index}",
+            "化学 数据 查询与分析",
+            f"instructions {index}",
+        )
+    loader = SkillLoader([skills_dir])
+    ordinary = select_skill_names(loader, "请做化学数据查询分析", limit=8)
+    assert len(ordinary) == 8
+    preferred = select_skill_names(
+        loader,
+        "无匹配",
+        preferred=[f"chem-{index}" for index in range(10)],
+        limit=8,
+    )
+    assert preferred == tuple(f"chem-{index}" for index in range(10))
 
 
 # -- engine assembly per agent --------------------------------------------------
@@ -99,6 +128,8 @@ def test_build_engine_chat(tmp_path):
     assert "lookup_yahoo_ohlc" in sys_msg and "candlestick" in sys_msg
     assert "lookup_cn_stock_ohlc" in sys_msg and "lookup_cn_futures_ohlc" in sys_msg
     assert "from_tool" in sys_msg and "short-ref" in sys_msg
+    assert "artifact preview" in sys_msg.lower()
+    assert "deliverable" in sys_msg.lower()
     assert "daily" in sys_msg.lower()
     assert "never `lookup_cn_*_minute`" in sys_msg
     assert "(or ≥12 monthly points)" not in sys_msg

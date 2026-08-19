@@ -177,6 +177,17 @@ _STRUCTURED_TOOLS_STREAMING_SETTING = "structured_tools_true_streaming_enabled"
 # "OpenAI-compatible" alone is never enough — unknown/custom hosts stay salvage-safe.
 _KNOWN_SAFE_STRUCTURED_TOOL_MODEL_PREFIXES = ("gpt-4", "gpt-5", "o1", "o3", "o4")
 
+# D-161/D-163/D-164: exact (hostname, bare model id) pairs verified by live probe.
+# Never prefix-match. D-164 Flash long-answer N=3 PASS; D-163 Pro/GLM PASS;
+# kimi-k3 unpriced.
+_KNOWN_SAFE_COMPAT_PAIRS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("apihub.chem-cloud.cn", "deepseek-v4-flash"),
+        ("apihub.chem-cloud.cn", "deepseek-v4-pro"),
+        ("apihub.chem-cloud.cn", "glm-5.2"),
+    }
+)
+
 
 def is_known_safe_structured_tools_streaming(
     model: str, *, base_url: Optional[str] = None
@@ -186,14 +197,17 @@ def is_known_safe_structured_tools_streaming(
     Stock OpenAI Chat Completions (``base_url is None`` / ``api.openai.com``) and
     Azure OpenAI hosts with GPT-/o-family model names qualify. Reseller / ApiHub /
     Ollama / DashScope / arbitrary custom endpoints do not — even when the model
-    string looks like ``gpt-*``.
+    string looks like ``gpt-*`` — unless the exact ``(hostname, model)`` pair is
+    listed in ``_KNOWN_SAFE_COMPAT_PAIRS`` (D-161/D-163/D-164 live PASS only).
     """
     name = model.split(":", 1)[-1].lower()
+    host = (urlparse(base_url).hostname or "").lower() if base_url else ""
+    if host and (host, name) in _KNOWN_SAFE_COMPAT_PAIRS:
+        return True
     if not name.startswith(_KNOWN_SAFE_STRUCTURED_TOOL_MODEL_PREFIXES):
         return False
     if not base_url:
         return True
-    host = (urlparse(base_url).hostname or "").lower()
     if host == "api.openai.com":
         return True
     if host == "openai.azure.com" or host.endswith(".openai.azure.com"):

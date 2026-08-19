@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional, Union
+import re
+from typing import Callable, Iterable, Optional, Union
 
 import aisuite as ai
 
@@ -98,10 +99,16 @@ def _parse_skill(md: Path) -> Skill:
 
 
 def skill_catalog_text(
-    loader: SkillLoader, allowed: Optional[set[str]] = None
+    loader: SkillLoader,
+    allowed: Optional[set[str]] = None,
+    names: Optional[Iterable[str]] = None,
 ) -> str:
+    selected = None if names is None else set(names)
     catalog = [
-        c for c in loader.catalog() if allowed is None or c["name"] in allowed
+        c
+        for c in loader.catalog()
+        if (allowed is None or c["name"] in allowed)
+        and (selected is None or c["name"] in selected)
     ]
     if not catalog:
         return ""
@@ -113,6 +120,67 @@ def skill_catalog_text(
 
 
 AllowedSkills = Union[set, Callable[[], set], None]
+
+
+def select_skill_names(
+    loader: SkillLoader,
+    query: str,
+    *,
+    allowed: Optional[set[str]] = None,
+    preferred: Iterable[str] = (),
+    limit: int = 8,
+) -> tuple[str, ...]:
+    """Return metadata-only local matches; never loads SKILL.md instructions.
+
+    Preferred/default/forced names are always kept first. Remaining ordinary
+    candidates use a deterministic lexical score and are capped to eight total.
+    """
+    limit = max(1, min(int(limit), 8))
+    catalog = [
+        c for c in loader.catalog() if allowed is None or c["name"] in allowed
+    ]
+    by_name = {c["name"]: c for c in catalog}
+    out: list[str] = []
+    for name in preferred:
+        if name in by_name and name not in out:
+            out.append(name)
+
+    terms = _skill_terms(query)
+    if not terms:
+        return tuple(out)
+    ranked: list[tuple[int, str]] = []
+    low_query = (query or "").lower()
+    for item in catalog:
+        name = item["name"]
+        if name in out:
+            continue
+        haystack = f"{name} {item['description']}".lower()
+        score = sum(3 if term in name.lower() else 1 for term in terms if term in haystack)
+        if name.lower() in low_query:
+            score += 8
+        if score:
+            ranked.append((-score, name))
+    for _score, name in sorted(ranked):
+        if len(out) >= limit:
+            break
+        out.append(name)
+    return tuple(out)
+
+
+def _skill_terms(query: str) -> tuple[str, ...]:
+    raw = re.findall(
+        r"[a-z0-9][a-z0-9._+-]{1,}|[\u4e00-\u9fff]{2,}",
+        (query or "").lower(),
+    )
+    terms: list[str] = []
+    for token in raw:
+        terms.append(token)
+        if re.fullmatch(r"[\u4e00-\u9fff]+", token) and len(token) > 3:
+            # Chinese intent is rarely whitespace-tokenized. Short n-grams keep
+            # metadata search useful without loading skill bodies.
+            for width in (2, 3, 4):
+                terms.extend(token[i : i + width] for i in range(len(token) - width + 1))
+    return tuple(dict.fromkeys(terms[:96]))
 
 
 def skill_tools(loader: SkillLoader, allowed: AllowedSkills = None) -> list:
@@ -143,11 +211,28 @@ def skill_tools(loader: SkillLoader, allowed: AllowedSkills = None) -> list:
             "resources_path": skill.path,
         }
 
+    def search_skills(query: str, limit: int = 8) -> dict:
+        """Search enabled skills by name/description. Returns metadata only; call
+        load_skill(name) separately to load the latest full instructions."""
+        loader.rescan()
+        gate = _allowed_now()
+        names = select_skill_names(
+            loader, query, allowed=gate, limit=max(1, min(int(limit), 8))
+        )
+        by_name = {c["name"]: c for c in loader.catalog()}
+        return {"skills": [by_name[name] for name in names if name in by_name]}
+
     return [
         ai.tool(
             load_skill,
             metadata=ai.ToolMetadata(
                 category="skills", risk_level="low", capabilities=["load_skill"]
             ),
-        )
+        ),
+        ai.tool(
+            search_skills,
+            metadata=ai.ToolMetadata(
+                category="skills", risk_level="low", capabilities=["search_skills"]
+            ),
+        ),
     ]

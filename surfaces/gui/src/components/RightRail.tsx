@@ -15,6 +15,7 @@ import { Icon } from "./Icon";
 import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 import { artifactIdentity, normalizeSeparators } from "../artifactPath";
 import { prepareHtmlPreview } from "../htmlPreviewSandbox";
+import type { ChartToolResult } from "../chartSpec";
 
 type Panel = "progress" | "artifacts";
 
@@ -46,6 +47,8 @@ interface Props {
   sessionId: string;
   refreshKey: number;
   toolNames: string[];
+  /** Same-session OHLC tool previews for ```chart short-ref in Markdown artifacts (D-162). */
+  chartToolResults?: ChartToolResult[];
   todo: TodoItem[];
   running: boolean;
   // Fires when a full artifact preview opens/closes, so the app can auto-collapse the left nav
@@ -67,6 +70,7 @@ export function RightRail({
   sessionId,
   refreshKey,
   toolNames,
+  chartToolResults,
   todo,
   running,
   onPreviewChange,
@@ -179,6 +183,7 @@ export function RightRail({
           sessionId={sessionId}
           artifact={selected}
           content={content}
+          chartToolResults={chartToolResults}
           onReload={reloadSelected}
           onBack={() => setSelected(null)}
           onOpenEntry={(path) =>
@@ -346,6 +351,7 @@ function ArtifactViewer({
   sessionId,
   artifact,
   content,
+  chartToolResults,
   onReload,
   onBack,
   onOpenEntry,
@@ -353,6 +359,7 @@ function ArtifactViewer({
   sessionId: string;
   artifact: ArtifactInfo;
   content: ArtifactContent | null;
+  chartToolResults?: ChartToolResult[];
   onReload: () => Promise<void>;
   onBack: () => void;
   // Folder listings: open a child entry in the viewer (files and subfolders alike).
@@ -433,7 +440,7 @@ function ArtifactViewer({
           />
         ) : content.kind === "markdown" ? (
           <div className="artifact-md">
-            <Markdown text={content.content || ""} />
+            <Markdown text={content.content || ""} chartToolResults={chartToolResults} />
           </div>
         ) : content.kind === "image" ? (
           <img className="artifact-image" src={content.data_url} />

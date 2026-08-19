@@ -986,9 +986,8 @@ export function chartJsConfigFromSpec(
     } as ChartConfiguration;
   }
 
-  const fill = spec.type === "area";
-  const chartType: ChartJsType =
-    spec.type === "area" ? "line" : spec.type === "scatter" ? "scatter" : spec.type;
+  // line/area already returned above; only bar | scatter reach here.
+  const chartType: ChartJsType = spec.type === "scatter" ? "scatter" : "bar";
   const axisChart = isAxisChartType(spec.type);
   const axisRail = opts.axisPanelRail ?? AXIS_PANEL_RAIL;
 
@@ -1010,27 +1009,17 @@ export function chartJsConfigFromSpec(
     return {
       label: s.name,
       data: s.values,
-      fill,
-      tension: spec.type === "line" || spec.type === "area" ? 0.25 : 0,
+      fill: false,
+      tension: 0,
       borderColor: paint.border,
-      backgroundColor: fill || spec.type === "bar" ? paint.fill : paint.border,
+      backgroundColor: paint.fill,
       pointBackgroundColor: paint.border,
       pointBorderColor: paint.border,
       borderWidth: 2,
-      pointRadius: spec.type === "bar" ? 0 : 3,
-      pointHoverRadius: spec.type === "bar" ? 0 : 5,
+      pointRadius: 0,
+      pointHoverRadius: 0,
     };
   });
-
-  const seriesStageAnnotations =
-    (spec.type === "line" || spec.type === "area") && spec.stages?.length
-      ? buildSeriesStageAnnotations(
-          spec.labels,
-          spec.series[0]?.values ?? [],
-          spec.stages,
-          dark,
-        )
-      : {};
 
   return {
     type: chartType,
@@ -1075,9 +1064,6 @@ export function chartJsConfigFromSpec(
                 },
               },
             },
-        ...(Object.keys(seriesStageAnnotations).length > 0
-          ? { annotation: { annotations: seriesStageAnnotations } }
-          : {}),
       },
       scales: {
         x: {
@@ -1112,7 +1098,7 @@ export function chartJsConfigFromSpec(
         },
       },
     },
-  };
+  } as ChartConfiguration;
 }
 
 export type AxisSeriesRow = {

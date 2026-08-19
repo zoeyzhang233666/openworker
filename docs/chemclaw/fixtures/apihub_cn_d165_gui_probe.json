@@ -1,0 +1,128 @@
+{
+  "status": "PASS",
+  "model": "apihub-cn:deepseek-v4-flash",
+  "runs": 5,
+  "greetings": [
+    {
+      "first_visible_ms": 6880.488499999046,
+      "elapsed_ms": 9416.511600022204,
+      "prompt_tokens": 85,
+      "reasoning_event_count": 0,
+      "text_event_count": 3,
+      "errors": [],
+      "route": "fast_chat",
+      "allowed_tool_count": 0,
+      "skill_count": 0
+    },
+    {
+      "first_visible_ms": 2870.2395000727847,
+      "elapsed_ms": 5244.393500033766,
+      "prompt_tokens": 85,
+      "reasoning_event_count": 0,
+      "text_event_count": 4,
+      "errors": [],
+      "route": "fast_chat",
+      "allowed_tool_count": 0,
+      "skill_count": 0
+    },
+    {
+      "first_visible_ms": 3240.434099920094,
+      "elapsed_ms": 4693.4800000162795,
+      "prompt_tokens": 85,
+      "reasoning_event_count": 0,
+      "text_event_count": 4,
+      "errors": [],
+      "route": "fast_chat",
+      "allowed_tool_count": 0,
+      "skill_count": 0
+    },
+    {
+      "first_visible_ms": 2881.9804000668228,
+      "elapsed_ms": 4813.008300028741,
+      "prompt_tokens": 85,
+      "reasoning_event_count": 0,
+      "text_event_count": 5,
+      "errors": [],
+      "route": "fast_chat",
+      "allowed_tool_count": 0,
+      "skill_count": 0
+    },
+    {
+      "first_visible_ms": 2502.9267000500113,
+      "elapsed_ms": 6058.048099977896,
+      "prompt_tokens": 85,
+      "reasoning_event_count": 0,
+      "text_event_count": 13,
+      "errors": [],
+      "route": "fast_chat",
+      "allowed_tool_count": 0,
+      "skill_count": 0
+    }
+  ],
+  "ttft_p50_ms": 2881.9804000668228,
+  "ttft_p95_ms": 6880.488499999046,
+  "long_answer": {
+    "first_visible_ms": 2760.220800060779,
+    "elapsed_ms": 48755.89010003023,
+    "prompt_tokens": 103,
+    "reasoning_event_count": 0,
+    "text_event_count": 745,
+    "errors": []
+  },
+  "provider_call_shapes": [
+    {
+      "model": "apihub-cn:deepseek-v4-flash",
+      "tool_count": 0,
+      "prompt_token_estimate": 116,
+      "chunk_count": 4,
+      "reasoning_chunk_count": 0,
+      "text_chunk_count": 3
+    },
+    {
+      "model": "apihub-cn:deepseek-v4-flash",
+      "tool_count": 0,
+      "prompt_token_estimate": 116,
+      "chunk_count": 5,
+      "reasoning_chunk_count": 0,
+      "text_chunk_count": 4
+    },
+    {
+      "model": "apihub-cn:deepseek-v4-flash",
+      "tool_count": 0,
+      "prompt_token_estimate": 116,
+      "chunk_count": 5,
+      "reasoning_chunk_count": 0,
+      "text_chunk_count": 4
+    },
+    {
+      "model": "apihub-cn:deepseek-v4-flash",
+      "tool_count": 0,
+      "prompt_token_estimate": 116,
+      "chunk_count": 6,
+      "reasoning_chunk_count": 0,
+      "text_chunk_count": 5
+    },
+    {
+      "model": "apihub-cn:deepseek-v4-flash",
+      "tool_count": 0,
+      "prompt_token_estimate": 116,
+      "chunk_count": 14,
+      "reasoning_chunk_count": 0,
+      "text_chunk_count": 13
+    },
+    {
+      "model": "apihub-cn:deepseek-v4-flash",
+      "tool_count": 0,
+      "prompt_token_estimate": 149,
+      "chunk_count": 746,
+      "reasoning_chunk_count": 0,
+      "text_chunk_count": 745
+    }
+  ],
+  "provider_stream_modes": {
+    "direct": 6,
+    "fallback": 0
+  },
+  "autotitle_complete_calls": 6,
+  "main_answer_complete_fallbacks": 0
+}

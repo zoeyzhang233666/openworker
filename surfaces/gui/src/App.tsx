@@ -61,7 +61,7 @@ import { InboxItemCard } from "./components/InboxItemCard";
 import { isTauri, platformOS, startWindowDrag } from "./tauri";
 import { Icon } from "./components/Icon";
 import { Sidebar } from "./components/Sidebar";
-import { ThinkingBlock, Transcript } from "./components/Transcript";
+import { ThinkingBlock, Transcript, yahooChartToolsFromItems } from "./components/Transcript";
 import { Composer } from "./components/Composer";
 import { Markdown } from "./components/Markdown";
 import {
@@ -2016,6 +2016,7 @@ export function App() {
             sessionId={sessionId}
             refreshKey={browserRefreshKey}
             toolNames={items.filter((i) => i.kind === "tool").map((i: any) => i.name)}
+            chartToolResults={yahooChartToolsFromItems(items)}
             todo={todo}
             running={running}
             onPreviewChange={onArtifactPreview}

@@ -18,7 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Mapping, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -38,9 +38,11 @@ from .tool_projection import project_provider_visible_schemas
 from .tools import ToolRegistry
 from .turn_instrumentation import (
     build_model_call_snapshot,
+    build_provider_call_shape_snapshot,
     build_turn_snapshot,
     emit_instrumentation,
 )
+from .turn_planner import PromptProfile, TurnPlan, TurnPlanner
 
 # HARD STOP G: outbound-only prompt for one model-only finalization at hard ceiling.
 _EMERGENCY_FINALIZATION_PROMPT = """The tool-call iteration budget has been exhausted.
@@ -147,6 +149,12 @@ class TurnEngine:
         # Optional RouteDecision for instrumentation only (Section 65 step 48).
         route_decision: Optional[Any] = None,
         router_elapsed_ms: Optional[float] = None,
+        # D-165: one immutable plan is activated at run/resume start and reused by
+        # retries. Static profile arguments above remain supported for direct callers.
+        turn_planner: Optional[TurnPlanner] = None,
+        prompt_profiles: Optional[Mapping[PromptProfile, str]] = None,
+        prompt_projection_enabled: bool = False,
+        prompt_policy_version: int = 1,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -167,6 +175,12 @@ class TurnEngine:
         )
         self.route_decision = route_decision
         self.router_elapsed_ms = router_elapsed_ms
+        self.turn_planner = turn_planner
+        self._active_turn_plan: Optional[TurnPlan] = None
+        self._last_turn_plan: Optional[TurnPlan] = None
+        self.prompt_profiles = dict(prompt_profiles or {})
+        self.prompt_projection_enabled = bool(prompt_projection_enabled)
+        self.prompt_policy_version = int(prompt_policy_version)
         self.messages: list[dict[str, Any]] = list(messages or [])
         self.audit_sink = audit_sink
         # 1-based iteration counter for soft-budget phase guidance (outbound only).
@@ -201,10 +215,29 @@ class TurnEngine:
         self.is_attended: Optional[Callable[[], bool]] = None
         self._last_context_tokens: Optional[int] = None
         self.audit_context: dict[str, Any] = {}
-        if instructions and not (
+        existing_system = bool(
             self.messages and self.messages[0].get("role") == "system"
-        ):
-            self.messages.insert(0, {"role": "system", "content": instructions})
+        )
+        if instructions and not existing_system:
+            system_message: dict[str, Any] = {
+                "role": "system",
+                "content": instructions,
+            }
+            if self.prompt_projection_enabled:
+                system_message["_prompt_policy_version"] = self.prompt_policy_version
+            self.messages.insert(0, system_message)
+        self._prompt_projection_eligible = bool(
+            self.prompt_projection_enabled
+            and self.messages
+            and self.messages[0].get("role") == "system"
+            and self.messages[0].get("_prompt_policy_version")
+            == self.prompt_policy_version
+        )
+        self._legacy_prompt_session = bool(
+            self.prompt_projection_enabled
+            and existing_system
+            and not self._prompt_projection_eligible
+        )
         self._cancel = asyncio.Event()
         # Each pending steering message: (text, optional MessageSource sidecar dict).
         self._steering: list[tuple[str, Optional[dict[str, Any]]]] = []
@@ -216,8 +249,73 @@ class TurnEngine:
     @property
     def target_iterations(self) -> Optional[int]:
         """Soft target from an attached ExecutionProfile; None on the legacy path."""
-        profile = self.execution_profile
+        profile = self._current_execution_profile()
         return None if profile is None else profile.target_iterations
+
+    @property
+    def active_turn_plan(self) -> Optional[TurnPlan]:
+        return self._active_turn_plan
+
+    @property
+    def prompt_projection_active(self) -> bool:
+        return self._prompt_projection_eligible
+
+    def _current_execution_profile(self) -> Optional[ExecutionProfile]:
+        if self._active_turn_plan is not None:
+            return self._active_turn_plan.execution_profile
+        return self.execution_profile
+
+    def _current_tool_policy(self) -> Optional[TurnToolPolicy]:
+        if self._active_turn_plan is not None:
+            return self._active_turn_plan.tool_policy
+        return self.turn_tool_policy
+
+    def _current_route_decision(self) -> Optional[Any]:
+        if self._active_turn_plan is not None:
+            return self._active_turn_plan.decision
+        return self.route_decision
+
+    def _current_router_elapsed_ms(self) -> Optional[float]:
+        if self._active_turn_plan is not None:
+            return self._active_turn_plan.router_elapsed_ms
+        return self.router_elapsed_ms
+
+    def _activate_plan(
+        self,
+        user_input: str | list,
+        *,
+        source: Optional[dict[str, Any]] = None,
+        display: Optional[str] = None,
+        durable_resume: bool = False,
+    ) -> Optional[TurnPlan]:
+        if self.turn_planner is None:
+            self._active_turn_plan = None
+            return None
+        if self._legacy_prompt_session:
+            plan = TurnPlan.legacy()
+            self._active_turn_plan = plan
+            self._last_turn_plan = plan
+            return plan
+        try:
+            plan = self.turn_planner.plan(
+                user_input,
+                source=source,
+                display=display,
+                durable_resume=durable_resume,
+            )
+        except Exception as exc:
+            # Projection failure must fail open to the legacy capability surface.
+            _log.warning(
+                "turn planning failed; using legacy path error_type=%s",
+                type(exc).__name__,
+            )
+            plan = TurnPlan.legacy()
+        self._active_turn_plan = plan
+        self._last_turn_plan = plan
+        return plan
+
+    def _clear_active_plan(self) -> None:
+        self._active_turn_plan = None
 
     def _note_tool_signatures(self, tool_calls: list[ToolCall]) -> None:
         """Record exact name+args signatures for consecutive-duplicate detection."""
@@ -239,14 +337,16 @@ class TurnEngine:
         return _DUPLICATE_TOOL_WARNING
 
     def _emit_turn_instrumentation(self) -> None:
+        profile = self._current_execution_profile()
+        policy = self._current_tool_policy()
         tools = None
         try:
             if not self._emergency_finalizing:
                 tools = project_provider_visible_schemas(
                     self.registry,
                     tool_projection_enabled=self.tool_projection_enabled,
-                    profile=self.execution_profile,
-                    tool_policy=self.turn_tool_policy,
+                    profile=profile,
+                    tool_policy=policy,
                     mandatory_tool_names=self.mandatory_tool_names,
                 )
         except Exception:
@@ -254,12 +354,12 @@ class TurnEngine:
         tools_enabled = tools is not None
         allowed_tool_count = 0 if tools is None else len(tools)
         snap = build_turn_snapshot(
-            route_decision=self.route_decision,
-            execution_profile=self.execution_profile,
+            route_decision=self._current_route_decision(),
+            execution_profile=profile,
             tool_projection_enabled=self.tool_projection_enabled,
             tools_enabled=tools_enabled,
             allowed_tool_count=allowed_tool_count,
-            router_elapsed_ms=self.router_elapsed_ms,
+            router_elapsed_ms=self._current_router_elapsed_ms(),
             mandatory_tool_count=len(self.mandatory_tool_names) or None,
         )
         emit_instrumentation("turn", snap)
@@ -316,25 +416,29 @@ class TurnEngine:
         # literal "/skill …" line for the transcript, while `content` carries the model-facing
         # framing. `ts` (unix seconds, stamped on every appended message) is the same kind of
         # sidecar.
-        message: dict[str, Any] = {
-            "role": "user",
-            "content": user_input,
-            "ts": time.time(),
-        }
-        if source is not None:
-            message["source"] = source
-        if display is not None:
-            message["_display"] = display
-        self.messages.append(message)
         self._cancel.clear()
-        data: dict[str, Any] = {"input": user_input}
-        if source is not None:
-            data["source"] = source
-        if display is not None:
-            data["display"] = display
-        yield Event(EventType.TURN_START, data)
-        async for event in self._loop():
-            yield event
+        self._activate_plan(user_input, source=source, display=display)
+        try:
+            message: dict[str, Any] = {
+                "role": "user",
+                "content": user_input,
+                "ts": time.time(),
+            }
+            if source is not None:
+                message["source"] = source
+            if display is not None:
+                message["_display"] = display
+            self.messages.append(message)
+            data: dict[str, Any] = {"input": user_input}
+            if source is not None:
+                data["source"] = source
+            if display is not None:
+                data["display"] = display
+            yield Event(EventType.TURN_START, data)
+            async for event in self._loop():
+                yield event
+        finally:
+            self._clear_active_plan()
 
     def switch_model(self, model: str) -> Optional[str]:
         """Rebind the session's model mid-conversation (roadmap item 3). History is
@@ -402,9 +506,14 @@ class TurnEngine:
         if not self._tail_is_retriable_error():
             return
         self._cancel.clear()
-        yield Event(EventType.TURN_START, {"input": ""})
-        async for event in self._loop():
-            yield event
+        # A retry is the same logical turn: reuse the immutable plan exactly.
+        self._active_turn_plan = self._last_turn_plan
+        try:
+            yield Event(EventType.TURN_START, {"input": ""})
+            async for event in self._loop():
+                yield event
+        finally:
+            self._clear_active_plan()
 
     async def resume(self) -> AsyncIterator[Event]:
         """Continue a turn that was suspended at a prompt and persisted — durable resume after a
@@ -416,13 +525,17 @@ class TurnEngine:
         if not pending:
             return
         self._cancel.clear()
-        yield Event(EventType.TURN_START, {"input": "(resumed)"})
-        async for event in self._handle_tool_calls(pending):
-            yield event
-        yield Event(EventType.ITERATION_END, {"iteration": 0})
-        if not self._cancel.is_set():
-            async for event in self._loop():
+        self._activate_plan("(resumed)", durable_resume=True)
+        try:
+            yield Event(EventType.TURN_START, {"input": "(resumed)"})
+            async for event in self._handle_tool_calls(pending):
                 yield event
+            yield Event(EventType.ITERATION_END, {"iteration": 0})
+            if not self._cancel.is_set():
+                async for event in self._loop():
+                    yield event
+        finally:
+            self._clear_active_plan()
 
     def _unanswered_trailing_tool_calls(self) -> list[ToolCall]:
         """The tool-calls of the last assistant message that don't yet have a tool result —
@@ -452,7 +565,7 @@ class TurnEngine:
 
     def _emergency_finalization_active(self) -> bool:
         """Kill switch: profile flag wins when a profile is attached; else engine flag."""
-        profile = self.execution_profile
+        profile = self._current_execution_profile()
         if profile is not None:
             return bool(profile.emergency_finalization_enabled)
         return bool(self.emergency_finalization_enabled)
@@ -564,8 +677,12 @@ class TurnEngine:
 
     async def _loop(self) -> AsyncIterator[Event]:
         iterations = 0
+        profile = self._current_execution_profile()
+        hard_limit = self.max_iterations
+        if profile is not None:
+            hard_limit = min(hard_limit, profile.max_iterations)
         while True:
-            if iterations >= self.max_iterations:
+            if iterations >= hard_limit:
                 if self._should_emergency_finalize():
                     async for event in self._emergency_finalize(iterations):
                         yield event
@@ -581,6 +698,7 @@ class TurnEngine:
                 self._emit_turn_instrumentation()
             iter_started = time.perf_counter()
             first_visible_delta_ms: Optional[float] = None
+            first_provider_delta_ms: Optional[float] = None
 
             # Auto-compaction checkpoint (OPE-27): between tool turns and before a new
             # turn's first call. Deliberately no "wrap up" warning to the model. The
@@ -597,9 +715,9 @@ class TurnEngine:
             turn: Optional[AssistantTurn] = None
             streamed: list[str] = []
             streamed_reasoning: list[str] = []
-            suppress_reasoning_delta = (
-                self.execution_profile is not None
-                and self.execution_profile.reasoning_mode == "off"
+            suppress_reasoning_delta = bool(
+                self._active_turn_plan is not None
+                and not self._active_turn_plan.show_reasoning
             )
 
             def _partial_turn() -> AssistantTurn:
@@ -612,6 +730,14 @@ class TurnEngine:
 
             try:
                 async for chunk in self._astream():
+                    if first_provider_delta_ms is None and (
+                        chunk.reasoning_delta
+                        or chunk.text_delta
+                        or chunk.turn is not None
+                    ):
+                        first_provider_delta_ms = (
+                            time.perf_counter() - iter_started
+                        ) * 1000.0
                     if chunk.reasoning_delta:
                         streamed_reasoning.append(chunk.reasoning_delta)
                         if first_visible_delta_ms is None:
@@ -706,7 +832,7 @@ class TurnEngine:
 
             # Section 65 step 48: model-call metrics (no prompt / no tool bodies).
             phase = None
-            profile = self.execution_profile
+            profile = self._current_execution_profile()
             if profile is not None and profile.target_iterations is not None:
                 from .execution_profile import budget_phase_for_iteration as _bpf
 
@@ -723,8 +849,19 @@ class TurnEngine:
                     budget_phase=phase,
                     elapsed_ms=(time.perf_counter() - iter_started) * 1000.0,
                     first_visible_delta_ms=first_visible_delta_ms,
+                    first_provider_delta_ms=first_provider_delta_ms,
                     tool_count=len(turn.tool_calls or []),
                     finish_reason=turn.finish_reason,
+                    actual_prompt_tokens=(
+                        turn.usage.context_tokens if turn.usage is not None else None
+                    ),
+                    reasoning_received=bool(streamed_reasoning or turn.reasoning),
+                    reasoning_displayed=bool(
+                        (streamed_reasoning or turn.reasoning)
+                        and not suppress_reasoning_delta
+                    ),
+                    text_delta_count=len(streamed),
+                    reasoning_delta_count=len(streamed_reasoning),
                 ),
             )
 
@@ -912,14 +1049,14 @@ class TurnEngine:
             tools = project_provider_visible_schemas(
                 self.registry,
                 tool_projection_enabled=self.tool_projection_enabled,
-                profile=self.execution_profile,
-                tool_policy=self.turn_tool_policy,
+                profile=self._current_execution_profile(),
+                tool_policy=self._current_tool_policy(),
                 mandatory_tool_names=self.mandatory_tool_names,
             )
         model = self.model
         messages = self._outbound_messages()
         settings = dict(self.model_settings)
-        profile = self.execution_profile
+        profile = self._current_execution_profile()
         if profile is not None:
             # Route reasoning defaults only when an explicit profile is attached.
             # Legacy path keeps caller-provided model_settings untouched.
@@ -936,6 +1073,55 @@ class TurnEngine:
                 profile.reasoning_mode,
                 supports_disable_reasoning=supports_disable,
             )
+        plan = self._active_turn_plan
+        skill_count: Optional[int] = None
+        if plan is not None:
+            if plan.skill_names is not None:
+                skill_count = len(plan.skill_names)
+            else:
+                loader = getattr(self, "skill_loader", None)
+                if loader is not None:
+                    try:
+                        skill_count = len(loader.names())
+                    except Exception:
+                        skill_count = None
+        prompt_profile = (
+            plan.prompt_profile.value if plan is not None else PromptProfile.LEGACY.value
+        )
+        prompt_char_count = len(
+            json.dumps(messages, ensure_ascii=False, default=str)
+        )
+        system_text = next(
+            (
+                message.get("content", "")
+                for message in messages
+                if message.get("role") == "system"
+                and isinstance(message.get("content"), str)
+            ),
+            "",
+        )
+        prompt_section_count = len(
+            [section for section in system_text.split("\n\n") if section.strip()]
+        )
+        schema_count = 0 if tools is None else len(tools)
+        schema_bytes = 0 if tools is None else len(
+            json.dumps(tools, ensure_ascii=False, default=str).encode("utf-8")
+        )
+        emit_instrumentation(
+            "provider_call_shape",
+            build_provider_call_shape_snapshot(
+                prompt_profile=prompt_profile,
+                prompt_char_count=prompt_char_count,
+                prompt_token_estimate=_compaction.estimate_tokens(messages),
+                prompt_section_count=prompt_section_count,
+                schema_count=schema_count,
+                schema_bytes=schema_bytes,
+                skill_count=skill_count,
+                reasoning_mode=(profile.reasoning_mode if profile is not None else None),
+                show_reasoning=(plan.show_reasoning if plan is not None else True),
+                projected_session=self._prompt_projection_eligible,
+            ),
+        )
         provider = self.provider
         structured_tools_streaming = self.structured_tools_true_streaming_enabled
 
@@ -1440,7 +1626,14 @@ class TurnEngine:
         # (thinking text), and `usage` (token counts) — copying only messages that carry
         # one. Whole `notice` messages (error/interrupted/model-switch markers) are
         # display-only too: dropped entirely.
-        _SIDECARS = ("source", "_display", "ts", "reasoning", "usage")
+        _SIDECARS = (
+            "source",
+            "_display",
+            "_prompt_policy_version",
+            "ts",
+            "reasoning",
+            "usage",
+        )
         # Auto-compaction (OPE-27): everything before the boundary is represented by the
         # compacted block. Outbound-only — the canonical history stays intact — and the
         # block+tail are byte-stable between turns, so prompt caching keeps working.
@@ -1471,6 +1664,17 @@ class TurnEngine:
                 )
             else:
                 out.append(prepared)
+
+        # D-165 prompt projection is outbound-only. Canonical history retains the
+        # original complete system prompt plus a private policy marker, which makes
+        # restart behavior stable while old sessions (no marker) stay legacy.
+        projected_prompt = self._projected_prompt_text()
+        if projected_prompt is not None:
+            for index, message in enumerate(out):
+                if message.get("role") != "system":
+                    continue
+                out[index] = {**message, "content": projected_prompt}
+                break
         # PDF attachments (stored as `file` parts) are adapted to the ACTIVE model right
         # here — never in the persisted history — so a mid-session model switch always
         # re-decides: native PDF models get the real document, the rest get the local
@@ -1597,12 +1801,19 @@ class TurnEngine:
             break
         return out
 
+    def _projected_prompt_text(self) -> Optional[str]:
+        if not self._prompt_projection_eligible or self._active_turn_plan is None:
+            return None
+        profile = self._active_turn_plan.prompt_profile
+        prompt = self.prompt_profiles.get(profile)
+        return prompt if isinstance(prompt, str) and prompt else None
+
     def _budget_guidance_for_outbound(self) -> str:
         """Soft-target Explore→Converge→Deliver notice. Outbound-only; never mutates
         canonical history. Completely inert when no ExecutionProfile is attached or
         budget_guidance_enabled is false.
         """
-        profile = self.execution_profile
+        profile = self._current_execution_profile()
         if profile is None or not profile.budget_guidance_enabled:
             return ""
         target = profile.target_iterations

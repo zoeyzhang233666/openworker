@@ -163,7 +163,7 @@ _LOCAL_MEMORY = frozenset(
     {"remember", "memory_read", "memory_update", "memory_forget"}
 )
 
-_LOCAL_SKILL = frozenset({"load_skill", "save_skill"})
+_LOCAL_SKILL = frozenset({"search_skills", "load_skill", "save_skill"})
 
 _LOCAL_PRODUCT_CONTROL = frozenset(
     {

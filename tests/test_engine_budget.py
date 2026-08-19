@@ -209,7 +209,7 @@ def test_verified_profile_hard_budget_independent(tmp_path):
     )
 
 
-def test_fast_chat_profile_suppresses_reasoning_delta(tmp_path):
+def test_fast_chat_profile_keeps_reasoning_visibility_independent(tmp_path):
     cfg = Config()
     profile = make_execution_profile(RequestRoute.FAST_CHAT, cfg)
     assert profile.reasoning_mode == "off"
@@ -239,5 +239,5 @@ def test_fast_chat_profile_suppresses_reasoning_delta(tmp_path):
         execution_profile=profile,
     )
     events = _collect(engine)
-    assert EventType.REASONING_DELTA not in [e.type for e in events]
+    assert EventType.REASONING_DELTA in [e.type for e in events]
     assert any(e.type == EventType.ASSISTANT_DELTA for e in events)

@@ -104,6 +104,22 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 
 OpenWorker 原有的调度执行能力。ChemClaw 的定时任务界面复用该引擎。
 
+### 本轮计划（TurnPlan）
+
+`TurnPlanner` 在每个用户 turn 开始时生成的不可变执行合同，统一包含路由、`ExecutionProfile`、prompt profile、Provider 可见工具策略、Skill 元数据候选与 reasoning 展示策略。同一 turn 的所有模型迭代和 retry 复用同一计划；durable resume 生成保守 Agent 计划。它是优化层，不是权限授权层。
+
+### Prompt Profile
+
+本轮出站 system prompt 的投影等级。FAST/KNOWLEDGE 只保留 ChemClaw 身份、默认中文、安全边界、用户规则和会话固定记忆；VERIFIED 仅加入核验指南，行情 VERIFIED 再加入图表规范；明确 Agent 动作区分定向、普通工作区与可视化工作区 profile。不确定 Agent/Deep 使用完整 legacy prompt。投影只改 Provider 出站视图，不重写 canonical transcript。
+
+### 工具能力包
+
+根据明确意图从已注册 registry 选择的一组 Provider-visible schema，例如工作区、Memory、调度、消息、Skill 或销售。能力包不注销 Tool，也不改变 `PermissionEngine`；附件、后台、pending、Persona、未知 MCP/connector 或无法安全分类时回退完整 registry。
+
+### Reasoning 请求与展示
+
+`reasoning_mode` 表达向 Provider 请求的推理模式；`show_reasoning` 独立决定已返回 reasoning 是否广播到界面。只有模型能力明确支持时才发送关闭参数；Provider 有 reasoning 时默认实时展示，没有时沿用等待提示且不伪造。
+
 ### 步骤组
 
 一次 turn 内工具调用、已决议审批与中间叙述收成的 disclosure（界面常显示为「N 个步骤」；代码 `TurnGroup`）。最终回答在步骤组之外以普通助手气泡展示。
@@ -427,7 +443,7 @@ ChemClaw 对话框与 2D 图谱并列联动的工作界面。对话检索可定�
 
 ### 交互行情图
 
-网页版中可悬停查看细节的价格走势图；序列与价格表同源或经只读公开接口刷新，不把网页当作第二套研究代理。对话内 inline `line`/`area`/`candlestick` 支持滚轮缩放与左右拖动（D-140/D-153）；现货密点时抽稀圆点与日期刻度；小图不画高低价，全屏才标可见窗全局极值（D-155）；阶段方向由区间涨跌幅重算，左栏驱动只写主导因素、不含具体价格（D-156）；短引用可用中文品种名对上工具回包别名（D-157）；阶段色带互斥、同柱不混色（D-158）；Yahoo/CN 短引用用本会话工具回包出图，直播不依赖 300 字截断 preview（D-159）；股票/期货/上市期权未指定周期时默认日线，不默认月线或分钟线（D-160）。
+网页版中可悬停查看细节的价格走势图；序列与价格表同源或经只读公开接口刷新，不把网页当作第二套研究代理。对话内 inline `line`/`area`/`candlestick` 支持滚轮缩放与左右拖动（D-140/D-153）；现货密点时抽稀圆点与日期刻度；小图不画高低价，全屏才标可见窗全局极值（D-155）；阶段方向由区间涨跌幅重算，左栏驱动只写主导因素、不含具体价格（D-156）；短引用可用中文品种名对上工具回包别名（D-157）；阶段色带互斥、同柱不混色（D-158）；Yahoo/CN 短引用用本会话工具回包出图，直播不依赖 300 字截断 preview（D-159）；股票/期货/上市期权未指定周期时默认日线，不默认月线或分钟线（D-160）；产物 Markdown 预览与对话共用同一份会话 OHLC 回查（D-162）。
 
 ### 国内行情层
 

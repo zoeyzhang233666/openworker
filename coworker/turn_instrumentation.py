@@ -179,18 +179,58 @@ def build_model_call_snapshot(
     budget_phase: Optional[str] = None,
     elapsed_ms: Optional[float] = None,
     first_visible_delta_ms: Optional[float] = None,
+    first_provider_delta_ms: Optional[float] = None,
     stream_attempts: Optional[int] = None,
     tool_count: Optional[int] = None,
     finish_reason: Optional[str] = None,
+    actual_prompt_tokens: Optional[int] = None,
+    reasoning_received: Optional[bool] = None,
+    reasoning_displayed: Optional[bool] = None,
+    text_delta_count: Optional[int] = None,
+    reasoning_delta_count: Optional[int] = None,
 ) -> dict[str, Any]:
     return {
         "iteration": iteration,
         "budget_phase": budget_phase,
         "elapsed_ms": elapsed_ms,
         "first_visible_delta_ms": first_visible_delta_ms,
+        "first_provider_delta_ms": first_provider_delta_ms,
         "stream_attempts": stream_attempts,
         "tool_count": tool_count,
         "finish_reason": finish_reason,
+        "actual_prompt_tokens": actual_prompt_tokens,
+        "reasoning_received": reasoning_received,
+        "reasoning_displayed": reasoning_displayed,
+        "text_delta_count": text_delta_count,
+        "reasoning_delta_count": reasoning_delta_count,
+    }
+
+
+def build_provider_call_shape_snapshot(
+    *,
+    prompt_profile: Optional[str],
+    prompt_char_count: int,
+    prompt_token_estimate: int,
+    prompt_section_count: int,
+    schema_count: int,
+    schema_bytes: int,
+    skill_count: Optional[int],
+    reasoning_mode: Optional[str],
+    show_reasoning: bool,
+    projected_session: bool,
+) -> dict[str, Any]:
+    """No prompt bodies or schema bodies — counts only."""
+    return {
+        "prompt_profile": prompt_profile,
+        "prompt_char_count": int(prompt_char_count),
+        "prompt_token_estimate": int(prompt_token_estimate),
+        "prompt_section_count": int(prompt_section_count),
+        "schema_count": int(schema_count),
+        "schema_bytes": int(schema_bytes),
+        "skill_count": skill_count,
+        "reasoning_mode": reasoning_mode,
+        "show_reasoning": bool(show_reasoning),
+        "projected_session": bool(projected_session),
     }
 
 

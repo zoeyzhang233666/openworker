@@ -163,6 +163,130 @@ def select_verified_tool_names(
     return tuple(ordered)
 
 
+_CONTROL_TOOLS = frozenset(
+    {
+        "ask_user",
+        "propose_plan",
+        "request_directory",
+        "todo_read",
+        "todo_write",
+    }
+)
+
+_CAPABILITY_PACKS = {
+    "workspace": frozenset(
+        {
+            "read_file",
+            "write_file",
+            "edit_file",
+            "list_dir",
+            "list_files",
+            "glob",
+            "grep",
+            "apply_patch",
+            "apply_unified_diff",
+            "replace_in_file",
+            "read_file_lines",
+            "run_terminal_cmd",
+            "run_shell",
+            "bash",
+            "shell",
+            "shell_task_kill",
+            "shell_task_output",
+            "git_status",
+            "git_diff",
+            "git_log",
+            "git_show",
+        }
+    ),
+    "memory": frozenset(
+        {"remember", "memory_read", "memory_update", "memory_forget"}
+    ),
+    "skills": frozenset({"search_skills", "load_skill", "save_skill"}),
+    "schedule": frozenset(
+        {
+            "schedule_task",
+            "list_scheduled_tasks",
+            "cancel_scheduled_task",
+            "self_wake",
+            "create_wake",
+            "list_wakes",
+            "cancel_wake",
+        }
+    ),
+    "messages": frozenset({"send_message", "send_file"}),
+    "sales": frozenset(
+        {
+            "calculate_quote",
+            "format_lead_list",
+            "filter_customs_importers",
+            "lookup_trade_flow",
+            "search_tenders",
+            "search_sam_opportunities",
+        }
+    ),
+}
+
+
+def select_agent_tool_names(
+    text: str, available: Iterable[str]
+) -> tuple[str, ...] | None:
+    """Select a strong-intent AGENT capability pack, else retain full registry.
+
+    Generic MCP/connector wording and ambiguous actions deliberately return ``None``:
+    dynamic tools cannot be classified safely without silently losing capability.
+    """
+    t = (text or "").strip()
+    avail = list(dict.fromkeys(available))
+    if not t:
+        return None
+    if re.search(r"(\bmcp\b|connector|连接器|连接\s*[^，。 ]+)", t, re.I):
+        return None
+
+    packs: list[str] = []
+    if re.search(
+        r"(文件|工作区|workspace|\.md\b|\.py\b|\.csv\b|运行测试|执行命令|"
+        r"read|write|edit|modify|save|open|shell|git\b)",
+        t,
+        re.I,
+    ):
+        packs.append("workspace")
+    if re.search(r"(记住|忘掉|忘记|memory|remember|save .*preference)", t, re.I):
+        packs.append("memory")
+    if re.search(r"(skill|技能|/skill|load_skill|search_skills)", t, re.I):
+        packs.extend(["skills", "workspace"])
+    if re.search(r"(提醒我|定时|计划任务|schedule|remind|self-?wake)", t, re.I):
+        packs.append("schedule")
+    if re.search(r"(发给|发送给|发消息|发邮件|send .* to|message .+)", t, re.I):
+        packs.append("messages")
+    if re.search(
+        r"(hubspot|crm\b|报价|quote|线索|lead|进口商|海关|招标|采购机会)",
+        t,
+        re.I,
+    ):
+        packs.append("sales")
+
+    if not packs:
+        return None
+
+    wanted = set(_CONTROL_TOOLS)
+    for pack in packs:
+        wanted.update(_CAPABILITY_PACKS[pack])
+    # Registered CRM/message connector tools are capability-namespaced but not all
+    # are statically known. Include only after the user explicitly selected that pack.
+    if "sales" in packs:
+        wanted.update(name for name in avail if name.startswith("hubspot_"))
+    if "messages" in packs:
+        wanted.update(
+            name
+            for name in avail
+            if name.endswith(("_send_email", "_send_mail", "_send_message"))
+        )
+
+    selected = tuple(name for name in avail if name in wanted)
+    return selected or None
+
+
 def project_provider_visible_schemas(
     registry: "ToolRegistry",
     *,

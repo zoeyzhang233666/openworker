@@ -12,6 +12,7 @@ from coworker.tool_policy import TurnToolPolicy
 from coworker.turn_instrumentation import (
     FORBIDDEN_INSTRUMENTATION_KEYS,
     build_model_call_snapshot,
+    build_provider_call_shape_snapshot,
     build_provider_stream_snapshot,
     build_turn_snapshot,
     emit_instrumentation,
@@ -103,6 +104,23 @@ def test_model_and_provider_snapshots_are_compact():
     )
     assert prov["stream_mode"] == "compat_buffered"
     assert prov["textual_tool_salvage_used"] is True
+
+    shape = build_provider_call_shape_snapshot(
+        prompt_profile="fast",
+        prompt_char_count=900,
+        prompt_token_estimate=300,
+        prompt_section_count=3,
+        schema_count=0,
+        schema_bytes=0,
+        skill_count=0,
+        reasoning_mode="off",
+        show_reasoning=True,
+        projected_session=True,
+    )
+    assert shape["prompt_profile"] == "fast"
+    assert shape["schema_count"] == 0
+    assert shape["skill_count"] == 0
+    assert shape["show_reasoning"] is True
 
 
 def test_emit_instrumentation_redacts_forbidden_keys(caplog):

@@ -17,6 +17,7 @@ def test_defaults_when_no_files(tmp_path):
     assert cfg.verified_max_iterations == 6
     assert cfg.request_routing_enabled is True  # Section 65 Step 56 candidate ON
     assert cfg.tool_projection_enabled is True  # Section 65 Step 57 candidate ON
+    assert cfg.prompt_projection_enabled is True  # D-165 candidate ON
     assert cfg.structured_tools_true_streaming_enabled is True  # Step 58 candidate ON
     assert cfg.emergency_finalization_enabled is True  # Step 59 candidate ON
     assert cfg.allowed_commands == []

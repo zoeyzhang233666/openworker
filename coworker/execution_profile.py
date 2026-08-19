@@ -219,7 +219,7 @@ def make_execution_profile(
             max_iterations=hard,
             target_iterations=target,
             tools_enabled=True,
-            allowed_tool_names=None,
+            allowed_tool_names=allowed_tool_names,
             budget_guidance_enabled=True,
             emergency_finalization_enabled=ef,
             reasoning_mode="default",

@@ -427,8 +427,27 @@ def test_known_safe_structured_tools_streaming_matrix():
     assert not is_known_safe_structured_tools_streaming(
         "gpt-5.6-luna", base_url="https://www.tokenfoundryx.com/v1"
     )
-    assert not is_known_safe_structured_tools_streaming(
+    # D-164: live PASS pairs on apihub.chem-cloud.cn are known-safe.
+    assert is_known_safe_structured_tools_streaming(
         "deepseek-v4-flash", base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    assert is_known_safe_structured_tools_streaming(
+        "deepseek-v4-pro", base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    assert is_known_safe_structured_tools_streaming(
+        "glm-5.2", base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "kimi-k3", base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "deepseek-v4-flash", base_url="https://www.tokenfoundryx.com/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "deepseek-v4-pro", base_url="https://www.tokenfoundryx.com/v1"
+    )
+    assert not is_known_safe_structured_tools_streaming(
+        "glm-5.2", base_url="https://custom.example/v1"
     )
     assert not is_known_safe_structured_tools_streaming(
         "ollama:qwen3", base_url="http://localhost:11434/v1"
@@ -579,7 +598,101 @@ def test_structured_tools_true_streaming_unknown_compat_stays_buffered_even_when
     assert out[-1].turn.text == "Hello"
 
 
-def test_structured_tools_kill_switch_off_restores_textual_salvage():
+def test_structured_tools_true_streaming_apihub_cn_pair_yields_before_upstream_finishes(
+    monkeypatch,
+):
+    """D-161: listed ApiHub CN pair + kill switch ON uses true streaming (not buffered)."""
+    import threading
+
+    from coworker.providers import openai_provider as m
+
+    monkeypatch.setattr(
+        m,
+        "_KNOWN_SAFE_COMPAT_PAIRS",
+        frozenset({("apihub.chem-cloud.cn", "deepseek-v4-flash")}),
+    )
+    release_rest = threading.Event()
+    first_pulled = threading.Event()
+    tools = _tools_read_file()
+
+    class _GatedStream:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+
+            def _gen():
+                yield _chunk(content="Looking")
+                assert first_pulled.wait(timeout=2.0), "consumer never pulled first delta"
+                assert release_rest.wait(timeout=2.0), "test never released remaining chunks"
+                yield _chunk(finish="stop")
+
+            return _gen()
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _GatedStream()
+    provider = OpenAIProvider(
+        client=client, base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    it = iter(
+        provider.stream(
+            model="deepseek-v4-flash",
+            messages=[],
+            tools=tools,
+            structured_tools_true_streaming_enabled=True,
+        )
+    )
+    first = next(it)
+    assert first.text_delta == "Looking"
+    first_pulled.set()
+    release_rest.set()
+    rest = list(it)
+    assert rest[-1].turn.text == "Looking"
+
+
+def test_structured_tools_kill_switch_off_buffers_even_for_apihub_cn_pair(monkeypatch):
+    """Kill switch OFF restores buffering even when the D-161 pair is listed."""
+    import threading
+
+    from coworker.providers import openai_provider as m
+
+    monkeypatch.setattr(
+        m,
+        "_KNOWN_SAFE_COMPAT_PAIRS",
+        frozenset({("apihub.chem-cloud.cn", "deepseek-v4-flash")}),
+    )
+    release_rest = threading.Event()
+    first_pulled = threading.Event()
+    tools = _tools_read_file()
+
+    class _GatedStream:
+        def create(self, **kwargs):
+            def _gen():
+                yield _chunk(content="Hel")
+                assert not first_pulled.is_set()
+                yield _chunk(content="lo")
+                yield _chunk(finish="stop")
+                release_rest.set()
+
+            return _gen()
+
+    client = _FakeClient(_response(content="x"))
+    client.chat.completions = _GatedStream()
+    provider = OpenAIProvider(
+        client=client, base_url="https://apihub.chem-cloud.cn/v1"
+    )
+    out = list(
+        provider.stream(
+            model="deepseek-v4-flash",
+            messages=[],
+            tools=tools,
+            structured_tools_true_streaming_enabled=False,
+        )
+    )
+    assert release_rest.is_set()
+    assert [c.text_delta for c in out if c.text_delta] == ["Hel", "lo"]
+
     """OFF must seamlessly restore compat-buffered + textual salvage (no UI leak)."""
     blob = '{"name": "read_file", "arguments": {"path": "a.py"}}'
     tools = _tools_read_file()

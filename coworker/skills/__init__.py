@@ -1,4 +1,10 @@
-from .base import Skill, SkillLoader, skill_catalog_text, skill_tools
+from .base import (
+    Skill,
+    SkillLoader,
+    select_skill_names,
+    skill_catalog_text,
+    skill_tools,
+)
 from .bootstrap import (
     list_bundled_skill_names,
     refresh_finance_skills_without_wind,
@@ -18,6 +24,7 @@ __all__ = [
     "SkillLoader",
     "skill_catalog_text",
     "skill_tools",
+    "select_skill_names",
     "SkillStore",
     "SessionSkillStore",
     "effective_skills",

@@ -1,0 +1,1 @@
+# Makes `from tests.apihub_cn_stream_probe import …` work under pytest.

@@ -6,7 +6,7 @@
     {
       "label": "cowork_default_session",
       "agent_name": "cowork",
-      "tool_count": 58,
+      "tool_count": 59,
       "tool_names": [
         "apply_patch",
         "apply_unified_diff",
@@ -57,6 +57,7 @@
         "save_skill",
         "search_huagongshe",
         "search_sam_opportunities",
+        "search_skills",
         "search_tenders",
         "shell_task_kill",
         "shell_task_output",
@@ -499,6 +500,13 @@
             "name"
           ]
         },
+        "search_skills": {
+          "fingerprint": "fb22c024290ef3c6",
+          "param_keys": [
+            "limit",
+            "query"
+          ]
+        },
         "save_skill": {
           "fingerprint": "8d7844f54ed77eee",
           "param_keys": [
@@ -519,7 +527,7 @@
     {
       "label": "chat_agent_session",
       "agent_name": "chat",
-      "tool_count": 33,
+      "tool_count": 34,
       "tool_names": [
         "calculate_cn_futures_margin",
         "calculate_quote",
@@ -549,6 +557,7 @@
         "save_skill",
         "search_huagongshe",
         "search_sam_opportunities",
+        "search_skills",
         "search_tenders",
         "validate_eu_vat",
         "validate_huagongshe_reaction",
@@ -809,6 +818,13 @@
             "name"
           ]
         },
+        "search_skills": {
+          "fingerprint": "fb22c024290ef3c6",
+          "param_keys": [
+            "limit",
+            "query"
+          ]
+        },
         "save_skill": {
           "fingerprint": "8d7844f54ed77eee",
           "param_keys": [
@@ -829,7 +845,7 @@
     {
       "label": "persona_chain-lobster",
       "agent_name": "chain-lobster",
-      "tool_count": 58,
+      "tool_count": 59,
       "tool_names": [
         "apply_patch",
         "apply_unified_diff",
@@ -880,6 +896,7 @@
         "save_skill",
         "search_huagongshe",
         "search_sam_opportunities",
+        "search_skills",
         "search_tenders",
         "shell_task_kill",
         "shell_task_output",
@@ -1320,6 +1337,13 @@
           "fingerprint": "8ab1f90307697660",
           "param_keys": [
             "name"
+          ]
+        },
+        "search_skills": {
+          "fingerprint": "fb22c024290ef3c6",
+          "param_keys": [
+            "limit",
+            "query"
           ]
         },
         "save_skill": {
