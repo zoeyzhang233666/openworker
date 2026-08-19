@@ -268,6 +268,7 @@ export function McpTab() {
     refresh();
   };
   const remove = async (s: McpServer) => {
+    if (s.builtin) return;
     await deleteMcpServer(s.name);
     refresh();
   };
@@ -367,6 +368,7 @@ function McpRow({
 
   const isOauth = server.auth === "oauth";
   const authorizing = server.status === "authorizing";
+  const isBuiltin = !!server.builtin;
   const signIn = async () => {
     await connectMcp(server.name); // browser opens; the tab's poll flips the status
     onRefresh();
@@ -390,16 +392,24 @@ function McpRow({
   };
 
   return (
-    <div className={CARD + " p-3.5"}>
+    <div className={CARD + " p-3.5"} data-testid={isBuiltin ? `mcp-builtin-${server.name}` : undefined}>
       <div className="flex items-center gap-3">
         <Toggle checked={server.enabled} onChange={onToggle} title={t("Enable this server")} />
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-medium">{server.name}</div>
+          <div className="text-[14px] font-medium flex items-center gap-1.5 flex-wrap">
+            <span>{server.name}</span>
+            {isBuiltin && (
+              <span className="text-[11px] text-faint font-normal" data-testid="mcp-builtin-badge">
+                · {t("mcp.builtin")}
+              </span>
+            )}
+          </div>
           <div className="text-[11.5px] text-faint">
             {server.transport} · {authorizing ? t("signing in…") : t(server.status.replace("_", " ") as MessageKey)}
             {server.tool_count != null ? ` · ${t("{count} tools", { count: server.tool_count })}` : ""}
             {server.requires_approval ? ` · ${t("asks")}` : ""}
             {isOauth ? " · oauth" : ""}
+            {isBuiltin ? ` · ${t("mcp.builtinReadonlyHint")}` : ""}
           </div>
         </div>
         {isOauth &&
@@ -425,9 +435,11 @@ function McpRow({
         >
           {busy ? "…" : tools ? t("hide tools") : t("tools")}
         </button>
-        <button className={BTN_DANGER} onClick={onRemove}>
-          {t("remove")}
-        </button>
+        {!isBuiltin && (
+          <button className={BTN_DANGER} onClick={onRemove}>
+            {t("remove")}
+          </button>
+        )}
       </div>
       {server.last_error && server.status !== "connected" && (
         <div className="text-[12.5px] text-danger mt-1.5">{server.last_error}</div>

@@ -65,10 +65,12 @@ from ..mcp import (
     MCPManager,
     build_callables,
     delete_global_server,
+    is_builtin_config,
     load_mcp_servers,
     patch_global_server,
     put_global_server,
     read_global,
+    seed_builtin_mcp,
 )
 from ..memory import MemorySettingsStore, MemoryStore, Scope, SQLiteMemoryStore
 from ..permissions import Mode
@@ -252,6 +254,8 @@ class SessionManager:
         seed_bundled_skills(self.skill_store)
         sync_managed_lexicon(self.skill_store)
         refresh_finance_skills_without_wind(self.skill_store)
+        # Managed chem MCP (D-167): seed mcp.json + .env from install-time bundle.
+        seed_builtin_mcp()
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).
@@ -1149,6 +1153,7 @@ class SessionManager:
                     "tool_count": (
                         len(self.mcp._conns[name].tools) if connected else None
                     ),
+                    "builtin": is_builtin_config(raw),
                     "config": _redact(raw),
                 }
             )
@@ -1227,14 +1232,46 @@ class SessionManager:
         return {"ok": True, "had_tokens": removed}
 
     def add_mcp(self, name: str, config: dict[str, Any]) -> dict[str, Any]:
-        put_global_server(name, config)
+        existing = read_global().get(name)
+        if is_builtin_config(existing):
+            return {
+                "ok": False,
+                "error": "无法覆盖内置 MCP 服务器；请仅使用启停开关。",
+                "name": name,
+            }
+        # Refuse marking arbitrary paste-ins as ChemClaw builtin via REST.
+        cleaned = dict(config)
+        cleaned.pop("chemclaw_builtin", None)
+        cleaned.pop("chemclaw_builtin_version", None)
+        put_global_server(name, cleaned)
         return {"ok": True, "name": name}
 
     def patch_mcp(self, name: str, changes: dict[str, Any]) -> dict[str, Any]:
+        existing = read_global().get(name)
+        if is_builtin_config(existing):
+            allowed = {k: v for k, v in changes.items() if k == "enabled"}
+            blocked = [k for k in changes if k != "enabled"]
+            if blocked:
+                return {
+                    "ok": False,
+                    "error": "内置 MCP 仅允许修改启用状态，不能更改地址或密钥。",
+                    "name": name,
+                }
+            if not allowed:
+                return {"ok": True, "name": name}
+            ok = patch_global_server(name, allowed)
+            return {"ok": ok, "name": name}
         ok = patch_global_server(name, changes)
         return {"ok": ok, "name": name}
 
     def delete_mcp(self, name: str) -> dict[str, Any]:
+        existing = read_global().get(name)
+        if is_builtin_config(existing):
+            return {
+                "ok": False,
+                "error": "无法删除内置 MCP 服务器；可关闭启用开关。",
+                "name": name,
+            }
         ok = delete_global_server(name)
         return {"ok": ok, "name": name}
 

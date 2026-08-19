@@ -115,6 +115,15 @@ datas += _data_tree(
     os.path.join("coworker", "personas", "builtin"),
 )
 
+# D-167: builtin MCP templates (+ optional obfuscated secrets bundle).
+_mcp_dir = os.path.join(ROOT, "coworker", "mcp")
+_builtin_servers = os.path.join(_mcp_dir, "builtin_servers.json")
+if os.path.isfile(_builtin_servers):
+    datas += [(_builtin_servers, os.path.join("coworker", "mcp"))]
+_builtin_bundle = os.path.join(_mcp_dir, "builtin_mcp.bundle")
+if os.path.isfile(_builtin_bundle):
+    datas += [(_builtin_bundle, os.path.join("coworker", "mcp"))]
+
 a = Analysis(
     [os.path.join(PACKAGING, "server_entry.py")],
     pathex=[ROOT],

@@ -49,6 +49,22 @@ if (-not (Test-Path $PyInst)) {
     throw "PyInstaller not found at $PyInst. Create the venv and install deps (see header)."
 }
 
+# D-167: optional builtin MCP secrets → obfuscated bundle (never commit secrets/bundle).
+$BuiltinSecrets = Join-Path $Here "builtin_mcp.secrets.json"
+$PackBuiltin = Join-Path $Here "pack_builtin_mcp_secrets.py"
+$VenvPy = Join-Path $Venv "Scripts\python.exe"
+if (Test-Path $BuiltinSecrets) {
+    Write-Host "==> packing builtin MCP secrets bundle (D-167)" -ForegroundColor Cyan
+    if (Test-Path $VenvPy) {
+        & $VenvPy $PackBuiltin $BuiltinSecrets
+    } else {
+        & py $PackBuiltin $BuiltinSecrets
+    }
+    if ($LASTEXITCODE -ne 0) { throw "pack_builtin_mcp_secrets.py failed (exit $LASTEXITCODE)" }
+} else {
+    Write-Host "    WARNING: no $BuiltinSecrets — builtin chem MCP will not be seeded in this build." -ForegroundColor Yellow
+}
+
 # Host target triple, e.g. x86_64-pc-windows-msvc — Tauri's externalBin suffix.
 $Triple = (& rustc -vV | Select-String '^host:').ToString().Split()[-1]
 $Arch   = $Triple.Split('-')[0]

@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "chem-data-hub": {
+      "type": "http",
+      "url": "https://datahub.chem-cloud.cn/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CHEMCLAW_BUILTIN_MCP_CHEM_DATA_HUB}"
+      },
+      "enabled": true,
+      "requires_approval": true,
+      "chemclaw_builtin": true,
+      "chemclaw_builtin_version": 1
+    },
+    "chem-biz-scope": {
+      "type": "http",
+      "url": "http://121.37.133.47:8900/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CHEMCLAW_BUILTIN_MCP_CHEM_BIZ_SCOPE}"
+      },
+      "enabled": true,
+      "requires_approval": true,
+      "chemclaw_builtin": true,
+      "chemclaw_builtin_version": 1
+    }
+  }
+}

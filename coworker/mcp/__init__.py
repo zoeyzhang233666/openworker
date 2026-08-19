@@ -5,6 +5,7 @@ Public API: config loading/mutation, the connection manager, and tool wrapping.
 
 from __future__ import annotations
 
+from .builtin import is_builtin_config, seed_builtin_mcp
 from .client import MCPManager
 from .config import (
     MCPServerDef,
@@ -26,4 +27,6 @@ __all__ = [
     "delete_global_server",
     "build_callables",
     "tool_name",
+    "seed_builtin_mcp",
+    "is_builtin_config",
 ]

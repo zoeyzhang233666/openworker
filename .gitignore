@@ -9,3 +9,6 @@ dist/
 
 # Local secrets (live-smoke BYO keys) — never committed
 .env
+packaging/builtin_mcp.secrets.json
+packaging/builtin_mcp.bundle
+coworker/mcp/builtin_mcp.bundle

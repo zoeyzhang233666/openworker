@@ -299,6 +299,8 @@ export interface McpServer {
   auth?: "oauth" | null;
   last_error?: string | null;
   tool_count: number | null;
+  /** ChemClaw managed install-time MCP (D-167); read-only except enable toggle. */
+  builtin?: boolean;
   config: Record<string, any>;
 }
 
