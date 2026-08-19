@@ -30,6 +30,7 @@ from coworker.cn_market.source_policy import (
     policy_for,
 )
 from coworker.cn_market.symbols import (
+    find_futures_mentions,
     resolve_futures,
     resolve_stock,
 )
@@ -95,6 +96,13 @@ def test_futures_symbol_resolves_chemical_aliases_deterministically():
 def test_futures_symbol_rejects_unknown_product():
     with pytest.raises(InvalidSymbolError):
         resolve_futures("不是品种")
+
+
+def test_futures_mentions_reuse_authoritative_catalog_and_longest_alias_wins():
+    mentions = find_futures_mentions("比较甲醇和丁二烯橡胶期货")
+    assert {item.product for item in mentions} == {"MA", "BR"}
+    assert "RU" not in {item.product for item in mentions}
+    assert find_futures_mentions("MA2509 价格")[0].product == "MA"
 
 
 def test_trade_calendar_previous_and_latest_are_deterministic():

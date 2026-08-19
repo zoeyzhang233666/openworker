@@ -22,6 +22,19 @@ class ToolSpec:
     metadata: Any = None  # aisuite ToolMetadata or None
 
 
+@dataclass(frozen=True)
+class ToolDescriptor:
+    """Read-only routing metadata for one registered Tool.
+
+    The planner needs capability/category facts for dynamic MCP tools, but it must not
+    learn registry execution details or receive mutable ToolSpec objects.
+    """
+
+    name: str
+    category: str = ""
+    capabilities: tuple[str, ...] = ()
+
+
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, ToolSpec] = {}
@@ -58,6 +71,20 @@ class ToolRegistry:
 
     def schemas(self) -> list[dict[str, Any]]:
         return [spec.schema for spec in self._tools.values()]
+
+    def descriptors(self) -> list[ToolDescriptor]:
+        out: list[ToolDescriptor] = []
+        for spec in self._tools.values():
+            metadata = spec.metadata
+            raw_capabilities = getattr(metadata, "capabilities", ()) or ()
+            out.append(
+                ToolDescriptor(
+                    name=spec.name,
+                    category=str(getattr(metadata, "category", "") or ""),
+                    capabilities=tuple(str(item) for item in raw_capabilities),
+                )
+            )
+        return out
 
     def execute(self, name: str, arguments: Optional[dict[str, Any]] = None) -> Any:
         spec = self._tools.get(name)

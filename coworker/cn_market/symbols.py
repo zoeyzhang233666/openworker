@@ -201,6 +201,62 @@ def resolve_futures(query: str) -> CNFuturesSymbol:
     )
 
 
+def find_futures_mentions(text: str) -> tuple[CNFuturesSymbol, ...]:
+    """Return non-overlapping CN futures products mentioned in free text.
+
+    Longest labels win, so ``丁二烯橡胶`` does not also become ``橡胶``/RU.  Short
+    one-letter product codes are accepted only with digits or an exchange suffix;
+    ordinary prose must not accidentally select L/V futures.
+    """
+
+    raw = str(text or "")
+    if not raw:
+        return ()
+
+    label_rows: list[tuple[str, _FuturesProduct]] = []
+    for product in _FUTURES_PRODUCTS:
+        labels = {product.name, *product.aliases}
+        for label in labels:
+            if label:
+                label_rows.append((label, product))
+    label_rows.sort(key=lambda row: len(row[0]), reverse=True)
+
+    occupied: list[tuple[int, int]] = []
+    found: list[_FuturesProduct] = []
+
+    def _take(product: _FuturesProduct, start: int, end: int) -> None:
+        if any(start < used_end and end > used_start for used_start, used_end in occupied):
+            return
+        occupied.append((start, end))
+        if product not in found:
+            found.append(product)
+
+    for label, product in label_rows:
+        for match in re.finditer(re.escape(label), raw, re.IGNORECASE):
+            _take(product, match.start(), match.end())
+
+    for product in _FUTURES_PRODUCTS:
+        code = re.escape(product.product)
+        if len(product.product) == 1:
+            pattern = rf"\b{code}(?:\d{{1,4}}|\.{re.escape(product.exchange)})\b"
+        else:
+            pattern = rf"\b{code}(?:\d{{0,4}}|\.{re.escape(product.exchange)})\b"
+        for match in re.finditer(pattern, raw, re.IGNORECASE):
+            _take(product, match.start(), match.end())
+
+    return tuple(
+        CNFuturesSymbol(
+            product=product.product,
+            exchange=product.exchange,
+            name=product.name,
+            contract=None,
+            sina_l1_node=product.sina_l1_node,
+            aliases=product.aliases,
+        )
+        for product in found
+    )
+
+
 @dataclass(frozen=True)
 class CNOptionUnderlying:
     code: str
