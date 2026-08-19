@@ -14,6 +14,7 @@ from typing import Callable, Iterable
 
 from .config import Config
 from .execution_profile import ExecutionProfile, RequestRoute
+from .market_intent import MarketToolSelection, resolve_market_tools
 from .request_router import (
     RequestRouter,
     RouteDecision,
@@ -22,6 +23,7 @@ from .request_router import (
 )
 from .tool_policy import TurnToolPolicy
 from .tool_projection import select_agent_tool_names, select_verified_tool_names
+from .tools.registry import ToolDescriptor
 
 
 class PromptProfile(str, Enum):
@@ -60,6 +62,7 @@ class TurnPlan:
     tool_policy: TurnToolPolicy | None
     prompt_profile: PromptProfile
     skill_names: tuple[str, ...] | None
+    market_selection: MarketToolSelection | None
     show_reasoning: bool
     router_elapsed_ms: float | None = None
 
@@ -71,6 +74,7 @@ class TurnPlan:
             tool_policy=None,
             prompt_profile=PromptProfile.LEGACY,
             skill_names=None,
+            market_selection=None,
             show_reasoning=True,
         )
 
@@ -87,6 +91,7 @@ class TurnPlanner:
         *,
         config: Config,
         available_tool_names: Callable[[], Iterable[str]],
+        available_tools: Callable[[], Iterable[ToolDescriptor]] | None = None,
         context_provider: ContextProvider | None = None,
         skill_selector: SkillSelector | None = None,
         preferred_skill_names: Iterable[str] = (),
@@ -94,6 +99,7 @@ class TurnPlanner:
     ) -> None:
         self.config = config
         self._available_tool_names = available_tool_names
+        self._available_tools = available_tools
         self._context_provider = context_provider or RouterContext
         self._skill_selector = skill_selector
         self._preferred_skill_names = tuple(preferred_skill_names)
@@ -145,11 +151,58 @@ class TurnPlanner:
         # The request router has a small static VERIFIED universe for pure tests.  At
         # the production seam, re-select against the actual live registry so CN market,
         # Yahoo and newly registered known tools can be projected correctly.
+        market_selection: MarketToolSelection | None = None
+        descriptors: tuple[ToolDescriptor, ...] | None = None
+        if self.config.tool_projection_enabled and decision.route in (
+            RequestRoute.VERIFIED,
+            RequestRoute.AGENT,
+            RequestRoute.DEEP_RESEARCH,
+        ):
+            descriptors = self._tool_descriptors()
+            candidate_market = resolve_market_tools(text, descriptors)
+            if candidate_market.intent.is_market:
+                market_selection = candidate_market
+            if (
+                not guarded_full_agent
+                and decision.route is RequestRoute.AGENT
+                and decision.source == "legacy_fallback"
+                and candidate_market.intent.is_market
+            ):
+                # Deterministic market intent outranks the generic classifier fallback.
+                # Product actions/deep research/pending state never reach this branch.
+                market_selection = candidate_market
+                decision = replace(
+                    decision,
+                    route=RequestRoute.VERIFIED,
+                    source="market_intent",
+                    reason="deterministic market scope requires targeted data tools",
+                )
         if decision.route is RequestRoute.VERIFIED:
-            selected = select_verified_tool_names(text, self._available_tool_names())
+            if self.config.tool_projection_enabled:
+                descriptors = descriptors or self._tool_descriptors()
+                market_selection = market_selection or resolve_market_tools(
+                    text, descriptors
+                )
+                selected = select_verified_tool_names(
+                    text,
+                    (tool.name for tool in descriptors),
+                    market_selection=market_selection,
+                )
+            else:
+                selected = select_verified_tool_names(
+                    text, self._available_tool_names()
+                )
             decision = replace(decision, allowed_tool_names=selected)
         elif decision.route is RequestRoute.AGENT and not guarded_full_agent:
             selected = select_agent_tool_names(text, self._available_tool_names())
+            if (
+                selected is not None
+                and market_selection is not None
+                and market_selection.allowed_tool_names is not None
+            ):
+                selected = tuple(
+                    dict.fromkeys((*selected, *market_selection.allowed_tool_names))
+                )
             decision = replace(decision, allowed_tool_names=selected)
 
         profile = decision_to_execution_profile(decision, self.config)
@@ -180,12 +233,12 @@ class TurnPlanner:
 
         prompt_profile = _PROMPT_PROFILE_BY_ROUTE[decision.route]
         allowed = profile.allowed_tool_names
-        if decision.route is RequestRoute.VERIFIED and allowed is not None:
-            if any(
-                name.startswith("lookup_cn_") or name == "lookup_yahoo_ohlc"
-                for name in allowed
-            ):
-                prompt_profile = PromptProfile.VERIFIED_MARKET
+        if (
+            decision.route is RequestRoute.VERIFIED
+            and market_selection is not None
+            and market_selection.intent.is_market
+        ):
+            prompt_profile = PromptProfile.VERIFIED_MARKET
         elif decision.route is RequestRoute.AGENT and allowed is not None:
             workspace_names = {
                 "read_file",
@@ -211,10 +264,18 @@ class TurnPlanner:
             tool_policy=decision.tool_policy,
             prompt_profile=prompt_profile,
             skill_names=skill_names,
+            market_selection=market_selection,
             # Provider request policy and UI visibility are independent.  A provider
             # that emits reasoning is always surfaced immediately.
             show_reasoning=True,
             router_elapsed_ms=(time.perf_counter() - started) * 1000.0,
+        )
+
+    def _tool_descriptors(self) -> tuple[ToolDescriptor, ...]:
+        if self._available_tools is not None:
+            return tuple(self._available_tools())
+        return tuple(
+            ToolDescriptor(name=name) for name in self._available_tool_names()
         )
 
 

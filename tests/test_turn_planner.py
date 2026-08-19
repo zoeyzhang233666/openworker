@@ -23,8 +23,12 @@ TOOLS = (
     "search_skills",
     "lookup_cn_stock_quote",
     "lookup_cn_stock_ohlc",
+    "lookup_cn_futures_quote",
+    "lookup_cn_futures_ohlc",
     "lookup_yahoo_ohlc",
     "web_search",
+    "web_fetch",
+    "mcp__chem-data-hub__get_price_trend",
     "mcp_custom_unknown",
 )
 
@@ -61,6 +65,53 @@ def test_turn_planner_verified_reselects_against_live_registry():
     )
     assert plan.prompt_profile is PromptProfile.VERIFIED_MARKET
     assert plan.skill_names == ()
+
+
+def test_turn_planner_explicit_spot_uses_only_chem_data_hub():
+    plan = _planner().plan("查甲醇现货价格")
+    assert plan.decision is not None
+    assert plan.decision.route is RequestRoute.VERIFIED
+    assert plan.execution_profile is not None
+    assert plan.execution_profile.allowed_tool_names == (
+        "mcp__chem-data-hub__get_price_trend",
+    )
+    assert plan.market_selection is not None
+    assert plan.prompt_profile is PromptProfile.VERIFIED_MARKET
+
+
+def test_turn_planner_bare_methanol_requires_ask_user_not_web():
+    plan = _planner().plan("查甲醇价格")
+    assert plan.execution_profile is not None
+    allowed = set(plan.execution_profile.allowed_tool_names or ())
+    assert "ask_user" in allowed
+    assert "lookup_cn_futures_ohlc" in allowed
+    assert "mcp__chem-data-hub__get_price_trend" in allowed
+    assert "web_search" not in allowed
+    assert "web_fetch" not in allowed
+    assert plan.market_selection is not None
+    assert plan.market_selection.needs_clarification
+
+
+def test_turn_planner_wti_futures_promotes_market_fallback_to_verified_yahoo():
+    plan = _planner().plan("查 WTI 原油期货")
+    assert plan.decision is not None
+    assert plan.decision.route is RequestRoute.VERIFIED
+    assert plan.decision.source == "market_intent"
+    assert plan.execution_profile is not None
+    assert plan.execution_profile.allowed_tool_names == ("lookup_yahoo_ohlc",)
+    assert plan.prompt_profile is PromptProfile.VERIFIED_MARKET
+
+
+def test_turn_planner_agent_action_keeps_workspace_and_selected_market_tool():
+    plan = _planner().plan("查甲醇现货价格并写入 report.md")
+    assert plan.decision is not None
+    assert plan.decision.route is RequestRoute.AGENT
+    allowed = set(plan.execution_profile.allowed_tool_names or ())
+    assert "write_file" in allowed
+    assert "mcp__chem-data-hub__get_price_trend" in allowed
+    assert "lookup_cn_futures_ohlc" not in allowed
+    assert "web_search" not in allowed
+    assert plan.market_selection is not None
 
 
 def test_turn_planner_projects_strong_agent_capability_pack():
@@ -134,3 +185,15 @@ def test_router_off_is_fully_legacy():
     assert plan.prompt_profile is PromptProfile.LEGACY
     assert plan.execution_profile is None
     assert plan.skill_names is None
+
+
+def test_tool_projection_off_keeps_market_policy_legacy_inert():
+    planner = TurnPlanner(
+        config=Config(tool_projection_enabled=False),
+        available_tool_names=lambda: TOOLS,
+    )
+    plan = planner.plan("查甲醇现货价格")
+    assert plan.decision is not None
+    assert plan.decision.route is RequestRoute.VERIFIED
+    assert plan.market_selection is None
+    assert plan.prompt_profile is PromptProfile.VERIFIED

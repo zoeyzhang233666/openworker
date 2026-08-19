@@ -7,6 +7,7 @@ import threading
 import time
 
 import aisuite as ai
+from coworker.config import Config
 from coworker.engine import ApprovalOutcome, PermissionRequest, TurnEngine
 from coworker.events import EventType
 from coworker.permissions import PermissionEngine
@@ -18,6 +19,7 @@ from coworker.providers import (
     ToolCall,
 )
 from coworker.tools import ToolRegistry
+from coworker.turn_planner import TurnPlanner
 
 
 def _text_turn(text):
@@ -508,3 +510,181 @@ def test_chart_finished_sidecar_empty_without_spec_or_error():
 
     assert chart_finished_sidecar({"ok": True}) == {}
     assert chart_finished_sidecar("not a dict") == {}
+
+
+# -- D-166 market-scope execution guard ----------------------------------------
+
+
+def _market_engine(tmp_path, turns, *, answer="化工现货"):
+    provider = ScriptedProvider(turns)
+    registry = ToolRegistry()
+    calls: dict[str, int] = {}
+
+    for name, category, capabilities in (
+        ("ask_user", "interaction", ["ask_user"]),
+        (
+            "mcp__chem-data-hub__get_price_trend",
+            "mcp",
+            ["chem-data-hub"],
+        ),
+        ("lookup_cn_futures_quote", "market", ["cn_market"]),
+        ("lookup_cn_futures_ohlc", "market", ["cn_market"]),
+        ("lookup_yahoo_ohlc", "market", ["yahoo"]),
+        ("web_search", "search", ["web"]),
+    ):
+
+        def _tool(_name=name, **_kwargs):
+            calls[_name] = calls.get(_name, 0) + 1
+            return {"status": "ok", "tool": _name}
+
+        _tool.__name__ = name
+        registry.register(
+            _tool,
+            schema={
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": "D-166 market guard fixture",
+                    "parameters": {"type": "object", "additionalProperties": True},
+                },
+            },
+            metadata=ai.ToolMetadata(
+                name=name,
+                category=category,
+                capabilities=capabilities,
+                risk_level="low",
+                requires_approval=False,
+            ),
+        )
+
+    async def question_asker(_args, _tool_call_id):
+        return {"answer": answer}
+
+    planner = TurnPlanner(
+        config=Config(),
+        available_tool_names=registry.names,
+        available_tools=registry.descriptors,
+    )
+    engine = TurnEngine(
+        provider=provider,
+        registry=registry,
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="gpt-5.5",
+        turn_planner=planner,
+        question_asker=question_asker,
+    )
+    return engine, calls
+
+
+def test_market_guard_rejects_price_tool_before_clarification(tmp_path):
+    engine, calls = _market_engine(
+        tmp_path,
+        [
+            _tool_turn("lookup_cn_futures_ohlc", {"symbol": "MA2509"}),
+            _text_turn("需要先确认口径"),
+        ],
+    )
+    events = _collect(engine, "查甲醇价格")
+    denied = [
+        event
+        for event in events
+        if event.type is EventType.TOOL_FINISHED
+        and event.data.get("name") == "lookup_cn_futures_ohlc"
+    ]
+    assert denied and denied[0].data["status"] == "denied"
+    assert calls.get("lookup_cn_futures_ohlc", 0) == 0
+    assert "市场口径尚未确认" in denied[0].data["reason"]
+
+
+def test_market_guard_allows_selected_spot_after_ask_user(tmp_path):
+    engine, calls = _market_engine(
+        tmp_path,
+        [
+            _multi_tool_turn(
+                [
+                    ("ask_user", {"question": "请选择行情口径"}),
+                    (
+                        "mcp__chem-data-hub__get_price_trend",
+                        {"chemical": "甲醇"},
+                    ),
+                ]
+            ),
+            _text_turn("现货结果"),
+        ],
+    )
+    events = _collect(engine, "查甲醇价格")
+    assert calls.get("mcp__chem-data-hub__get_price_trend", 0) == 1
+    spot_finished = [
+        event
+        for event in events
+        if event.type is EventType.TOOL_FINISHED
+        and event.data.get("name") == "mcp__chem-data-hub__get_price_trend"
+    ]
+    assert spot_finished and spot_finished[0].data["status"] == "ok"
+
+
+def test_market_guard_rejects_futures_after_spot_was_selected(tmp_path):
+    engine, calls = _market_engine(
+        tmp_path,
+        [
+            _multi_tool_turn(
+                [
+                    ("ask_user", {"question": "请选择行情口径"}),
+                    ("lookup_cn_futures_quote", {"symbol": "MA2509"}),
+                ]
+            ),
+            _text_turn("已按现货口径处理"),
+        ],
+    )
+    events = _collect(engine, "查甲醇价格")
+    assert calls.get("lookup_cn_futures_quote", 0) == 0
+    rejected = [
+        event
+        for event in events
+        if event.type is EventType.TOOL_FINISHED
+        and event.data.get("name") == "lookup_cn_futures_quote"
+    ]
+    assert rejected and rejected[0].data["status"] == "denied"
+    assert "市场口径不一致" in rejected[0].data["reason"]
+
+
+def test_market_guard_survives_durable_resume_of_pending_clarification(tmp_path):
+    engine, calls = _market_engine(
+        tmp_path,
+        [
+            _tool_turn("lookup_cn_futures_quote", {"symbol": "MA2509"}),
+            _text_turn("恢复后仍按现货口径"),
+        ],
+    )
+    engine.messages.extend(
+        [
+            {"role": "user", "content": "查甲醇价格"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "pending-market-ask",
+                        "type": "function",
+                        "function": {
+                            "name": "ask_user",
+                            "arguments": '{"question":"请选择行情口径"}',
+                        },
+                    }
+                ],
+            },
+        ]
+    )
+
+    async def resume():
+        return [event async for event in engine.resume()]
+
+    events = asyncio.run(resume())
+    assert calls.get("lookup_cn_futures_quote", 0) == 0
+    rejected = [
+        event
+        for event in events
+        if event.type is EventType.TOOL_FINISHED
+        and event.data.get("name") == "lookup_cn_futures_quote"
+    ]
+    assert rejected and rejected[0].data["status"] == "denied"

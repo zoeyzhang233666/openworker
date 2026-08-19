@@ -103,6 +103,7 @@ _CN_FUTURES = (
     "calculate_cn_futures_margin",
 )
 _MARKET = {
+    "mcp__chem-data-hub__get_price_trend",
     "lookup_yahoo_ohlc",
     "lookup_cn_option_market",
     "web_search",
@@ -124,11 +125,24 @@ def test_verified_a_share_projects_cn_stock_not_yahoo():
 
 
 def test_verified_cn_futures_projects_cn_not_yahoo():
-    selected = select_verified_tool_names("液化气最近一年走势", _MARKET)
+    selected = select_verified_tool_names("液化气期货最近一年走势", _MARKET)
     assert selected is not None
     assert "lookup_cn_futures_ohlc" in selected
     assert "lookup_yahoo_ohlc" not in selected
     assert "web_search" not in selected
+
+
+def test_verified_spot_projects_chem_data_hub_not_web_or_futures():
+    selected = select_verified_tool_names("甲醇现货价格", _MARKET)
+    assert selected == ("mcp__chem-data-hub__get_price_trend",)
+
+
+def test_verified_bare_methanol_projects_clarification_surface():
+    selected = select_verified_tool_names("甲醇价格", _MARKET)
+    assert selected is not None
+    assert "ask_user" in selected
+    assert "web_search" not in selected
+    assert "lookup_yahoo_ohlc" not in selected
 
 
 def test_verified_cn_options_project_option_tool():

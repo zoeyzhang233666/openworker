@@ -44,6 +44,7 @@ from .skills import (
     skill_tools,
 )
 from .tools import ToolRegistry
+from .market_intent import render_market_turn_context
 from .request_router import RouterContext
 from .turn_planner import PromptProfile, TurnPlanner
 from .tools.ask import ask_user_tool
@@ -243,11 +244,17 @@ into fake higher-timeframe bars — say so and chart daily. Yahoo has no yearly 
 interval; if the user asks 年线, use `1mo` with enough `range` and say it is monthly, \
 not a true yearly bar. Use minute / weekly / monthly tools only when the user \
 explicitly asks.
+- Market scope outranks product aliases. Explicit "现货" means chemical spot and must \
+use the projected chem-data-hub `get_price_trend`; never substitute Web, Yahoo, or a \
+futures price. If that MCP capability is missing or returns no rows, report it as \
+unavailable/no spot data. Bare products that have both spot and futures markets (for \
+example 甲醇 or 原油) require `ask_user` clarification before any market-data call.
 - Mainland China A-shares (茅台, 600519, 上证/深证): call `lookup_cn_stock_quote` / \
 `lookup_cn_stock_ohlc` / `lookup_cn_stock_financials` / `lookup_cn_stock_feature`. \
 Use `lookup_cn_stock_minute` only if the user asked for intraday/minutes. Never use \
 Yahoo or web_search to recover a CN structured failure.
-- China mainland futures (甲醇, 液化气, MA/PG): call `lookup_cn_futures_quote` / \
+- China mainland futures only when the user explicitly asks for futures/contracts (for \
+example 甲醇期货, 液化气期货, MA2509/PG): call `lookup_cn_futures_quote` / \
 `lookup_cn_futures_ohlc` / `lookup_cn_futures_l1`; theoretical \
 margin via `calculate_cn_futures_margin` (not broker occupancy). Use \
 `lookup_cn_futures_minute` only if the user asked for intraday/minutes. Never use \
@@ -772,6 +779,7 @@ def build_engine(
         turn_planner = TurnPlanner(
             config=config,
             available_tool_names=registry.names,
+            available_tools=registry.descriptors,
             context_provider=routing_context_provider,
             skill_selector=routed_skill_selector,
             preferred_skill_names=default_skill_ids or (),
@@ -815,6 +823,10 @@ def build_engine(
             ctx = roots_context()
             if ctx:
                 parts.append(ctx)
+        if plan is not None and plan.market_selection is not None:
+            market_ctx = render_market_turn_context(plan.market_selection)
+            if market_ctx:
+                parts.append(market_ctx)
         # Live skill menu (SKILLS-SPEC §4.1): recomputed every turn like the roots list, so
         # a skill installed/enabled/disabled mid-session applies from the NEXT MESSAGE —
         # no new session, no lost context.

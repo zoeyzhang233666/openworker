@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+import aisuite as ai
 from coworker.agent import build_engine
 from coworker.compaction import estimate_tokens
 from coworker.engine import ApprovalOutcome
@@ -97,6 +98,70 @@ def test_fresh_default_session_projects_fast_prompt_tools_and_skills(
     assert estimate_tokens(call["messages"]) <= 4_000
     final = next(event for event in events if event.type is EventType.ASSISTANT_MESSAGE)
     assert final.data["usage"]["input"] == 321
+
+
+def _spot_mcp_tool():
+    def get_price_trend(**_kwargs):
+        return {"status": "ok", "rows": []}
+
+    get_price_trend.__name__ = "mcp__chem_data_hub__get_price_trend"
+    get_price_trend.__aisuite_tool_metadata__ = ai.ToolMetadata(
+        name=get_price_trend.__name__,
+        category="mcp",
+        capabilities=["chem-data-hub"],
+        risk_level="low",
+        requires_approval=False,
+    )
+    get_price_trend.__coworker_schema__ = {
+        "type": "function",
+        "function": {
+            "name": get_price_trend.__name__,
+            "description": "Chemical spot price trend",
+            "parameters": {"type": "object", "additionalProperties": True},
+        },
+    }
+    return get_price_trend
+
+
+def test_production_engine_projects_explicit_spot_to_dynamic_mcp_only(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("coworker.agent.load_config", lambda *a, **k: Config())
+    provider = RecordingProvider()
+    engine = build_engine(
+        agent=cowork_agent(),
+        workspace=tmp_path,
+        provider=provider,
+        skill_dirs=[tmp_path / "skills"],
+        extra_tools=[_spot_mcp_tool()],
+    )
+    _collect(engine, "查甲醇现货价格")
+    call = provider.calls[0]
+    assert [item["function"]["name"] for item in call["tools"]] == [
+        "mcp__chem_data_hub__get_price_trend"
+    ]
+    outbound = "\n".join(str(item.get("content", "")) for item in call["messages"])
+    assert "CHEMICAL SPOT" in outbound
+    assert "Do not call CN futures, Yahoo, or Web to substitute" in outbound
+
+
+def test_production_engine_reports_spot_unavailable_without_fallback_schema(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr("coworker.agent.load_config", lambda *a, **k: Config())
+    provider = RecordingProvider()
+    engine = build_engine(
+        agent=cowork_agent(),
+        workspace=tmp_path,
+        provider=provider,
+        skill_dirs=[tmp_path / "skills"],
+    )
+    _collect(engine, "查甲醇现货价格")
+    call = provider.calls[0]
+    assert call["tools"] is None
+    outbound = "\n".join(str(item.get("content", "")) for item in call["messages"])
+    assert "get_price_trend` is not available" in outbound
+    assert "report unavailable in Chinese" in outbound
 
 
 def test_existing_session_without_policy_marker_stays_legacy(tmp_path, monkeypatch):
@@ -254,6 +319,152 @@ def test_gui_websocket_receives_live_reasoning_and_text_on_fast_path(
     assert engine is not None
     assert engine._last_turn_plan is not None
     assert engine._last_turn_plan.decision.route is RequestRoute.FAST_CHAT
+
+
+def test_gui_websocket_market_matrix_uses_expected_actual_tools(
+    tmp_path, monkeypatch
+):
+    from fastapi.testclient import TestClient
+
+    class MarketProvider(ProviderClient):
+        def __init__(self, turns):
+            self.turns = list(turns)
+
+        def capabilities(self, model):
+            return ModelCapabilities(tools=True)
+
+        def complete(self, *, model, messages, tools=None, **settings):
+            return self.turns.pop(0)
+
+    monkeypatch.setattr("coworker.agent.load_config", lambda *a, **k: Config())
+
+    def run_case(session_id, query, turns, *, answer=None):
+        case_dir = tmp_path / session_id
+        case_dir.mkdir()
+        provider = MarketProvider(turns)
+        manager = SessionManager(
+            workspace=case_dir,
+            data_dir=case_dir / "state",
+            provider=provider,
+        )
+
+        async def prepare_mcp_tools(*_args, **_kwargs):
+            return [_spot_mcp_tool()]
+
+        manager.prepare_mcp_tools = prepare_mcp_tools
+        client = TestClient(create_app(manager))
+        events = []
+        with client.websocket_connect(
+            f"/ws/session/{session_id}?agent=cowork"
+        ) as ws:
+            assert ws.receive_json()["type"] == "ready"
+            ws.send_json({"type": "user_message", "text": query})
+            while True:
+                event = ws.receive_json()
+                events.append(event)
+                if event["type"] == "question_requested" and answer is not None:
+                    ws.send_json({"type": "question_response", "answer": answer})
+                if event["type"] == "turn_done":
+                    break
+        return events
+
+    spot_name = "mcp__chem_data_hub__get_price_trend"
+    for session_id, query in (
+        ("d166-crude-spot", "查原油现货价格"),
+        ("d166-methanol-spot", "查甲醇现货价格"),
+    ):
+        events = run_case(
+            session_id,
+            query,
+            [
+                AssistantTurn(
+                    tool_calls=[
+                        ToolCall(
+                            id=f"{session_id}-tool",
+                            name=spot_name,
+                            arguments={"chemical": query},
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                ),
+                AssistantTurn(text="现货结果", finish_reason="stop"),
+            ],
+        )
+        proposed = [
+            event["data"]["name"]
+            for event in events
+            if event["type"] == "tool_proposed"
+        ]
+        finished = [
+            event["data"]["name"]
+            for event in events
+            if event["type"] == "tool_finished"
+        ]
+        assert proposed == [spot_name]
+        assert finished == [spot_name]
+
+    futures = run_case(
+        "d166-methanol-futures",
+        "查甲醇期货价格",
+        [
+            AssistantTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="methanol-futures-tool",
+                        name="lookup_cn_futures_quote",
+                        arguments={"symbol": "MA2509"},
+                    )
+                ],
+                finish_reason="tool_calls",
+            ),
+            AssistantTurn(text="期货结果", finish_reason="stop"),
+        ],
+    )
+    assert [
+        event["data"]["name"]
+        for event in futures
+        if event["type"] == "tool_finished"
+    ] == ["lookup_cn_futures_quote"]
+
+    clarified = run_case(
+        "d166-methanol-clarify",
+        "查甲醇价格",
+        [
+            AssistantTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="methanol-ask",
+                        name="ask_user",
+                        arguments={
+                            "question": "请选择行情口径",
+                            "header": "行情口径",
+                            "allow_text": False,
+                            "options": ["化工现货", "国内期货"],
+                        },
+                    )
+                ],
+                finish_reason="tool_calls",
+            ),
+            AssistantTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="methanol-after-ask",
+                        name="lookup_cn_futures_quote",
+                        arguments={"symbol": "MA2509"},
+                    )
+                ],
+                finish_reason="tool_calls",
+            ),
+            AssistantTurn(text="已按国内期货口径查询", finish_reason="stop"),
+        ],
+        answer="国内期货",
+    )
+    assert "question_requested" in [event["type"] for event in clarified]
+    assert [
+        event["data"]["name"]
+        for event in clarified
+        if event["type"] == "tool_finished"
+    ] == ["ask_user", "lookup_cn_futures_quote"]
 
 
 def test_projected_workspace_pack_keeps_standard_permission_approval(

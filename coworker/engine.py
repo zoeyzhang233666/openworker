@@ -30,6 +30,7 @@ from .execution_profile import (
     budget_guidance_text,
     budget_phase_for_iteration,
 )
+from .market_intent import MarketScope
 from .permissions import Mode, PermissionEngine
 from .providers import AssistantTurn, ProviderClient, ToolCall
 from .providers.errors import friendly_model_error
@@ -178,6 +179,8 @@ class TurnEngine:
         self.turn_planner = turn_planner
         self._active_turn_plan: Optional[TurnPlan] = None
         self._last_turn_plan: Optional[TurnPlan] = None
+        self._resolved_market_scope: Optional[MarketScope] = None
+        self._last_resolved_market_scope: Optional[MarketScope] = None
         self.prompt_profiles = dict(prompt_profiles or {})
         self.prompt_projection_enabled = bool(prompt_projection_enabled)
         self.prompt_policy_version = int(prompt_policy_version)
@@ -290,11 +293,15 @@ class TurnEngine:
     ) -> Optional[TurnPlan]:
         if self.turn_planner is None:
             self._active_turn_plan = None
+            self._resolved_market_scope = None
+            self._last_resolved_market_scope = None
             return None
         if self._legacy_prompt_session:
             plan = TurnPlan.legacy()
             self._active_turn_plan = plan
             self._last_turn_plan = plan
+            self._resolved_market_scope = None
+            self._last_resolved_market_scope = None
             return plan
         try:
             plan = self.turn_planner.plan(
@@ -312,10 +319,15 @@ class TurnEngine:
             plan = TurnPlan.legacy()
         self._active_turn_plan = plan
         self._last_turn_plan = plan
+        selection = plan.market_selection
+        scope = selection.intent.scope if selection is not None else None
+        self._resolved_market_scope = scope
+        self._last_resolved_market_scope = scope
         return plan
 
     def _clear_active_plan(self) -> None:
         self._active_turn_plan = None
+        self._resolved_market_scope = None
 
     def _note_tool_signatures(self, tool_calls: list[ToolCall]) -> None:
         """Record exact name+args signatures for consecutive-duplicate detection."""
@@ -508,6 +520,7 @@ class TurnEngine:
         self._cancel.clear()
         # A retry is the same logical turn: reuse the immutable plan exactly.
         self._active_turn_plan = self._last_turn_plan
+        self._resolved_market_scope = self._last_resolved_market_scope
         try:
             yield Event(EventType.TURN_START, {"input": ""})
             async for event in self._loop():
@@ -525,7 +538,7 @@ class TurnEngine:
         if not pending:
             return
         self._cancel.clear()
-        self._activate_plan("(resumed)", durable_resume=True)
+        self._activate_plan(self._resume_plan_input(), durable_resume=True)
         try:
             yield Event(EventType.TURN_START, {"input": "(resumed)"})
             async for event in self._handle_tool_calls(pending):
@@ -536,6 +549,22 @@ class TurnEngine:
                     yield event
         finally:
             self._clear_active_plan()
+
+    def _resume_plan_input(self) -> str | list:
+        """Recover the persisted user request for conservative resume planning.
+
+        Durable resume still routes through the full AGENT surface; the original text is
+        used only so domain guards (notably D-166 market scope) survive a restart while
+        an interactive Tool is pending.
+        """
+
+        for message in reversed(self.messages):
+            if message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if isinstance(content, (str, list)):
+                return content
+        return "(resumed)"
 
     def _unanswered_trailing_tool_calls(self) -> list[ToolCall]:
         """The tool-calls of the last assistant message that don't yet have a tool result —
@@ -1197,6 +1226,25 @@ class TurnEngine:
                 async for event in self._handle_ask_user(tool_call):
                     yield event
                 continue
+            market_guard = self._market_tool_guard(tool_call.name)
+            if market_guard is not None and not market_guard[0]:
+                reason = market_guard[1]
+                self.messages.append(_tool_error_message(tool_call, reason))
+                self._audit(
+                    tool_call,
+                    stage="finished",
+                    status="denied",
+                    reason=reason,
+                )
+                yield Event(
+                    EventType.TOOL_FINISHED,
+                    {
+                        "name": tool_call.name,
+                        "status": "denied",
+                        "reason": reason,
+                    },
+                )
+                continue
             allowed = False
             async for item in self._authorize(tool_call):
                 if isinstance(item, Event):
@@ -1231,6 +1279,13 @@ class TurnEngine:
             self._audit(tool_call, stage="started")
             result, status = await asyncio.to_thread(self._execute_sync, tool_call)
             yield self._record_result(tool_call, result, status)
+
+    def _market_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
+        plan = self._active_turn_plan
+        selection = plan.market_selection if plan is not None else None
+        if selection is None:
+            return None
+        return selection.guard_tool(tool_name, self._resolved_market_scope)
 
     def _interrupted_tool(self, tool_call: ToolCall) -> Event:
         """The stop-path answer for a call that will not run: a tool-error result in the
@@ -1580,6 +1635,15 @@ class TurnEngine:
                 "answer": "",
                 "error": "no response",
             }
+
+        plan = self._active_turn_plan
+        selection = plan.market_selection if plan is not None else None
+        if selection is not None and selection.needs_clarification:
+            answer = result.get("answer") or result.get("answers")
+            resolved_scope = selection.scope_from_answer(answer)
+            if resolved_scope is not None:
+                self._resolved_market_scope = resolved_scope
+                self._last_resolved_market_scope = resolved_scope
 
         status = "ok" if (result.get("answer") or result.get("answers")) else "denied"
         self.messages.append(_tool_result_message(tool_call, result))
