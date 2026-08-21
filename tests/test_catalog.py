@@ -11,7 +11,7 @@ import pytest
 
 from coworker.agents.base import AgentContext
 from coworker.agents.code import CODE_CAPABILITIES, code_agent
-from coworker.agents.cowork import COWORK_CAPABILITIES, cowork_agent
+from coworker.agents.cowork import COWORK_CAPABILITIES, COWORK_INSTRUCTIONS, cowork_agent
 from coworker.catalog import CATALOG, capability, expand, risk_summary
 from coworker.risk import RiskClass
 from coworker.tools.todo import TodoList
@@ -113,3 +113,10 @@ def test_risk_summary():
 def test_unknown_capability_raises():
     with pytest.raises(KeyError):
         capability("does_not_exist")
+
+
+def test_cowork_instructions_prefer_grep_read_for_utf8_text():
+    assert "grep" in COWORK_INSTRUCTIONS
+    assert "read_file" in COWORK_INSTRUCTIONS
+    assert "extract.py" in COWORK_INSTRUCTIONS or "PowerShell" in COWORK_INSTRUCTIONS
+    assert "ChemClaw" in COWORK_INSTRUCTIONS

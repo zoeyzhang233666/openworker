@@ -244,7 +244,7 @@ def _sdk_client_kwargs(
         "api_key": api_key,
         "timeout": httpx.Timeout(
             connect=15.0,
-            read=120.0,
+            read=300.0,
             write=30.0,
             pool=15.0,
         ),
@@ -502,8 +502,15 @@ def _is_stream_transport_error(exc: BaseException) -> bool:
         # OpenAI SDK APIConnectionError default message; also common when a shared
         # httpx client loses a concurrent stream mid-body.
         "connection error",
+        # Gateway / SDK read budget exceeded before first semantic progress (D-184).
+        "timed out",
+        "apitimeouterror",
+        "readtimeout",
+        "request timeout",
     )
     if any(m in text for m in markers) or any(m in name for m in markers):
+        return True
+    if name.endswith("timeouterror") or name.endswith("timeout"):
         return True
     cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
     if cause is not None and cause is not exc:

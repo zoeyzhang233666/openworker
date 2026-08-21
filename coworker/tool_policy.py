@@ -181,6 +181,12 @@ _LOCAL_PRODUCT_CONTROL = frozenset(
         "cancel_wake",
         "calculate_quote",
         "format_lead_list",
+        "start_subagent",
+        "background_task_status",
+        "background_task_output",
+        "background_task_send",
+        "background_task_stop",
+        "background_task_gather",
     }
 )
 

@@ -13,6 +13,7 @@ export type EventType =
   | "plan_proposed"
   | "tool_started"
   | "tool_finished"
+  | "background_task_changed"
   | "iteration_end"
   | "turn_end"
   | "error"

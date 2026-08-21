@@ -41,6 +41,8 @@ export interface Health {
   status: string;
   default_workspace: string | null;
   model: string;
+  /** Global default permission mode (prefs); seeds Composer before WS `ready`. */
+  mode?: string;
 }
 
 export interface RecentWorkspace {
@@ -712,6 +714,226 @@ export async function getAudit(params: {
   if (params.tool) q.set("tool", params.tool);
   const res = await fetch(`${httpBase()}/v1/audit${q.toString() ? "?" + q.toString() : ""}`);
   return (await res.json()).events ?? [];
+}
+
+export interface ScenarioSpec {
+  version: 1;
+  id: string;
+  category: string;
+  title: string;
+  description: string;
+  examples: string[];
+  required_capabilities: string[];
+  optional_capabilities: string[];
+  allow_subagent: boolean;
+  initialized?: boolean;
+  capability_readiness?: CapabilityResolution[];
+}
+
+export interface ScenarioResolution {
+  version: 1;
+  status: "matched" | "ambiguous" | "general" | "invalid";
+  scenario_id: string | null;
+  source: string;
+  confidence: number;
+  candidates: Array<{ scenario_id: string; title: string; confidence: number }>;
+  clarification_options: Array<{ label: string; description: string; scenario_id?: string | null }>;
+  reason: string;
+}
+
+export interface CapabilityResolution {
+  capability_id: string;
+  required: boolean;
+  status: "ready" | "configured" | "unavailable";
+  provider_id?: string | null;
+  tool_names: string[];
+  fallback_used: boolean;
+  reason: string;
+}
+
+export interface TurnPlanPreview {
+  version: 1;
+  scenario: ScenarioResolution;
+  route: string;
+  capability_readiness: CapabilityResolution[];
+  selected_tool_names: string[];
+  blocked_tool_names: string[];
+  skill_names: string[] | null;
+  fallback: string[];
+  estimated_model_calls: number;
+  subagent_eligible: boolean;
+  subagent_started: boolean;
+  warnings: string[];
+}
+
+export interface TurnTrace {
+  version: 1;
+  trace_id: string;
+  parent_trace_id?: string | null;
+  session_id: string;
+  source_kind: string;
+  started_at: string;
+  finished_at: string;
+  scenario_id?: string | null;
+  scenario_source?: string | null;
+  scenario_confidence?: number | null;
+  route: string;
+  capability_ids: string[];
+  selected_tool_names: string[];
+  invoked_tool_names: string[];
+  model: string;
+  model_calls: number;
+  tool_calls: number;
+  web_calls: number;
+  subagent_calls: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  stage_elapsed_ms: Record<string, number>;
+  fallback: string[];
+  outcome_counts: Record<string, number>;
+  status: string;
+}
+
+export type BackgroundTaskStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "interrupted";
+
+export interface BackgroundTask {
+  version: 1;
+  id: string;
+  kind: "agent" | "shell";
+  status: BackgroundTaskStatus;
+  owner_session_id: string;
+  description: string;
+  profile_id?: string | null;
+  profile_title?: string;
+  child_session_id?: string | null;
+  parent_task_id?: string | null;
+  parent_trace_id?: string | null;
+  model?: string | null;
+  created_at: number;
+  updated_at: number;
+  started_at?: number | null;
+  finished_at?: number | null;
+  run_count: number;
+  output_size: number;
+  exit_code?: number | null;
+  error?: string | null;
+  metadata: Record<string, string>;
+}
+
+export interface BackgroundTaskOutputChunk {
+  version: 1;
+  task_id: string;
+  seq: number;
+  stream: "assistant" | "stdout" | "stderr" | "event" | "system";
+  text: string;
+  created_at: number;
+}
+
+export interface BackgroundTaskOutput {
+  version: 1;
+  task_id: string;
+  chunks: BackgroundTaskOutputChunk[];
+  next_cursor: number;
+  truncated: boolean;
+}
+
+export async function getScenarios(sessionId?: string): Promise<ScenarioSpec[]> {
+  const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  const res = await fetch(`${httpBase()}/v1/scenarios${q}`);
+  return (await res.json()).scenarios ?? [];
+}
+
+export async function getPlanPreview(sessionId: string, text: string, scenarioId?: string): Promise<TurnPlanPreview> {
+  const res = await fetch(`${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/plan-preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, ...(scenarioId ? { scenario_id: scenarioId } : {}) }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || "Plan preview failed");
+  return body.preview;
+}
+
+export async function getTurnTraces(params: { session_id?: string; limit?: number } = {}): Promise<TurnTrace[]> {
+  const q = new URLSearchParams();
+  if (params.session_id) q.set("session_id", params.session_id);
+  if (params.limit) q.set("limit", String(params.limit));
+  const res = await fetch(`${httpBase()}/v1/turn-traces${q.toString() ? `?${q}` : ""}`);
+  return (await res.json()).traces ?? [];
+}
+
+export async function getBackgroundTasks(
+  sessionId: string,
+  limit = 100,
+): Promise<BackgroundTask[]> {
+  const q = new URLSearchParams({
+    session_id: sessionId,
+    limit: String(limit),
+  });
+  const res = await fetch(`${httpBase()}/v1/background-tasks?${q}`);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || "Could not load background tasks");
+  return body.tasks ?? [];
+}
+
+export async function getBackgroundTaskOutput(
+  sessionId: string,
+  taskId: string,
+  maxChars = 100_000,
+): Promise<BackgroundTaskOutput> {
+  const q = new URLSearchParams({
+    session_id: sessionId,
+    cursor: "0",
+    max_chars: String(maxChars),
+  });
+  const res = await fetch(
+    `${httpBase()}/v1/background-tasks/${encodeURIComponent(taskId)}/output?${q}`,
+  );
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || "Could not load task output");
+  return body.output;
+}
+
+export async function sendBackgroundTaskMessage(
+  sessionId: string,
+  taskId: string,
+  message: string,
+): Promise<BackgroundTask> {
+  const res = await fetch(
+    `${httpBase()}/v1/background-tasks/${encodeURIComponent(taskId)}/messages`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message }),
+    },
+  );
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || "Could not send task message");
+  return body.task;
+}
+
+export async function stopBackgroundTask(
+  sessionId: string,
+  taskId: string,
+): Promise<BackgroundTask> {
+  const res = await fetch(
+    `${httpBase()}/v1/background-tasks/${encodeURIComponent(taskId)}/stop`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, mode: "immediate" }),
+    },
+  );
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.detail || "Could not stop task");
+  return body.task;
 }
 
 export interface BrowserState {
@@ -2202,7 +2424,7 @@ export class Session {
    * exactly what the user sees — immune to set_model races across reconnects (a new cowork
    * session always reconnects once to adopt its scratch dir, which could drop a queued
    * set_model and leave the engine on a stale/resumed model; found 2026-07-04). */
-  userMessage(text: string, attachments?: unknown[], model?: string, skill?: string) {
+  userMessage(text: string, attachments?: unknown[], model?: string, skill?: string, scenarioId?: string) {
     this.send({
       type: "user_message",
       text,
@@ -2211,6 +2433,7 @@ export class Session {
       // Force-run (SKILLS-SPEC §4.1): the composer's /skill pick rides as its own field;
       // the server validates it against the session's effective menu and frames the turn.
       ...(skill ? { skill } : {}),
+      ...(scenarioId ? { scenario_id: scenarioId } : {}),
     });
   }
 

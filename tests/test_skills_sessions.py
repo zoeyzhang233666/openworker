@@ -167,6 +167,7 @@ def test_live_load_skill_semantics(manager):
     )
     # The menu lives in the per-turn context block, not the static system prompt.
     assert "early" in engine.context_provider()
+    assert "可用技能" not in engine.messages[0]["content"]
     assert "Available skills" not in engine.messages[0]["content"]
 
     # created after build → in the menu from the next turn AND loadable

@@ -118,32 +118,31 @@ def test_build_engine_chat(tmp_path):
     assert "read_file" not in engine.registry.names()
     assert engine.executor is None
     assert engine.agent_name == "chat"
-    # D-063: Mermaid edge-label rule is injected once for every agent.
+    # D-063 / D-180: Mermaid + chart guidance (Simplified Chinese) injected for every agent.
     sys_msg = engine.messages[0]["content"]
-    assert "every edge MUST have a semantic label" in sys_msg
-    assert "prefer a fenced" in sys_msg and "chart-image" in sys_msg
-    assert "time series" in sys_msg and "≥2" in sys_msg
-    assert "price trend" in sys_msg
-    assert "top-level string array" in sys_msg
+    assert "每条边必须有语义标签" in sys_msg
+    assert "```chart" in sys_msg and "chart-image" in sys_msg
+    assert "时间序列" in sys_msg and "≥2" in sys_msg
+    assert "价格走势" in sys_msg
+    assert "顶层字符串数组" in sys_msg
     assert "lookup_yahoo_ohlc" in sys_msg and "candlestick" in sys_msg
     assert "lookup_cn_stock_ohlc" in sys_msg and "lookup_cn_futures_ohlc" in sys_msg
-    assert "from_tool" in sys_msg and "short-ref" in sys_msg
-    assert "artifact preview" in sys_msg.lower()
-    assert "deliverable" in sys_msg.lower()
-    assert "daily" in sys_msg.lower()
-    assert "never `lookup_cn_*_minute`" in sys_msg
+    assert "from_tool" in sys_msg and "短引用" in sys_msg
+    assert "产物" in sys_msg and "预览" in sys_msg
+    assert "日线" in sys_msg
+    assert "`lookup_cn_*_minute`" in sys_msg
     assert "(or ≥12 monthly points)" not in sys_msg
     assert "interval=1wk" in sys_msg and "1mo" in sys_msg
-    assert "Chinese name" in sys_msg
+    assert "中文名" in sys_msg
     assert "stages" in sys_msg and "tone" in sys_msg
-    assert "dominant driver" in sys_msg
-    assert "specific price" in sys_msg
+    assert "主导驱动" in sys_msg
+    assert "具体价位" in sys_msg
     assert "load_skill" in sys_msg and "grilling" in sys_msg
-    assert "nicer webpage" in sys_msg or "美观" in sys_msg or "网页" in sys_msg
-    assert "align" in sys_msg.lower() or "对齐" in sys_msg
-    assert "keep the chat bubble SHORT" in sys_msg
+    assert "网页" in sys_msg
+    assert "对齐" in sys_msg
+    assert "气泡要短" in sys_msg
     assert 'A -->|"采购"| B' in sys_msg
-
+    assert "旁白：" in sys_msg and "工具效率：" in sys_msg
 
 def test_build_engine_code_has_agents_md_and_skills(tmp_path):
     (tmp_path / "AGENTS.md").write_text("PROJECT RULE: prefer pathlib.")

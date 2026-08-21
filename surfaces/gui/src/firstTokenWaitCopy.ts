@@ -1,4 +1,4 @@
-/** First-token / post-align wait copy pools (D-076 / D-079). English keys = en-US; zh via interfaceMessages. */
+/** First-token / post-align / planning-gap wait copy pools (D-076 / D-079 / D-176). English keys = en-US; zh via interfaceMessages. */
 
 /** Interval between rotated lobster wait lines. */
 export const FIRST_TOKEN_WAIT_ROTATE_MS = 3000;
@@ -32,9 +32,17 @@ export const FEEDBACK_WAIT_ROTATION_KEYS = [
   "Lobster noted that — carrying on~",
 ] as const;
 
+/** After reasoning exists but tools/answer have not started yet (D-176 planning gap). */
+export const PLANNING_WAIT_ROTATION_KEYS = [
+  "Lobster is planning the next step…",
+  "Mapping tools for what comes next…",
+  "Still on it — next move soon…",
+] as const;
+
 export type FirstTokenWaitKey = (typeof FIRST_TOKEN_WAIT_ROTATION_KEYS)[number];
 export type FeedbackWaitKey = (typeof FEEDBACK_WAIT_ROTATION_KEYS)[number];
-export type WaitCopyPool = "first" | "feedback";
+export type PlanningWaitKey = (typeof PLANNING_WAIT_ROTATION_KEYS)[number];
+export type WaitCopyPool = "first" | "feedback" | "planning";
 
 export function nextFirstTokenWaitIndex(
   index: number,
@@ -52,7 +60,14 @@ export function advanceFirstTokenWaitIndex(
   return (nextFirstTokenWaitIndex(index, length) + 1) % length;
 }
 
-export type WaitItem = { kind: string; resolved?: string };
+export type WaitItem = {
+  kind: string;
+  resolved?: string;
+  /** Assistant bubble / narration text (D-183 planning: empty+reasoning ≠ progress). */
+  text?: string;
+  /** Settled reasoning sidecar on an assistant item. */
+  reasoning?: string;
+};
 
 /** Index of the latest user message or resolved ask_user question (whichever is later). */
 export function waitAnchorIndex(items: WaitItem[]): number {
@@ -76,12 +91,41 @@ export function hasPostAnchorActivity(items: WaitItem[]): boolean {
   return false;
 }
 
+/**
+ * D-183: tools / approvals / non-empty assistant text after the anchor.
+ * Reasoning-only assistants do not count — they are the settled thinking disclosure.
+ */
+export function hasPostAnchorProgress(items: WaitItem[]): boolean {
+  const anchor = waitAnchorIndex(items);
+  for (let i = anchor + 1; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === "notice") continue;
+    if (it.kind === "tool" || it.kind === "approval") return true;
+    if (it.kind === "assistant") {
+      if ((it.text || "").trim()) return true;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** True when any assistant after the anchor carries non-empty reasoning. */
+export function hasPostAnchorReasoning(items: WaitItem[]): boolean {
+  const anchor = waitAnchorIndex(items);
+  for (let i = anchor + 1; i < items.length; i++) {
+    const it = items[i];
+    if (it.kind === "assistant" && (it.reasoning || "").trim()) return true;
+  }
+  return false;
+}
+
 /** @deprecated Prefer hasPostAnchorActivity (D-079). */
 export function hasPostUserTurnActivity(items: WaitItem[]): boolean {
   return hasPostAnchorActivity(items);
 }
 
-/** Which lobster copy pool to rotate for the current empty window. */
+/** first vs feedback pool for empty-window lobster wait (not planning). */
 export function waitCopyPool(items: WaitItem[]): WaitCopyPool {
   const anchor = waitAnchorIndex(items);
   if (anchor < 0) return "first";
@@ -98,7 +142,9 @@ export function waitCopyPool(items: WaitItem[]): WaitCopyPool {
 }
 
 export function waitRotationKeys(pool: WaitCopyPool): readonly string[] {
-  return pool === "feedback" ? FEEDBACK_WAIT_ROTATION_KEYS : FIRST_TOKEN_WAIT_ROTATION_KEYS;
+  if (pool === "feedback") return FEEDBACK_WAIT_ROTATION_KEYS;
+  if (pool === "planning") return PLANNING_WAIT_ROTATION_KEYS;
+  return FIRST_TOKEN_WAIT_ROTATION_KEYS;
 }
 
 /** Lobster wait: running, no compact/reasoning/stream, nothing after wait anchor yet. */
@@ -119,4 +165,24 @@ export function isFirstTokenEmptyWindow(
 /** Live ThinkingBlock defaultOpen: still before tools/answer bubbles (reasoning allowed). */
 export function isFirstTokenThinkingOpen(items: WaitItem[]): boolean {
   return !hasPostAnchorActivity(items);
+}
+
+/**
+ * D-176 + D-183: planning hint under thinking while awaiting tools/answer.
+ * - Live: `reasoningStream` before any progress (tools / non-empty answer).
+ * - Settled: live cleared but reasoning-only assistant already in items (collapse continuity).
+ */
+export function isPlanningWaitWindow(
+  items: WaitItem[],
+  opts: {
+    running: boolean;
+    compacting: boolean;
+    reasoningStream: string;
+    streaming: string;
+  },
+): boolean {
+  if (!opts.running || opts.compacting) return false;
+  if (opts.streaming) return false;
+  if (hasPostAnchorProgress(items)) return false;
+  return !!opts.reasoningStream || hasPostAnchorReasoning(items);
 }

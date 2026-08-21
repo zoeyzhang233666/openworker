@@ -341,6 +341,15 @@ body {
 .md a:hover { text-decoration: underline; }
 .md hr { border: none; border-top: 1px solid var(--line); margin: 18px 0; }
 .md img { max-width: 100%; border-radius: 8px; }
+
+/* LaTeX (KaTeX) — keep display math from blowing out chat / artifact width */
+.md .katex { font-size: 1.05em; }
+.md .katex-display {
+  margin: 8px 0 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
 .stream-cursor { color: var(--accent); animation: blink 1s steps(2, start) infinite; margin-left: 1px; }
 @keyframes blink { to { opacity: 0; } }
 .waiting-transcript { max-width: 760px; margin: 18px auto 0; display: flex; }
@@ -582,6 +591,43 @@ button.btn.danger { color: var(--accent); }
 }
 .rail-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .rail-actions .btn { padding: 6px 9px; font-size: 12px; border-radius: 8px; }
+.background-task-list { display: flex; flex-direction: column; gap: 7px; }
+.background-task-row {
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) 14px; gap: 9px;
+  width: 100%; align-items: center; text-align: left; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 58%, transparent); color: var(--ink);
+  border-radius: 10px; padding: 9px; cursor: pointer; font: inherit;
+}
+.background-task-row:hover { border-color: var(--line-strong); background: var(--panel); }
+.background-task-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.background-task-title { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.background-task-description { font-size: 12px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.background-task-description.detail { color: var(--ink); padding: 8px 9px; border-radius: 8px; background: var(--panel); }
+.background-task-meta { font-size: 11px; color: var(--faint); }
+.background-task-status { width: 8px; height: 8px; border-radius: 999px; background: var(--faint); box-shadow: 0 0 0 3px color-mix(in srgb, var(--faint) 14%, transparent); }
+.background-task-status.queued { background: var(--faint); }
+.background-task-status.running { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); animation: task-status-pulse 1.4s ease-in-out infinite; }
+.background-task-status.completed { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 14%, transparent); }
+.background-task-status.failed { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent); }
+.background-task-status.cancelled, .background-task-status.interrupted { background: var(--muted); }
+@keyframes task-status-pulse { 50% { opacity: .45; } }
+.background-task-detail { display: flex; flex-direction: column; gap: 10px; }
+.background-task-back { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; padding: 0; cursor: pointer; }
+.background-task-back:hover { color: var(--ink); }
+.background-task-detail-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.background-task-detail-title { font-size: 13px; font-weight: 650; color: var(--ink); }
+.background-task-output { display: flex; flex-direction: column; gap: 7px; max-height: 310px; overflow: auto; padding: 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); }
+.background-task-output-line { font-size: 11.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
+.background-task-output-line.system { color: var(--faint); font-style: italic; }
+.background-task-report { padding-top: 7px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.background-task-report:first-child { padding-top: 0; border-top: 0; }
+.background-task-output-label { margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.background-task-report .markdown { font-size: 12px; }
+.background-task-actions { display: flex; gap: 7px; }
+.background-task-followup { display: flex; flex-direction: column; gap: 7px; }
+.background-task-followup textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 62px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 8px 9px; font: inherit; font-size: 12px; line-height: 1.4; }
+.background-task-followup textarea::placeholder { color: var(--faint); }
+.background-task-followup .btn { align-self: flex-end; }
 .browser-mini { display: flex; flex-direction: column; gap: 8px; }
 .browser-shot { display: block; width: 100%; max-height: 220px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .artifact-list { display: flex; flex-direction: column; gap: 7px; }

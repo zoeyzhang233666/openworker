@@ -166,21 +166,17 @@ interface Props {
   // Scheduled-band row click: open the Automations surface ON that automation (UX-023).
   onOpenAutomation: (id: string) => void;
   onOpenIntegrations: () => void;
-  onOpenAudit: () => void;
   onOpenInbox: () => void;
   onOpenSkills?: () => void;
   onOpenExperts?: () => void;
-  onOpenLeads?: () => void;
   onOpenSession?: () => void;
   onOpenSettings?: () => void;
   scheduledActive: boolean;
   integrationsActive: boolean;
-  auditActive: boolean;
   inboxActive: boolean;
   sessionActive?: boolean;
   skillsActive?: boolean;
   expertsActive?: boolean;
-  leadsActive?: boolean;
   settingsActive?: boolean;
   // Collapse controls (⌘B / hover-peek). `onCollapse` docks/undocks; `onPeekLeave` hides the
   // floating peek when the pointer leaves the panel.
@@ -373,10 +369,7 @@ export function Sidebar(props: Props) {
     setLayout(next);
     setNavLayout(next).catch(() => {});
   };
-  // Chronological RECENT list: cap at RECENT_PEEK with a Show more/less toggle so the sidebar
-  // doesn't grow unbounded.
-  const RECENT_PEEK = 4;
-  const [recentExpanded, setRecentExpanded] = useState(false);
+  // Chronological RECENT list shows all sessions (scrollable); no peek / "Show more".
   // The RECENT-header group/filter popover (§20). Filter = show only these personas (empty = all).
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const [filterPersonas, setFilterPersonas] = useState<Set<string>>(new Set());
@@ -1110,13 +1103,6 @@ export function Sidebar(props: Props) {
           "nav-experts",
         )}
         {primaryNavItem(
-          "book",
-          t("nav.leads"),
-          () => props.onOpenLeads?.(),
-          !!props.leadsActive,
-          "nav-leads",
-        )}
-        {primaryNavItem(
           "clock",
           t("nav.scheduled"),
           props.onOpenScheduled,
@@ -1210,22 +1196,7 @@ export function Sidebar(props: Props) {
         {normalizedQuery ? t("sidebar.emptySearch") : t("sidebar.empty")}
                 </div>
               ) : (
-                <>
-                  {(recentExpanded
-                    ? recentSessions
-                    : recentSessions.slice(0, RECENT_PEEK)
-                  ).map((s) => cardRow(s))}
-                  {recentSessions.length > RECENT_PEEK && (
-                    <button
-                      className="w-full text-left px-2 py-1.5 text-[12px] text-muted hover:text-ink"
-                      onClick={() => setRecentExpanded((v) => !v)}
-                    >
-                      {recentExpanded
-                        ? t("Show less")
-                        : t("Show {count} more", { count: recentSessions.length - RECENT_PEEK })}
-                    </button>
-                  )}
-                </>
+                recentSessions.map((s) => cardRow(s))
               )}
             </div>
             )}
@@ -1306,7 +1277,6 @@ export function Sidebar(props: Props) {
                   <span className="text-[11px] text-faint">⌘ ,</span>,
                 )}
                 {appMenuItem("clock", t("Automations"), props.onOpenScheduled, props.scheduledActive)}
-                {appMenuItem("audit", t("Activity"), props.onOpenAudit, props.auditActive)}
                 {CLOUD_SIGNIN_ENABLED && cloud?.signed_in && (
                   <>
                     <div className="h-px bg-line my-1 mx-2" />

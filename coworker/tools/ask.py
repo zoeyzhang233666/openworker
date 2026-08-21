@@ -49,42 +49,39 @@ _ASK_SCHEMA = {
     "function": {
         "name": "ask_user",
         "description": (
-            "Ask the user one or more questions and wait for their answer. Use for decisions or "
-            "information only the user can provide. Group related questions (up to "
-            f"{MAX_GROUPED_QUESTIONS}) into one call via `questions` instead of asking serially."
+            "向用户提出一个或多个问题并等待回答。用于只有用户能提供的决策或信息。"
+            f"相关问题（最多 {MAX_GROUPED_QUESTIONS} 个）请用 `questions` 一次问完，不要串行连问。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "The full question, in plain language (single-question form).",
+                    "description": "完整问题（单题形式），用白话书写。",
                 },
                 "options": {
                     "type": "array",
                     "items": _OPTION_SCHEMA,
                     "description": (
-                        "Optional quick-reply choices: plain strings, or objects with `label` "
-                        "(required — this is the answer value), `description` (why/when to pick "
-                        "it), `recommended` (green tag; list that option first), and `preview` "
-                        "(monospace text — code, config, a mockup — shown in a side pane)."
+                        "可选快捷选项：纯字符串，或含 `label`（必填，即答案值）、"
+                        "`description`（何时选它）、`recommended`（绿色推荐标签，该项放首位）、"
+                        "`preview`（等宽预览文本——代码、配置、示意——显示在侧栏）的对象。"
                     ),
                 },
                 "allow_text": {
                     "type": "boolean",
                     "description": (
-                        "Keep a free-text answer available even when options exist (default true; "
-                        'the "Other / type your own" escape). Set false only when the options '
-                        "are exhaustive."
+                        "即使有选项也保留自由文本作答（默认 true；即「其他 / 自己输入」出口）。"
+                        "仅当选项穷尽时才设为 false。"
                     ),
                 },
                 "multi": {
                     "type": "boolean",
-                    "description": "Allow the user to pick more than one option.",
+                    "description": "允许用户多选。",
                 },
                 "header": {
                     "type": "string",
-                    "description": 'Short (≤ ~12 char) chip label for the card, e.g. "Region".',
+                    "description": "卡片短标签（约 ≤12 字），例如「地区」。",
                 },
                 "questions": {
                     "type": "array",
@@ -96,8 +93,7 @@ _ASK_SCHEMA = {
                             "header": {
                                 "type": "string",
                                 "description": (
-                                    "Short (≤ ~12 char) label — names this step in the stepper "
-                                    "chips and keys its answer in the result."
+                                    "短标签（约 ≤12 字）——命名步进器芯片，并作为结果中该题答案的键。"
                                 ),
                             },
                             "options": {"type": "array", "items": _OPTION_SCHEMA},
@@ -107,9 +103,8 @@ _ASK_SCHEMA = {
                         "required": ["question"],
                     },
                     "description": (
-                        f"Grouped form: up to {MAX_GROUPED_QUESTIONS} questions asked in ONE "
-                        "round-trip, rendered as a stepper. When set, the singular "
-                        "question/options fields are ignored."
+                        f"分组形式：最多 {MAX_GROUPED_QUESTIONS} 题一次往返，渲染为步进器。"
+                        "设置后忽略单题 question/options 字段。"
                     ),
                 },
             },

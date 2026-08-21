@@ -36,6 +36,21 @@ from ..subscriptions import ChannelBuffer, SubscriptionStore
 from ..unrouted import UnroutedStore
 from ..unattended import UnattendedRegistry
 from ..audit import AuditStore
+from ..tracing import TurnTraceStore
+from ..background_tasks import (
+    BackgroundTaskChange,
+    BackgroundTaskManager,
+    BackgroundTaskRecord,
+    BackgroundTaskStore,
+)
+from ..background_tasks.models import TERMINAL_TASK_STATUSES
+from ..subagents import SubagentProfile, SubagentRuntime
+from ..subagents.cohort import (
+    DelegationCohortTracker,
+    format_cohort_synthesis_message,
+)
+from ..capabilities import CapabilityResolver
+from ..scenarios import ScenarioResolver, builtin_scenario_registry
 from ..config import load_config, workspace_allowed_commands
 from ..conversations import ConversationStore, title_from
 from ..engine import ApprovalOutcome, Approver, TurnEngine
@@ -144,6 +159,8 @@ class SessionManager:
         self.memory_store: MemoryStore = SQLiteMemoryStore(base / "coworker.db")
         self.memory_settings = MemorySettingsStore(base / "memory-settings.json")
         self.audit_store = AuditStore(base / "coworker.db")
+        self.trace_store = TurnTraceStore(base / "coworker.db")
+        self.background_task_store = BackgroundTaskStore(base / "coworker.db")
         self.session_store = ConversationStore(base)
         self.session_store.canonicalize_workspaces()  # collapse /tmp vs /private/tmp etc.
         if self.default_workspace:
@@ -190,6 +207,7 @@ class SessionManager:
         # whoever drives the turn (foreground user_message, channel delivery, self-wake, resume).
         # Delivery itself is socket-independent — this only governs *live visibility*.
         self._session_clients: dict[str, set[Any]] = {}
+        self._background_task_event_loop: asyncio.AbstractEventLoop | None = None
         # App-wide event sockets (/ws/events): session-independent pushes — today the
         # automation-run-started toast (UX-026); badges could ride it later.
         self._event_clients: set[Any] = set()
@@ -260,6 +278,27 @@ class SessionManager:
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).
         self.unrouted = UnroutedStore(base / "unrouted.json")
+        # D-171: one lifecycle manager owns Agent + Shell background work. Subagents are
+        # adapters over the existing TurnEngine; the adapter factory also rehydrates a
+        # completed/interrupted Agent task when a later message arrives after restart.
+        self.background_tasks = BackgroundTaskManager(self.background_task_store)
+        self.delegation_cohorts = DelegationCohortTracker(
+            base / "delegation_cohorts.json"
+        )
+        self.subagent_runtime = SubagentRuntime(
+            self.background_tasks,
+            engine_factory=self._build_subagent_engine,
+            engine_saver=self._save_subagent_engine,
+            cohort_tracker=self.delegation_cohorts,
+        )
+        self.background_tasks.agent_adapter_factory = (
+            self.subagent_runtime.adapter_for_record
+        )
+        self._background_task_unsubscribe = (
+            self.background_tasks.register_change_listener(
+                self._on_background_task_change
+            )
+        )
 
     # -- workspaces -------------------------------------------------------------
     def open_workspace(self, path: str, *, create: bool = False) -> dict[str, Any]:
@@ -479,6 +518,8 @@ class SessionManager:
             wake_store=self.wakes,
             session_id=session_id,
             audit_sink=self.audit_store.append,
+            trace_sink=self.trace_store.append,
+            configured_tool_names=self.configured_mcp_markers(ws),
             roots=roots,
             # WS sessions pass mode-aware callbacks (attended → live prompt, unattended → Inbox).
             # Background / self-wake / durable-resume runs have no live socket → default to the
@@ -505,6 +546,8 @@ class SessionManager:
                 if sid in self.effective_skill_names(session_id, ws)
             ]
             or None,
+            subagent_runtime=self.subagent_runtime,
+            background_task_manager=self.background_tasks,
         )
         # An automation run rebuilt here (manual "Run now" over WS, durable resume) still
         # carries its task's standing allowances — the rules live on the task record.
@@ -530,6 +573,109 @@ class SessionManager:
         if is_new_session:
             self._emit_session_created(session_id, agent_name)
         return engine
+
+    def _build_subagent_engine(
+        self, record: BackgroundTaskRecord, profile: SubagentProfile
+    ) -> TurnEngine:
+        """Build/rebuild a child through the same engine assembly and permission stack."""
+        child_session_id = record.child_session_id or record.id
+        stored = self.session_store.load(child_session_id)
+        agent = get_agent(profile.agent_id)
+        model = record.model or profile.model or (stored.model if stored else self.model)
+        mode = Mode(profile.mode)
+        workspace = record.workspace or (stored.workspace if stored else "")
+        if agent.needs_workspace and not workspace:
+            raise ValueError(f"subagent profile '{profile.id}' requires a workspace")
+        parent_engine = self._engines.get(record.owner_session_id)
+        # Shared-workspace profiles (research/worker) inherit the parent session mode so
+        # "完全访问" (auto) propagates; interactive parents still require Inbox approval.
+        if parent_engine is not None and profile.isolation == "shared_workspace":
+            mode = parent_engine.permissions.mode
+        inherited_mcp_tools: list[Any] = []
+        if parent_engine is not None and profile.mcp_servers:
+            wanted_servers = set(profile.mcp_servers)
+            for descriptor in parent_engine.registry.descriptors():
+                if descriptor.category != "mcp":
+                    continue
+                if not (wanted_servers & set(descriptor.capabilities)):
+                    continue
+                spec = parent_engine.registry.get(descriptor.name)
+                if spec is not None:
+                    inherited_mcp_tools.append(spec.func)
+        tool_allowlist = (
+            None
+            if profile.tool_allowlist is None
+            else tuple(
+                dict.fromkeys(
+                    [
+                        *profile.tool_allowlist,
+                        *(getattr(tool, "__name__", "") for tool in inherited_mcp_tools),
+                    ]
+                )
+            )
+        )
+        engine = build_engine(
+            agent=agent,
+            workspace=workspace or None,
+            model=model,
+            mode=mode,
+            provider=self.provider,
+            memory_store=self.memory_store,
+            memory_off=not self.memory_settings.enabled,
+            memory_saving_enabled=lambda: self.memory_settings.enabled,
+            user_rules=lambda: self.memory_settings.user_rules,
+            on_memory_saved=self._memory_saved_notifier(child_session_id),
+            messages=stored.messages if stored else None,
+            extra_tools=inherited_mcp_tools or None,
+            secrets=self.secrets,
+            task_store=None,
+            wake_store=None,
+            session_id=child_session_id,
+            audit_sink=self.audit_store.append,
+            trace_sink=self.trace_store.append,
+            configured_tool_names=self.configured_mcp_markers(workspace or None),
+            approver=self.inbox_approver(child_session_id, profile.agent_id),
+            directory_requester=self.inbox_directory_requester(
+                child_session_id, profile.agent_id
+            ),
+            plan_approver=self.inbox_plan_approver(
+                child_session_id, profile.agent_id
+            ),
+            question_asker=self.inbox_question_asker(
+                child_session_id, profile.agent_id
+            ),
+            connector_filter=self.effective_connectors(
+                record.owner_session_id, profile.agent_id
+            ),
+            skill_filter=lambda sid=record.owner_session_id, w=workspace: (
+                self.effective_skill_names(sid, w)
+            ),
+            skill_dirs=self._skill_dirs(workspace or None),
+            default_skill_ids=list(profile.skills) or None,
+            max_iterations=profile.max_turns,
+            model_settings=(
+                {"reasoning_effort": profile.effort} if profile.effort else None
+            ),
+            enable_subagents=profile.allow_nested,
+            tool_allowlist=tool_allowlist,
+            disallowed_tool_names=profile.disallowed_tools,
+            system_prompt_override=profile.instructions,
+            background_task_manager=self.background_tasks,
+        )
+        from ..market_intent import restore_market_selection_from_metadata
+
+        inherited = restore_market_selection_from_metadata(record.metadata)
+        if inherited is not None:
+            engine._inherited_market_selection = inherited
+        self._engines[child_session_id] = engine
+        return engine
+
+    def _save_subagent_engine(
+        self, record: BackgroundTaskRecord, engine: TurnEngine
+    ) -> None:
+        child_session_id = record.child_session_id or record.id
+        self._engines[child_session_id] = engine
+        self.save(child_session_id, engine)
 
     def _emit_session_created(self, session_id: str, persona_id: str) -> None:
         """Phase 5 telemetry, fired once per brand-new session on a background thread
@@ -1108,6 +1254,18 @@ class SessionManager:
             out.extend(callables)
         return out
 
+    def configured_mcp_markers(self, workspace: Optional[str] = None) -> list[str]:
+        """Configured-but-not-connected MCP server markers for dry-run readiness."""
+        return [
+            f"mcp__{server.name}"
+            for server in load_mcp_servers(
+                workspace,
+                secrets=self.secrets,
+                workspace_trusted=self._mcp_workspace_trusted(workspace),
+            )
+            if server.enabled
+        ]
+
     def list_mcp(self) -> list[dict[str, Any]]:
         """Servers from the global config + connection status (does not connect)."""
         from ..mcp import oauth as mcp_oauth
@@ -1381,6 +1539,238 @@ class SessionManager:
         return self.audit_store.list(
             limit=limit, session_id=session_id, connector=connector, tool=tool
         )
+
+    def list_scenarios(self, session_id: Optional[str] = None) -> list[dict[str, Any]]:
+        engine = self._engines.get(session_id or "")
+        descriptors = tuple(engine.registry.descriptors()) if engine is not None else ()
+        configured = self.configured_mcp_markers(
+            str(getattr(engine, "audit_context", {}).get("workspace", "")) or None
+            if engine is not None
+            else self.default_workspace
+        )
+        scenario_resolver = ScenarioResolver()
+        capability_resolver = CapabilityResolver()
+        out: list[dict[str, Any]] = []
+        for spec in builtin_scenario_registry().list():
+            resolution = scenario_resolver.resolve(
+                "", explicit_scenario_id=spec.id, tools=descriptors
+            )
+            readiness = capability_resolver.resolve(
+                resolution,
+                text=spec.examples[0] if spec.examples else "",
+                tools=descriptors,
+                configured_tool_names=configured,
+            )
+            out.append(
+                {
+                    **spec.model_dump(),
+                    "initialized": engine is not None,
+                    "capability_readiness": [
+                        item.model_dump() for item in readiness.resolutions
+                    ],
+                }
+            )
+        return out
+
+    def list_subagent_profiles(self) -> list[dict[str, Any]]:
+        return [profile.model_dump() for profile in self.subagent_runtime.profiles.list()]
+
+    def bind_background_task_event_loop(
+        self, loop: asyncio.AbstractEventLoop | None
+    ) -> None:
+        self._background_task_event_loop = loop
+
+    def _background_task_dict(
+        self, record: BackgroundTaskRecord
+    ) -> dict[str, Any]:
+        data = record.model_dump()
+        profile = (
+            self.subagent_runtime.profiles.get(record.profile_id)
+            if record.profile_id
+            else None
+        )
+        data["profile_title"] = (
+            profile.title if profile is not None else ("后台命令" if record.kind == "shell" else "子智能体")
+        )
+        return data
+
+    def _on_background_task_change(self, change: BackgroundTaskChange) -> None:
+        task = change.task
+        ready = None
+        if (
+            change.change == "status"
+            and task.kind == "agent"
+            and task.status in TERMINAL_TASK_STATUSES
+        ):
+            # Claude/OpenHarness-style completion wake for explicit wake_on(job_id).
+            self.wakes.complete_job(task.id)
+            ready = self.delegation_cohorts.on_terminal(
+                task.id, status=task.status, error=task.error
+            )
+
+        loop = self._background_task_event_loop
+        if loop is None or not loop.is_running():
+            return
+        payload = {
+            "type": "background_task_changed",
+            "data": {
+                "change": change.change,
+                "task": self._background_task_dict(task),
+            },
+        }
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self.broadcast_session(task.owner_session_id, payload), loop
+            )
+        except RuntimeError:
+            pass
+        if (
+            change.change == "status"
+            and task.kind == "agent"
+            and task.status in TERMINAL_TASK_STATUSES
+        ):
+            try:
+                asyncio.run_coroutine_threadsafe(self.resume_due_wakes(), loop)
+            except RuntimeError:
+                pass
+        if ready is not None:
+            message = format_cohort_synthesis_message(ready)
+            source = {
+                "kind": "subagent_cohort_complete",
+                "cohort_id": ready.cohort_id,
+                "parent_trace_id": ready.parent_trace_id,
+                "task_ids": [m.task_id for m in ready.members],
+            }
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self.deliver_to_session(
+                        ready.owner_session_id, message, source=source
+                    ),
+                    loop,
+                )
+            except RuntimeError:
+                pass
+
+    def start_background_agent(
+        self,
+        session_id: str,
+        *,
+        task: str,
+        profile_id: str,
+        description: str | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        engine = self._engines.get(session_id)
+        stored = self.session_store.load(session_id)
+        if engine is None and stored is None:
+            raise KeyError(f"unknown session: {session_id}")
+        workspace = (
+            str((getattr(engine, "audit_context", {}) or {}).get("workspace") or "")
+            if engine is not None
+            else str(stored.workspace or "")
+        )
+        record = self.subagent_runtime.start(
+            task=task,
+            profile_id=profile_id,
+            owner_session_id=session_id,
+            workspace=workspace,
+            description=description,
+            model=model,
+            join_cohort=True,
+        )
+        return self._background_task_dict(record)
+
+    def list_background_tasks(
+        self,
+        *,
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        if status is not None and status not in {
+            "queued",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "interrupted",
+        }:
+            raise ValueError(f"invalid background task status: {status}")
+        return [
+            self._background_task_dict(record)
+            for record in self.background_tasks.list(
+                owner_session_id=session_id, status=status, limit=limit
+            )
+        ]
+
+    def get_background_task(
+        self, task_id: str, *, session_id: str | None = None
+    ) -> dict[str, Any] | None:
+        record = self.background_tasks.get(task_id, owner_session_id=session_id)
+        return self._background_task_dict(record) if record is not None else None
+
+    def background_task_output(
+        self,
+        task_id: str,
+        *,
+        session_id: str | None = None,
+        cursor: int = 0,
+        max_chars: int = 20_000,
+    ) -> dict[str, Any]:
+        return self.background_tasks.read_output(
+            task_id,
+            owner_session_id=session_id,
+            cursor=cursor,
+            max_chars=max_chars,
+        ).model_dump()
+
+    def send_background_task_message(
+        self, task_id: str, *, session_id: str, message: str
+    ) -> dict[str, Any]:
+        record = self.background_tasks.send_message(
+            task_id, message, owner_session_id=session_id
+        )
+        return self._background_task_dict(record)
+
+    def stop_background_task(
+        self, task_id: str, *, session_id: str, mode: str = "immediate"
+    ) -> dict[str, Any]:
+        record = self.background_tasks.stop(
+            task_id, owner_session_id=session_id, mode=mode
+        )
+        return self._background_task_dict(record)
+
+    def gather_background_tasks(
+        self, task_ids: list[str], *, session_id: str, timeout: float
+    ) -> list[dict[str, Any]]:
+        return [
+            self._background_task_dict(record)
+            for record in self.background_tasks.gather(
+                task_ids, owner_session_id=session_id, timeout=timeout
+            )
+        ]
+
+    def plan_preview(
+        self, session_id: str, *, text: str, scenario_id: str | None = None
+    ) -> dict[str, Any]:
+        engine = self._engines.get(session_id)
+        if engine is None:
+            engine = self.get_engine(session_id)
+        if engine is None:
+            raise KeyError(f"unknown session: {session_id}")
+        return engine.preview_plan(text, scenario_id=scenario_id).model_dump()
+
+    def list_turn_traces(
+        self, *, session_id: Optional[str] = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        return [
+            item.model_dump()
+            for item in self.trace_store.list(session_id=session_id, limit=limit)
+        ]
+
+    def get_turn_trace(self, trace_id: str) -> dict[str, Any] | None:
+        item = self.trace_store.get(trace_id)
+        return item.model_dump() if item is not None else None
 
     def browser_state(self) -> dict[str, Any]:
         return browser_state()
@@ -2991,7 +3381,11 @@ class SessionManager:
     async def aclose(self) -> None:
         await self.scheduler.stop()
         await self.stop_gateway()
+        self.bind_background_task_event_loop(None)
+        self._background_task_unsubscribe()
+        self.background_tasks.close(wait=False)
         await self.mcp.aclose()
+        self.trace_store.close()
         self.audit_store.close()
 
     # -- automation (scheduled tasks) -------------------------------------------
@@ -3142,6 +3536,8 @@ class SessionManager:
             task_store=None,
             session_id=session_id,
             audit_sink=self.audit_store.append,
+            trace_sink=self.trace_store.append,
+            configured_tool_names=self.configured_mcp_markers(task.workspace),
             # Scheduled runs respect the same per-session connection hierarchy as live sessions:
             # expose only the persona's effective-enabled connectors' tools (§4.3).
             connector_filter=self.effective_connectors(session_id, task.agent),
@@ -3323,7 +3719,15 @@ class SessionManager:
             engine.queue_steering(message, source)
             return
         try:
-            async for event in engine.run(message, source=source):
+            async for event in engine.run(
+                message,
+                source=source,
+                trace_source_kind=(
+                    str(source.get("kind") or "background")
+                    if source
+                    else "background"
+                ),
+            ):
                 # Stream every event to any socket viewing this session, so a background turn
                 # (channel delivery, self-wake, durable resume) is seen live — not just on reselect.
                 await self.broadcast_session(
@@ -3575,7 +3979,9 @@ class SessionManager:
             f"{task.instructions}"
         )
         try:
-            async for _event in engine.run(opening):
+            async for _event in engine.run(
+                opening, trace_source_kind="automation"
+            ):
                 pass
             run.result_text = _last_assistant_text(engine.messages)
             run.artifacts = _recent_files(task.workspace, since=run.started_at)

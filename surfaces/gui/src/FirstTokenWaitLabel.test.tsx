@@ -7,6 +7,7 @@ import {
   FEEDBACK_WAIT_ROTATION_KEYS,
   FIRST_TOKEN_WAIT_ROTATE_MS,
   FIRST_TOKEN_WAIT_ROTATION_KEYS,
+  PLANNING_WAIT_ROTATION_KEYS,
 } from "./firstTokenWaitCopy";
 
 afterEach(() => {
@@ -95,5 +96,19 @@ describe("FirstTokenWaitLabel", () => {
       vi.advanceTimersByTime(FIRST_TOKEN_WAIT_ROTATE_MS);
     });
     expect(screen.getByText(zh(FEEDBACK_WAIT_ROTATION_KEYS[1]))).toBeTruthy();
+  });
+
+  it("rotates the planning pool under live thinking (D-176)", () => {
+    render(
+      <LocaleProvider>
+        <FirstTokenWaitLabel active pool="planning" />
+      </LocaleProvider>,
+    );
+    expect(screen.getByTestId("first-token-wait").getAttribute("data-pool")).toBe("planning");
+    expect(screen.getByText(zh(PLANNING_WAIT_ROTATION_KEYS[0]))).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(FIRST_TOKEN_WAIT_ROTATE_MS);
+    });
+    expect(screen.getByText(zh(PLANNING_WAIT_ROTATION_KEYS[1]))).toBeTruthy();
   });
 });

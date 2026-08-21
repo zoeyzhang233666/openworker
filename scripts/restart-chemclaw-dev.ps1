@@ -5,7 +5,7 @@
 #   4) start Vite GUI in another new PowerShell window
 #
 # Usage (from anywhere):
-#   powershell -File D:\OpenWorker\openworker\.worktrees\chemclaw-clean\scripts\restart-chemclaw-dev.ps1
+#   powershell -File D:\OpenWorker\openworker\.worktrees\chemclaw-UI\scripts\restart-chemclaw-dev.ps1
 #   powershell -File .\scripts\restart-chemclaw-dev.ps1
 #
 # Optional:

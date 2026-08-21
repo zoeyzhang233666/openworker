@@ -33,8 +33,7 @@ def request_directory_tool() -> object:
             risk_level="low",
             capabilities=["request_directory"],
             description=(
-                "Ask the user to grant access to a directory (read-only or read-write) when the "
-                "task needs files outside the directories you already have."
+                "当任务需要访问你尚未拥有的目录中的文件时，请求用户授予目录权限（只读或读写）。"
             ),
         ),
     )

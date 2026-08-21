@@ -76,4 +76,4 @@ def test_long_task_guidance_names_internal_charts_dir():
     from coworker.agent import _LONG_TASK_GUIDANCE
 
     assert "._chemclaw/charts/" in _LONG_TASK_GUIDANCE
-    assert "workspace root" in _LONG_TASK_GUIDANCE
+    assert "工作区根" in _LONG_TASK_GUIDANCE

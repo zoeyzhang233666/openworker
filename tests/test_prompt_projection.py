@@ -75,7 +75,7 @@ def test_fresh_default_session_projects_fast_prompt_tools_and_skills(
 
     canonical = engine.messages[0]
     assert canonical["_prompt_policy_version"] == 1
-    assert "every edge MUST have a semantic label" in canonical["content"]
+    assert "每条边必须有语义标签" in canonical["content"]
 
     events = _collect(engine)
     assert engine._last_turn_plan is not None
@@ -89,9 +89,11 @@ def test_fresh_default_session_projects_fast_prompt_tools_and_skills(
     assert "reasoning_effort" not in call["settings"]
     system = call["messages"][0]["content"]
     outbound = "\n".join(str(message.get("content", "")) for message in call["messages"])
-    assert "You are ChemClaw" in system
+    assert "你是 ChemClaw" in system
+    assert "用简体中文思考与回复" in system
     assert len(system) < 4_000
     assert "Mermaid" not in outbound
+    assert "可用技能" not in outbound
     assert "Available skills" not in outbound
     assert str(tmp_path) not in outbound
     assert "long-running" not in outbound.lower()
@@ -138,14 +140,17 @@ def test_production_engine_projects_explicit_spot_to_dynamic_mcp_only(
     _collect(engine, "查甲醇现货价格")
     call = provider.calls[0]
     assert [item["function"]["name"] for item in call["tools"]] == [
-        "mcp__chem_data_hub__get_price_trend"
+        "mcp__chem_data_hub__get_price_trend",
+        "web_search",
+        "web_fetch",
     ]
     outbound = "\n".join(str(item.get("content", "")) for item in call["messages"])
-    assert "CHEMICAL SPOT" in outbound
-    assert "Do not call CN futures, Yahoo, or Web to substitute" in outbound
+    assert "化工现货" in outbound
+    assert "禁止用国内期货或 Yahoo 替代现货价" in outbound
+    assert "最后手段" in outbound
 
 
-def test_production_engine_reports_spot_unavailable_without_fallback_schema(
+def test_production_engine_reports_spot_unavailable_allows_web_fallback_schema(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr("coworker.agent.load_config", lambda *a, **k: Config())
@@ -158,10 +163,11 @@ def test_production_engine_reports_spot_unavailable_without_fallback_schema(
     )
     _collect(engine, "查甲醇现货价格")
     call = provider.calls[0]
-    assert call["tools"] is None
+    names = [item["function"]["name"] for item in (call["tools"] or [])]
+    assert names == ["web_search", "web_fetch"]
     outbound = "\n".join(str(item.get("content", "")) for item in call["messages"])
-    assert "get_price_trend` is not available" in outbound
-    assert "report unavailable in Chinese" in outbound
+    assert "`get_price_trend` 当前不可用" in outbound
+    assert "web_search" in outbound or "网页" in outbound
 
 
 def test_existing_session_without_policy_marker_stays_legacy(tmp_path, monkeypatch):
@@ -201,7 +207,7 @@ def test_policy_v1_marker_survives_session_reload(tmp_path, monkeypatch):
     )
     _collect(reloaded)
     assert reloaded_provider.calls[0]["tools"] is None
-    assert "You are ChemClaw" in reloaded_provider.calls[0]["messages"][0]["content"]
+    assert "你是 ChemClaw" in reloaded_provider.calls[0]["messages"][0]["content"]
     assert "Mermaid" not in reloaded_provider.calls[0]["messages"][0]["content"]
 
 
@@ -283,7 +289,7 @@ def test_prompt_projection_kill_switch_restores_full_prompt_but_keeps_router(
     )
     _collect(engine)
     call = provider.calls[0]
-    assert "every edge MUST have a semantic label" in call["messages"][0]["content"]
+    assert "每条边必须有语义标签" in call["messages"][0]["content"]
     assert call["tools"] is None
 
 
@@ -538,7 +544,7 @@ def test_targeted_and_workspace_prompts_only_add_relevant_sections(
         for message in targeted_provider.calls[0]["messages"]
     )
     assert targeted._last_turn_plan.prompt_profile.value == "agent_targeted"
-    assert "Memory:" in targeted_outbound
+    assert "记忆：" in targeted_outbound
     assert "Mermaid" not in targeted_outbound
     assert "chart" not in targeted_outbound.lower()
     assert str(tmp_path) not in targeted_outbound

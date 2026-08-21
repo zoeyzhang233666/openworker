@@ -7,6 +7,7 @@ from coworker.config import Config
 from coworker.tool_policy import TurnToolPolicy
 from coworker.tool_projection import (
     project_provider_visible_schemas,
+    select_agent_tool_names,
     select_verified_tool_names,
 )
 from coworker.tools.registry import ToolRegistry
@@ -124,24 +125,29 @@ def test_verified_a_share_projects_cn_stock_not_yahoo():
     assert "web_search" not in selected
 
 
-def test_verified_cn_futures_projects_cn_not_yahoo():
+def test_verified_cn_futures_projects_cn_and_web_not_yahoo():
     selected = select_verified_tool_names("液化气期货最近一年走势", _MARKET)
     assert selected is not None
     assert "lookup_cn_futures_ohlc" in selected
     assert "lookup_yahoo_ohlc" not in selected
-    assert "web_search" not in selected
+    assert "web_search" in selected
+    assert "web_fetch" in selected
 
 
-def test_verified_spot_projects_chem_data_hub_not_web_or_futures():
+def test_verified_spot_projects_chem_data_hub_and_web():
     selected = select_verified_tool_names("甲醇现货价格", _MARKET)
-    assert selected == ("mcp__chem-data-hub__get_price_trend",)
+    assert selected == (
+        "mcp__chem-data-hub__get_price_trend",
+        "web_search",
+        "web_fetch",
+    )
 
 
-def test_verified_bare_methanol_projects_clarification_surface():
+def test_verified_bare_methanol_projects_clarification_surface_with_web():
     selected = select_verified_tool_names("甲醇价格", _MARKET)
     assert selected is not None
     assert "ask_user" in selected
-    assert "web_search" not in selected
+    assert "web_search" in selected
     assert "lookup_yahoo_ohlc" not in selected
 
 
@@ -205,6 +211,24 @@ def test_agent_projection_keeps_legacy_when_allowed_is_none():
     assert out is not None
     names = {s["function"]["name"] for s in out}
     assert names == set(registry.names())
+
+
+def test_agent_background_task_intent_projects_task_controls_only():
+    available = [
+        "start_subagent",
+        "background_task_status",
+        "background_task_output",
+        "background_task_gather",
+        "write_file",
+        "web_search",
+    ]
+    selected = select_agent_tool_names("并行启动两个子智能体做研究", available)
+    assert selected == (
+        "start_subagent",
+        "background_task_status",
+        "background_task_output",
+        "background_task_gather",
+    )
 
 
 def test_no_external_network_final_filter_drops_remote_and_unknown_keeps_local():

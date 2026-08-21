@@ -21,24 +21,23 @@ _SCHEMA = {
     "function": {
         "name": "read_file",
         "description": (
-            "Read a text file, returning numbered lines ('   12\\ttext') so code can be "
-            "referenced as path:line. Large files are windowed: pass start_line to continue "
-            "where the previous read stopped. Read-only."
+            "读取文本文件，返回带行号的内容（'   12\\ttext'），便于用 path:line 引用。"
+            "大文件按窗口读取：传 start_line 可从上一次结束处继续。只读。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "File path, relative to the workspace.",
+                    "description": "相对工作区的文件路径。",
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "First line to read, 1-based (default 1).",
+                    "description": "起始行号，从 1 开始（默认 1）。",
                 },
                 "max_lines": {
                     "type": "integer",
-                    "description": f"How many lines (default {_DEFAULT_MAX_LINES}).",
+                    "description": f"读取行数（默认 {_DEFAULT_MAX_LINES}）。",
                 },
             },
             "required": ["path"],

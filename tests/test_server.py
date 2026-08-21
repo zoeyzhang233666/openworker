@@ -560,6 +560,13 @@ def test_ws_error_persists_notice_and_retry_reruns(tmp_path):
     messages = client.get("/v1/sessions/flaky/messages").json()["messages"]
     assert messages[-1]["role"] == "assistant" and messages[-1]["content"] == "recovered"
     assert sum(1 for m in messages if m["role"] == "user") == 1
+    traces = client.get(
+        "/v1/turn-traces", params={"session_id": "flaky"}
+    ).json()["traces"]
+    assert len(traces) == 2
+    assert traces[0]["source_kind"] == "retry"
+    assert traces[0]["parent_trace_id"] == traces[1]["trace_id"]
+    assert traces[1]["status"] == "failed"
 
 
 # -- origin gate (local-API hardening): a browser page on a foreign origin must not be able to
@@ -614,9 +621,9 @@ def test_sidecar_token_gates_rest_and_websockets(tmp_path, monkeypatch):
     ).status_code == 401
 
     headers = {"X-OpenWorker-Token": "a" * 64}
-    assert client.get("/v1/health", headers=headers).json()[
-        "default_workspace"
-    ] == str(tmp_path.resolve())
+    health = client.get("/v1/health", headers=headers).json()
+    assert health["default_workspace"] == str(tmp_path.resolve())
+    assert health["mode"] == manager.mode.value
     assert client.get("/v1/sessions", headers=headers).status_code == 200
 
     rejected = client.post(

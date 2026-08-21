@@ -51,10 +51,8 @@ test("mention-spawned sessions list in Recent with the platform icon — no From
   await page.goto("/");
   await expect(page.getByTitle("Weekly plan 1")).toBeVisible();
 
-  // No collapsed band; the session sits directly in Recent, exactly once (its fixture
-  // timestamp sorts it past the peek cap, so expand first)…
+  // No collapsed band; the session sits directly in Recent, exactly once.
   await expect(page.getByTestId("from-slack-toggle")).toHaveCount(0);
-  await page.getByText(/Show \d+ more/).click();
   const row = page.getByTitle("#general — check the deploy?");
   await expect(row).toBeVisible();
   await expect(page.getByTitle("#general — check the deploy?")).toHaveCount(1);

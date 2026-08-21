@@ -39,12 +39,12 @@ def _collect(engine, user_input="go"):
 
 
 def test_batching_guidance_injected_into_system_prompt():
-    assert "Tool efficiency" in _TOOL_BATCHING_GUIDANCE
-    assert "same assistant tool-call turn" in _TOOL_BATCHING_GUIDANCE
+    assert "工具效率" in _TOOL_BATCHING_GUIDANCE
+    assert "同一次助手工具调用回合" in _TOOL_BATCHING_GUIDANCE
     engine = build_engine(agent=chat_agent(), provider=_StubProvider())
     sys_msg = engine.messages[0]["content"]
-    assert "Tool efficiency" in sys_msg
-    assert "same assistant tool-call turn" in sys_msg
+    assert "工具效率" in sys_msg
+    assert "同一次助手工具调用回合" in sys_msg
 
 
 class _RepeatSameToolProvider(ProviderClient):

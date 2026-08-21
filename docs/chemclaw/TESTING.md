@@ -2,11 +2,11 @@
 
 ## 1. 当前 Worktree 结论（2026-08-03）
 
-- 分支：`chemclaw-clean`（与 worktree 目录同名）
-- Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`
+- 分支：`chemclaw-UI`（与 worktree 目录同名）
+- Worktree：`D:\OpenWorker\openworker\.worktrees\chemclaw-UI`
 - 地基：OpenWorker `upstream/main`（含 2026-08-01 Skills PR #391）+ ChemClaw 品牌/汉化薄层
 - 旧 Worktree（备份，待验收后删除）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（`backup/broken-2026-08-03`）
-- 日常命令请一律使用 **`chemclaw-clean`**，不要再 `cd` 到 `chemclaw-design`。
+- 日常命令请一律使用 **`chemclaw-UI`**，不要再 `cd` 到 `chemclaw-design`。
 - 新 Worktree 首次使用前需要为本目录建立 `.venv`（见下文）；可复用 `D:\OpenWorker\.chemclaw-dev` 下的包缓存。
 - 方案 A 定向验证（2026-08-03）：
   - `pytest tests/test_skill_bootstrap.py`：1 passed
@@ -69,10 +69,10 @@ Visual Studio Build Tools、LLVM、Rust 和 Playwright 浏览器是一次性机�
 
 后端全量测试会使用 Slack/Telegram 测试，因此安装方式必须与仓库 CI 一致，包含 `messaging`。
 
-**首次在 `chemclaw-clean` 建环境：**
+**首次在 `chemclaw-UI` 建环境：**
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 $env:UV_CACHE_DIR='D:\OpenWorker\.chemclaw-dev\uv-cache'
 $env:UV_PYTHON_INSTALL_DIR='D:\OpenWorker\.chemclaw-dev\uv-python'
 uv venv --python 3.11 .venv
@@ -105,7 +105,7 @@ npx.cmd playwright install chromium
 **每次重新启动之前，先释放端口：**
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 # 只杀后端
 powershell -File .\scripts\kill-port-8765.ps1
 # 只杀 Vite
@@ -117,7 +117,7 @@ powershell -File .\scripts\kill-chemclaw-dev-ports.ps1
 **一键：杀端口 + 新开两个窗口起后端和 Vite（推荐）：**
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 powershell -File .\scripts\restart-chemclaw-dev.ps1
 ```
 
@@ -127,7 +127,7 @@ powershell -File .\scripts\restart-chemclaw-dev.ps1
 终端 1：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 powershell -File .\scripts\kill-port-8765.ps1
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 .\.venv\Scripts\openworker-server.exe --host 127.0.0.1 --port 8765
@@ -142,7 +142,7 @@ Invoke-RestMethod http://127.0.0.1:8765/v1/health
 终端 2：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI\surfaces\gui
 powershell -File ..\..\scripts\kill-port-1420.ps1
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 npm.cmd run dev
@@ -177,7 +177,7 @@ http://localhost:1420
 ```powershell
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 $env:LIBCLANG_PATH='C:\Program Files\LLVM\bin'
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 New-Item -ItemType Directory -Force -Path 'surfaces\gui\src-tauri\binaries\sidecar' | Out-Null
 cd surfaces\gui
 npm.cmd run tauri -- dev
@@ -198,7 +198,7 @@ npm.cmd run tauri -- dev
 
 ```powershell
 # Developer PowerShell for VS 2022 + LIBCLANG_PATH
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 .\packaging\build_windows.ps1 -Bundles nsis
 # 产物：surfaces\gui\src-tauri\target\release\bundle\nsis\ChemClaw_*_x64-setup.exe
 ```
@@ -224,7 +224,7 @@ bash packaging/build_dmg.sh
 Windows 上不要使用 pytest 默认的 `%TEMP%\pytest-of-EDY`。这个目录曾由不同执行身份创建并产生 ACL 冲突，导致大批用例同时报 `PermissionError`。每次使用一个新的专用子目录：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 $env:COWORKER_STATE_DIR='D:\OpenWorker\.chemclaw-dev\state'
 $env:NO_PROXY='127.0.0.1,localhost'
 $env:no_proxy='127.0.0.1,localhost'
@@ -236,7 +236,7 @@ $baseTemp='D:\OpenWorker\.chemclaw-dev\pytest-tmp\manual-YYYYMMDD-HHMM'
 方案 A 定向 Skill bootstrap：
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 $env:TMP='D:\OpenWorker\.chemclaw-dev\tmp'
 $env:TEMP='D:\OpenWorker\.chemclaw-dev\tmp'
 .\.venv\Scripts\python.exe -m pytest tests/test_skill_bootstrap.py -q
@@ -259,7 +259,7 @@ $env:TEMP='D:\OpenWorker\.chemclaw-dev\tmp'
 ### GUI 单元测试
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI\surfaces\gui
 npm.cmd test
 ```
 
@@ -282,7 +282,7 @@ UpdateBanner 相关单测会因 ChemClaw 关闭自动更新（`UPDATES_ENABLED =
 ### TypeScript/Vite 构建
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI\surfaces\gui
 npm.cmd run build
 ```
 
@@ -291,7 +291,7 @@ npm.cmd run build
 ### Playwright E2E
 
 ```powershell
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean\surfaces\gui
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI\surfaces\gui
 npm.cmd run e2e
 ```
 
@@ -303,10 +303,140 @@ npm.cmd run e2e
 
 ```powershell
 $env:LIBCLANG_PATH='C:\Program Files\LLVM\bin'
-cd D:\OpenWorker\openworker\.worktrees\chemclaw-clean
+cd D:\OpenWorker\openworker\.worktrees\chemclaw-UI
 New-Item -ItemType Directory -Force -Path 'surfaces\gui\src-tauri\binaries\sidecar' | Out-Null
 cargo check --manifest-path 'surfaces\gui\src-tauri\Cargo.toml'
 ```
+
+### D-169 Agent Harness Phase 1（2026-08-20）
+
+聚焦 Python 回归：
+
+```text
+RequestRouter + TurnPlanner + Tool Projection + D-166 market intent/guard
++ Scenario/Capability Registry/Resolver + ToolOutcome + TurnTrace + REST/WS：170 passed
+```
+
+性能门槛由 `tests/test_agent_harness_routing.py` 覆盖：1000 次确定性 Scenario/Capability Resolution 的本机 P95 < 10 ms；100 次无 classifier 的缓存 Planner Preview P95 < 50 ms。
+
+GUI：
+
+```text
+ExecutionDiagnostics：2 passed
+i18n + localization audit + ExecutionDiagnostics：25 passed
+ExecutionDiagnostics + WS auth + session resume + i18n/localization audit：34 passed
+npm run build：通过（仅既有 dynamic-import / chunk-size 警告）
+```
+
+全量结论必须按真实结果解释：
+
+- Python 使用 `PYTHONPATH=tests` 收集到 1845 项并运行超过 74%，随后在既有组合 WebSocket 段停滞而人工中止；`-x` 定位到的首个失败是 `test_accounts.py::test_add_list_resolve_default` 在 Windows `os.replace(secrets.json.tmp, secrets.json)` 上触发 `WinError 5`，属于本文件已记录的 ACL/共享状态环境问题。不得记为全量通过。
+- 该全量运行调用 `SecretStore` 后把 pytest 临时 state 目录 ACL 收紧给桌面用户，当前 Codex sandbox 身份无法重新取得访问权；`.pytest-d169-full-x/`、`.pytest-d169-full2/` 与 `.pytest-d169-verification/` 因此残留。已核验它们均位于当前 worktree，普通与审批权限清理均被 Windows ACL 拒绝；需由宿主用户 EDY 删除，不能用越权或扩大目录范围的方式绕过。
+- GUI 全量为 55 files：50 passed、5 failed；350 passed、22 failed。失败集中在 D-168 默认中文后仍断言旧英文的 ApprovalCard/Composer/ModelChecklist，以及既有 UpdateBanner 时序；D-169 新增执行诊断用例全绿。本任务不恢复用户的 D-168 改动来制造全绿。
+
+OFF parity、显式/高低置信 matcher、五条核心路由、无 Web 替代、Preview 无副作用、Trace 隐私字段拒绝与 30 天/5000 条清理均有专门测试。D-169 不依赖真实 MCP 凭据或外网。
+
+### D-170 移除用户侧活动页（2026-08-20）
+
+```text
+Sidebar + i18n + localization audit：30 passed
+D-169 Python 聚焦回归：170 passed
+npm run build：通过（仅既有 dynamic-import / chunk-size 警告）
+本地 Vite 实查：账号菜单仅保留编辑资料、收件箱、连接、设置、定时任务；无“活动”
+```
+
+`AuditView`、App `audit` surface 与用户入口已删除；D-169 后端 API 与 Trace 保留。
+
+### D-171 Subagent Runtime + BackgroundTaskManager（2026-08-20）
+
+Phase 2 runtime、Shell 与 Permission 聚焦回归：
+
+```text
+tests/test_background_tasks.py + test_subagent_runtime.py + test_subagent.py
++ test_shell.py + test_permissions_risk.py + test_tools_permissions.py
++ test_engine_stop.py：85 passed
+```
+
+Harness/Planner/Trace 兼容回归：
+
+```text
+Tool Projection/Parity + TurnPlanner + RequestRouter + Prompt Projection
++ Market Intent + Scenario/Capability + ToolOutcome + TurnTrace + Harness REST：134 passed
+```
+
+D-166 国内行情与执行守卫：
+
+```text
+CN market/stocks/futures/options/agent + Market Intent + Engine：89 passed
+```
+
+既有 Automation 兼容回归：`tests/test_automation.py + tests/test_automation_create.py` 共 **21 passed**。其中 `test_create_automation_success` 在工作区沙箱内因测试固定写入 `C:\Users\EDY\OpenWorker` 被拒绝，按同一代码在宿主权限下单独复跑为 **1 passed**。
+
+另有 `compileall -q coworker` 通过。服务器大组合运行到 `test_connector_tool_settings_and_audit_rest` 时，`SecretStore` 在 pytest 临时 state 目录写 `secrets.json.tmp` 触发 Windows `PermissionError`；这与 D-169 全量记录的 ACL 污染为同一既有环境问题。Phase 2 的 Profile/Task REST、owner-session 隔离、child session 恢复与 Permission 最终权威已有独立测试通过；不得把上述结果写成 Python 全量通过。
+
+测试后已清理可访问的 D-171 临时目录；另有 `.pytest-d171-focused-final/`、`.pytest-d171-server-connector/`、`.pytest-d171-server-final/`、`.pytest-d171-server-first/` 的 `coworker-state` 被 SecretStore ACL 收紧，宿主权限复跑产生的 `.pytest-d171-automation-host/` 也无法由当前受控身份删除。它们均已核验位于本 worktree；不越权改 ACL，也不扩大删除范围，需由宿主用户 EDY 清理。
+
+D-171 本身没有恢复或新增 GUI 页面；该 runtime 的会话内产品入口由后续 D-172 补齐。D-170 的用户侧无独立“活动”入口结论保持不变。
+
+开发服务已用 `scripts/restart-chemclaw-dev.ps1` 以真实 `D:\OpenWorker\.chemclaw-dev\state` 重启；`GET /v1/health` 返回 `ok`，带本地 sidecar token 的 `GET /v1/subagent-profiles` 返回 `explore,research,worker` 共 3 个 Profile。首次在受控沙箱内启动因无权写 `sidecar-8765.token.tmp` 失败，改用宿主权限执行同一脚本后健康；该过程没有更改或输出 token。
+
+### D-172 Phase 2 会话内产品闭环（2026-08-20）
+
+聚焦回归：
+
+```text
+TurnPlanner/Scenario Projection + BackgroundTask lifecycle/WS + Subagent REST
++ Tool Projection：52 passed
+BackgroundTasksSection + RightRail artifacts + session resume + localization audit：34 passed
+npm run build：通过（仅既有 dynamic-import / chunk-size 警告）
+python compileall coworker：通过
+```
+
+产品行为覆盖：研究 Scenario 投影 Subagent 控制工具并注入有界委派；简单身份查询不扩工具面；manager listener 发 created/running/output/terminal 且隔离 listener 异常；owner session WS 收到 `background_task_changed`；REST 返回 Profile title 与最多 100k 输出；GUI 无任务不显示、有任务可看工作记录/结果、停止与 Agent 续发，Shell 不显示续发控件。真实验收发现研究 Profile 需要读取现有会话产物，因此增加只读 `read_file/list_files` 并纳入测试，`write_file` 仍不在 allowlist。
+
+真实开发服务用同一重启脚本更新后，在 ApiHub CN `deepseek-v4-pro` 会话 `c3b686dc-2f8` 发送三个独立复核分支。主 Agent 实际调用 `start_subagent` 三次，创建“上游原料/下游用途/代表企业”三个 `research` task；采样时先为 2 running、1 completed，随后全部 completed。父轮发生 Provider `Request timed out` 后三个 child task 仍由 BackgroundTaskManager 继续运行，RightRail 实时显示“子智能体与后台任务（3）”并可点开工作记录；上游与下游两个分支各生成 19/21 个输出 chunk，最终文本为带证据链接的完整复核报告。这同时验证了 task 生命周期不依附父轮连接。加载最后 Profile 修正再次重启后，REST/SQLite 仍恢复同一 3 个 completed task 及原 output_size；`research` Profile 对外契约为 read-only、含 `read_file/list_files` 且不含 `write_file`。随后直接在右栏向已完成的“代表企业”任务续发复核要求：同一 task 重新进入 running、`run_count=2`，工作记录显示实际调用 `read_file` 后继续 Web 检索，最终再次 completed、`error=null`，追加约 2081 字结果。未把父轮 Provider 超时记为 runtime/GUI 测试通过或失败。
+
+本次没有重跑受 Windows SecretStore ACL 污染的 Python 全量组合；沿用 D-169/D-171 的已知环境结论，不宣称全量通过。D-172 新增的两个 pytest basetemp 若被同一 ACL 收紧，按既有规则由宿主用户清理，不更改 ACL。
+
+### D-172 补丁：研究意图优先于查价 Scenario（2026-08-20）
+
+聚焦回归（独立 basetemp，`-p no:cacheprovider`）：
+
+```text
+tests/test_scenario_resolver.py
++ tests/test_turn_planner.py
++ tests/test_agent_harness_routing.py
++ tests/test_subagent_runtime.py：32 passed
+```
+
+覆盖：`上海原油期货深度研究` / `写一份上海原油期货周报` → `chemical_market_research` 且 `subagent_eligible=true`、工具面含 `start_subagent`；`甲醇期货现在多少钱` / `上海原油期货` 仍为 `cn_futures_market` 且不开放 Subagent；省略 `profile` 时 `start_subagent` 默认 `research`。未宣称 Python 全量通过；开发服务需重启后才加载本补丁。
+
+### D-174：Research Subagent 可执行权限 + 可靠停止（2026-08-20）
+
+聚焦回归（独立 basetemp，`-p no:cacheprovider`）：
+
+```text
+tests/test_subagent_runtime.py
++ tests/test_background_tasks.py
++ tests/test_subagent.py：26 passed
+```
+
+覆盖：`research` 为 interactive + shared_workspace，allowlist 含 `lookup_cn_futures_*` 与 `write_file`；父会话 `Mode.AUTO` 时子写报告无需审批，`interactive` 时仍需 Inbox；adapter 忽略 cancel 时 `stop` 在短超时后强制 `cancelled` 且晚到完成不覆盖。`explore` 仍为 plan 只读。未宣称 Python 全量通过；开发服务需重启后生效。
+
+### D-175：Subagent 自动汇合 + 短查兜底（2026-08-21）
+
+聚焦回归（独立 basetemp）：
+
+```text
+tests/test_delegation_cohort.py
++ tests/test_subagent_cohort_wake.py
++ tests/test_self_wake.py：13 passed
+tests/test_subagent_runtime.py
++ tests/test_background_tasks.py：21 passed
+合计：34 passed
+```
+
+覆盖：cohort 全齐只 fire 一次；含 failed/cancelled/interrupted；`SessionManager` 终态挂钩 `complete_job` + `deliver_to_session`；gather 默认 60s；委派政策要求以汇合注入为主通道。未宣称 Python 全量通过；开发服务需重启后生效。
 
 ## 5. 已知后端基线缺陷
 

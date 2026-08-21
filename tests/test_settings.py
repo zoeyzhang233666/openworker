@@ -101,6 +101,27 @@ def test_default_model_and_onboarding_persist(tmp_path, monkeypatch):
     assert s["onboarded"] is True and s["model"] == "gpt-4o"
 
 
+def test_health_exposes_remembered_permission_mode(tmp_path, monkeypatch):
+    """GUI boots Composer from /v1/health.mode before WS ready (no interactive→auto flash)."""
+    from fastapi.testclient import TestClient
+
+    from coworker.permissions import Mode
+    from coworker.server.app import create_app
+    from coworker.server.manager import SessionManager
+
+    monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    data_dir = tmp_path / "data"
+    first = SessionManager(data_dir=data_dir)
+    first.mode = Mode.AUTO
+    first._prefs["default_mode"] = Mode.AUTO.value
+    first._save_prefs()
+
+    client = TestClient(create_app(SessionManager(data_dir=data_dir)))
+    health = client.get("/v1/health").json()
+    assert health["status"] == "ok"
+    assert health["mode"] == "auto"
+
+
 def test_nav_layout_setting_roundtrips(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 

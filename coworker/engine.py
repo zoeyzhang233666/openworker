@@ -16,7 +16,7 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, AsyncIterator, Awaitable, Callable, Mapping, Optional
 
@@ -30,20 +30,26 @@ from .execution_profile import (
     budget_guidance_text,
     budget_phase_for_iteration,
 )
-from .market_intent import MarketScope
+from .market_intent import (
+    MarketScope,
+    MarketToolSelection,
+    merge_inherited_market_selection,
+)
 from .permissions import Mode, PermissionEngine
 from .providers import AssistantTurn, ProviderClient, ToolCall
 from .providers.errors import friendly_model_error
 from .tool_policy import TurnToolPolicy
 from .tool_projection import project_provider_visible_schemas
 from .tools import ToolRegistry
+from .tools.outcome import normalize_tool_outcome
+from .tracing import TurnTrace, TurnTraceRecorder
 from .turn_instrumentation import (
     build_model_call_snapshot,
     build_provider_call_shape_snapshot,
     build_turn_snapshot,
     emit_instrumentation,
 )
-from .turn_planner import PromptProfile, TurnPlan, TurnPlanner
+from .turn_planner import InvalidScenarioError, PromptProfile, TurnPlan, TurnPlanner
 
 # HARD STOP G: outbound-only prompt for one model-only finalization at hard ceiling.
 _EMERGENCY_FINALIZATION_PROMPT = """The tool-call iteration budget has been exhausted.
@@ -156,6 +162,7 @@ class TurnEngine:
         prompt_profiles: Optional[Mapping[PromptProfile, str]] = None,
         prompt_projection_enabled: bool = False,
         prompt_policy_version: int = 1,
+        trace_sink: Optional[Callable[[TurnTrace], None]] = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -181,9 +188,15 @@ class TurnEngine:
         self._last_turn_plan: Optional[TurnPlan] = None
         self._resolved_market_scope: Optional[MarketScope] = None
         self._last_resolved_market_scope: Optional[MarketScope] = None
+        # D-179: parent market selection inherited by research/worker children.
+        self._inherited_market_selection = None
+        self._provider_reject_retried = False
         self.prompt_profiles = dict(prompt_profiles or {})
         self.prompt_projection_enabled = bool(prompt_projection_enabled)
         self.prompt_policy_version = int(prompt_policy_version)
+        self.trace_sink = trace_sink
+        self._last_trace_id: str | None = None
+        self._active_trace_id: str | None = None
         self.messages: list[dict[str, Any]] = list(messages or [])
         self.audit_sink = audit_sink
         # 1-based iteration counter for soft-budget phase guidance (outbound only).
@@ -242,6 +255,9 @@ class TurnEngine:
             and not self._prompt_projection_eligible
         )
         self._cancel = asyncio.Event()
+        # Loop that owns `_cancel`; set while `run()` is active so cross-thread stop can
+        # wake waiters via call_soon_threadsafe (asyncio.Event is not otherwise thread-safe).
+        self._owning_loop: Optional[asyncio.AbstractEventLoop] = None
         # Each pending steering message: (text, optional MessageSource sidecar dict).
         self._steering: list[tuple[str, Optional[dict[str, Any]]]] = []
         # tool_call.id → the standing rule that auto-allowed it ("tool → target"), so the
@@ -290,6 +306,7 @@ class TurnEngine:
         source: Optional[dict[str, Any]] = None,
         display: Optional[str] = None,
         durable_resume: bool = False,
+        scenario_id: str | None = None,
     ) -> Optional[TurnPlan]:
         if self.turn_planner is None:
             self._active_turn_plan = None
@@ -309,7 +326,10 @@ class TurnEngine:
                 source=source,
                 display=display,
                 durable_resume=durable_resume,
+                scenario_id=scenario_id,
             )
+        except InvalidScenarioError:
+            raise
         except Exception as exc:
             # Projection failure must fail open to the legacy capability surface.
             _log.warning(
@@ -320,10 +340,71 @@ class TurnEngine:
         self._active_turn_plan = plan
         self._last_turn_plan = plan
         selection = plan.market_selection
+        inherited = self._inherited_market_selection
+        merged = merge_inherited_market_selection(inherited, selection)
+        if merged is not None and merged is not selection:
+            plan = self._apply_market_selection_to_plan(plan, merged)
+            self._active_turn_plan = plan
+            self._last_turn_plan = plan
+            selection = merged
         scope = selection.intent.scope if selection is not None else None
+        # Dual-scope (CN_SPOT_FUTURES) keeps resolved scope None so tools_for_scope
+        # returns the union; single-scope inherits the locked scope.
+        if (
+            selection is not None
+            and selection.intent.kind.value == "cn_spot_futures"
+        ):
+            scope = None
+        elif scope is None and inherited is not None and inherited.intent.scope is not None:
+            scope = inherited.intent.scope
         self._resolved_market_scope = scope
         self._last_resolved_market_scope = scope
         return plan
+
+    def _apply_market_selection_to_plan(
+        self, plan: "TurnPlan", selection: MarketToolSelection
+    ) -> "TurnPlan":
+        """Replace market_selection and union its tools into projected allowlists."""
+        updates: dict[str, Any] = {"market_selection": selection}
+        market_tools = tuple(selection.allowed_tool_names or ())
+        if plan.decision is not None and market_tools:
+            allowed = tuple(
+                dict.fromkeys(
+                    (*(plan.decision.allowed_tool_names or ()), *market_tools)
+                )
+            )
+            updates["decision"] = replace(
+                plan.decision, allowed_tool_names=allowed
+            )
+        if plan.execution_profile is not None and market_tools:
+            profile = plan.execution_profile
+            allowed = tuple(
+                dict.fromkeys(
+                    (*(profile.allowed_tool_names or ()), *market_tools)
+                )
+            )
+            updates["execution_profile"] = replace(
+                profile, allowed_tool_names=allowed
+            )
+        if plan.capability_plan is not None and market_tools:
+            cap = plan.capability_plan
+            selected = tuple(
+                dict.fromkeys((*cap.selected_tool_names, *market_tools))
+            )
+            updates["capability_plan"] = cap.model_copy(
+                update={"selected_tool_names": selected}
+            )
+        return replace(plan, **updates)
+
+    def preview_plan(
+        self, user_input: str | list, *, scenario_id: str | None = None
+    ) -> Any:
+        """Resolve the live planner without mutating engine history, Audit, or Trace."""
+        if self.turn_planner is None:
+            return TurnPlan.legacy().preview()
+        return self.turn_planner.plan(
+            user_input, scenario_id=scenario_id
+        ).preview()
 
     def _clear_active_plan(self) -> None:
         self._active_turn_plan = None
@@ -384,7 +465,21 @@ class TurnEngine:
         interrupted), or between iterations (the loop checkpoint). Every pending
         tool_call still gets a tool-error result so the history never carries orphans
         (hosted templates reject them, and durable-resume would re-prompt them)."""
-        self._cancel.set()
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if running is not None:
+            self._cancel.set()
+        else:
+            loop = self._owning_loop
+            if loop is not None and loop.is_running():
+                try:
+                    loop.call_soon_threadsafe(self._cancel.set)
+                except RuntimeError:
+                    self._cancel.set()
+            else:
+                self._cancel.set()
         for hook in self._interrupt_hooks:
             try:
                 hook()
@@ -419,6 +514,9 @@ class TurnEngine:
         *,
         source: Optional[dict[str, Any]] = None,
         display: Optional[str] = None,
+        scenario_id: str | None = None,
+        trace_source_kind: str | None = None,
+        parent_trace_id: str | None = None,
     ) -> AsyncIterator[Event]:
         # `user_input` is a string, or OpenAI content-parts (text + image_url) for attachments.
         # `source` (a MessageSource dict) is a display-only sidecar for connector messages: it
@@ -429,7 +527,16 @@ class TurnEngine:
         # framing. `ts` (unix seconds, stamped on every appended message) is the same kind of
         # sidecar.
         self._cancel.clear()
-        self._activate_plan(user_input, source=source, display=display)
+        self._owning_loop = asyncio.get_running_loop()
+        self._activate_plan(
+            user_input, source=source, display=display, scenario_id=scenario_id
+        )
+        recorder = self._start_trace(
+            source_kind=str(
+                trace_source_kind or (source or {}).get("kind") or "user"
+            ),
+            parent_trace_id=parent_trace_id,
+        )
         try:
             message: dict[str, Any] = {
                 "role": "user",
@@ -446,11 +553,18 @@ class TurnEngine:
                 data["source"] = source
             if display is not None:
                 data["display"] = display
-            yield Event(EventType.TURN_START, data)
+            start_event = self._decorate_trace_event(
+                Event(EventType.TURN_START, data), recorder
+            )
+            recorder.observe(start_event)
+            yield start_event
             async for event in self._loop():
-                yield event
+                recorder.observe(event)
+                yield self._decorate_trace_event(event, recorder)
         finally:
+            await self._finish_trace(recorder)
             self._clear_active_plan()
+            self._owning_loop = None
 
     def switch_model(self, model: str) -> Optional[str]:
         """Rebind the session's model mid-conversation (roadmap item 3). History is
@@ -518,15 +632,26 @@ class TurnEngine:
         if not self._tail_is_retriable_error():
             return
         self._cancel.clear()
+        self._owning_loop = asyncio.get_running_loop()
         # A retry is the same logical turn: reuse the immutable plan exactly.
         self._active_turn_plan = self._last_turn_plan
         self._resolved_market_scope = self._last_resolved_market_scope
+        recorder = self._start_trace(
+            source_kind="retry", parent_trace_id=self._last_trace_id
+        )
         try:
-            yield Event(EventType.TURN_START, {"input": ""})
+            start_event = self._decorate_trace_event(
+                Event(EventType.TURN_START, {"input": ""}), recorder
+            )
+            recorder.observe(start_event)
+            yield start_event
             async for event in self._loop():
-                yield event
+                recorder.observe(event)
+                yield self._decorate_trace_event(event, recorder)
         finally:
+            await self._finish_trace(recorder)
             self._clear_active_plan()
+            self._owning_loop = None
 
     async def resume(self) -> AsyncIterator[Event]:
         """Continue a turn that was suspended at a prompt and persisted — durable resume after a
@@ -538,17 +663,73 @@ class TurnEngine:
         if not pending:
             return
         self._cancel.clear()
+        self._owning_loop = asyncio.get_running_loop()
         self._activate_plan(self._resume_plan_input(), durable_resume=True)
+        recorder = self._start_trace(source_kind="durable_resume")
         try:
-            yield Event(EventType.TURN_START, {"input": "(resumed)"})
+            start_event = self._decorate_trace_event(
+                Event(EventType.TURN_START, {"input": "(resumed)"}), recorder
+            )
+            recorder.observe(start_event)
+            yield start_event
             async for event in self._handle_tool_calls(pending):
-                yield event
-            yield Event(EventType.ITERATION_END, {"iteration": 0})
+                recorder.observe(event)
+                yield self._decorate_trace_event(event, recorder)
+            iteration_event = Event(EventType.ITERATION_END, {"iteration": 0})
+            recorder.observe(iteration_event)
+            yield iteration_event
             if not self._cancel.is_set():
                 async for event in self._loop():
-                    yield event
+                    recorder.observe(event)
+                    yield self._decorate_trace_event(event, recorder)
         finally:
+            await self._finish_trace(recorder)
             self._clear_active_plan()
+            self._owning_loop = None
+
+    def _start_trace(
+        self, *, source_kind: str, parent_trace_id: str | None = None
+    ) -> TurnTraceRecorder:
+        recorder = TurnTraceRecorder(
+            session_id=str(self.audit_context.get("session_id") or ""),
+            model=self.model,
+            plan=self._active_turn_plan,
+            source_kind=source_kind,
+            parent_trace_id=parent_trace_id,
+        )
+        self._active_trace_id = recorder.trace_id
+        return recorder
+
+    def _decorate_trace_event(
+        self, event: Event, recorder: TurnTraceRecorder
+    ) -> Event:
+        if event.type not in {EventType.TURN_START, EventType.TURN_END}:
+            return event
+        data = dict(event.data)
+        data["trace_id"] = recorder.trace_id
+        if self._active_turn_plan is not None:
+            data["plan_summary"] = self._active_turn_plan.preview().model_dump(
+                exclude={"blocked_tool_names", "skill_names"}
+            )
+        return Event(event.type, data)
+
+    async def _finish_trace(self, recorder: TurnTraceRecorder) -> None:
+        trace = recorder.finish()
+        self._last_trace_id = trace.trace_id
+        if self._active_trace_id == recorder.trace_id:
+            self._active_trace_id = None
+        if self.trace_sink is None:
+            return
+        try:
+            await asyncio.to_thread(self.trace_sink, trace)
+        except Exception as exc:
+            _log.warning(
+                "turn trace persistence failed error_type=%s", type(exc).__name__
+            )
+
+    @property
+    def active_trace_id(self) -> str | None:
+        return self._active_trace_id
 
     def _resume_plan_input(self) -> str | list:
         """Recover the persisted user request for conservative resume planning.
@@ -706,6 +887,7 @@ class TurnEngine:
 
     async def _loop(self) -> AsyncIterator[Event]:
         iterations = 0
+        self._provider_reject_retried = False
         profile = self._current_execution_profile()
         hard_limit = self.max_iterations
         if profile is not None:
@@ -801,6 +983,61 @@ class TurnEngine:
                         self._append_notice("compacted", notice)
                         yield Event(EventType.COMPACTED, {"text": notice})
                         continue
+                # D-179: ApiHub generic "Upstream rejected…invalid" — compact once and
+                # retry; a second reject falls through to ERROR (optionally after EF).
+                if (
+                    _compaction.is_retryable_provider_reject(exc)
+                    and not self._provider_reject_retried
+                    and not self._cancel.is_set()
+                ):
+                    self._provider_reject_retried = True
+                    yield Event(EventType.COMPACTING, {})
+                    notice = await self._compact_now(force=True)
+                    if notice:
+                        self._append_notice("compacted", notice)
+                        yield Event(EventType.COMPACTED, {"text": notice})
+                    else:
+                        # Still retry once even if compact was a no-op (shape/param issues).
+                        self._append_notice(
+                            "compacted",
+                            "上游拒绝请求；正在重试本轮推理",
+                        )
+                        yield Event(
+                            EventType.COMPACTED,
+                            {"text": "上游拒绝请求；正在重试本轮推理"},
+                        )
+                    continue
+                if (
+                    _compaction.is_retryable_provider_reject(exc)
+                    and self.emergency_finalization_enabled
+                    and not self._emergency_finalizing
+                    and not self._cancel.is_set()
+                ):
+                    # Salvage: one tools-off finalization attempt before hard fail.
+                    self._emergency_finalizing = True
+                    self._append_notice(
+                        "emergency_finalization",
+                        "上游再次拒绝；尝试无工具短结论文本",
+                    )
+                    continue
+                # D-187: timeout after tool work — salvage once instead of bare ERROR.
+                if (
+                    _compaction.is_provider_timeout(exc)
+                    and self._emergency_finalization_active()
+                    and not self._emergency_finalizing
+                    and not self._cancel.is_set()
+                    and (
+                        bool(streamed)
+                        or bool(streamed_reasoning)
+                        or any(m.get("role") == "tool" for m in self.messages)
+                    )
+                ):
+                    self._emergency_finalizing = True
+                    self._append_notice(
+                        "emergency_finalization",
+                        "模型接口超时；尝试根据已有工具结果写短结论",
+                    )
+                    continue
                 # Same contract as the stop path below: the partial the user watched
                 # arrive survives the failure.
                 if streamed or streamed_reasoning:
@@ -1211,21 +1448,6 @@ class TurnEngine:
                 {"name": tool_call.name, "arguments": tool_call.arguments},
             )
             self._audit(tool_call, stage="proposed")
-            # `request_directory` and `propose_plan` are interactive: the user decides
-            # out-of-band and that decision IS the consent, so they skip the
-            # permission/registry path.
-            if tool_call.name == "request_directory":
-                async for event in self._handle_directory_request(tool_call):
-                    yield event
-                continue
-            if tool_call.name == "propose_plan":
-                async for event in self._handle_plan_proposal(tool_call):
-                    yield event
-                continue
-            if tool_call.name == "ask_user":
-                async for event in self._handle_ask_user(tool_call):
-                    yield event
-                continue
             market_guard = self._market_tool_guard(tool_call.name)
             if market_guard is not None and not market_guard[0]:
                 reason = market_guard[1]
@@ -1242,8 +1464,38 @@ class TurnEngine:
                         "name": tool_call.name,
                         "status": "denied",
                         "reason": reason,
+                        "outcome": {"status": "denied", "error_code": "DENIED"},
                     },
                 )
+                continue
+            plan_guard = self._turn_plan_tool_guard(tool_call.name)
+            if plan_guard is not None and not plan_guard[0]:
+                reason = plan_guard[1]
+                self.messages.append(_tool_error_message(tool_call, reason))
+                self._audit(tool_call, stage="finished", status="denied", reason=reason)
+                yield Event(
+                    EventType.TOOL_FINISHED,
+                    {
+                        "name": tool_call.name,
+                        "status": "denied",
+                        "reason": reason,
+                        "outcome": {"status": "denied", "error_code": "DENIED"},
+                    },
+                )
+                continue
+            # Interactive tools skip PermissionEngine because their out-of-band user
+            # choice is the consent, but they still pass both execution guards above.
+            if tool_call.name == "request_directory":
+                async for event in self._handle_directory_request(tool_call):
+                    yield event
+                continue
+            if tool_call.name == "propose_plan":
+                async for event in self._handle_plan_proposal(tool_call):
+                    yield event
+                continue
+            if tool_call.name == "ask_user":
+                async for event in self._handle_ask_user(tool_call):
+                    yield event
                 continue
             allowed = False
             async for item in self._authorize(tool_call):
@@ -1286,6 +1538,18 @@ class TurnEngine:
         if selection is None:
             return None
         return selection.guard_tool(tool_name, self._resolved_market_scope)
+
+    def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
+        """D-169 allowlist guard; PermissionEngine remains the final authority."""
+        plan = self._active_turn_plan
+        if plan is None or not plan.scenario_projection_applied:
+            return None
+        profile = plan.execution_profile
+        allowed = set(profile.allowed_tool_names or ()) if profile is not None else set()
+        allowed.update(self.mandatory_tool_names)
+        if tool_name in allowed:
+            return True, "turn plan capability matched"
+        return False, "该工具未被本轮 Scenario/Capability 计划授权"
 
     def _interrupted_tool(self, tool_call: ToolCall) -> Event:
         """The stop-path answer for a call that will not run: a tool-error result in the
@@ -1398,7 +1662,12 @@ class TurnEngine:
             self.messages.append(_tool_error_message(tool_call, reason))
             yield Event(
                 EventType.TOOL_FINISHED,
-                {"name": tool_call.name, "status": "denied", "reason": reason},
+                {
+                    "name": tool_call.name,
+                    "status": "denied",
+                    "reason": reason,
+                    "outcome": {"status": "denied", "error_code": "DENIED"},
+                },
             )
             self._audit(tool_call, stage="finished", status="denied", reason=reason)
             yield False
@@ -1410,7 +1679,12 @@ class TurnEngine:
             )
             yield Event(
                 EventType.TOOL_FINISHED,
-                {"name": tool_call.name, "status": "error", "reason": "unknown tool"},
+                {
+                    "name": tool_call.name,
+                    "status": "error",
+                    "reason": "unknown tool",
+                    "outcome": {"status": "failed", "error_code": "UNKNOWN_TOOL"},
+                },
             )
             yield False
             return
@@ -1461,12 +1735,16 @@ class TurnEngine:
             result_preview=_preview(result),
         )
         rule = self._standing_notes.pop(tool_call.id, "")
+        outcome = normalize_tool_outcome(result, provider_id=tool_call.name)
         return Event(
             EventType.TOOL_FINISHED,
             {
                 "name": tool_call.name,
                 "status": status,
                 "result_preview": _preview(result),
+                "outcome": outcome.model_dump(
+                    exclude={"data", "source_refs", "version"}
+                ),
                 **({"display": display} if display else {}),
                 **({"standing_rule": rule} if rule else {}),
                 **chart_finished_sidecar(result),
@@ -1644,6 +1922,7 @@ class TurnEngine:
             if resolved_scope is not None:
                 self._resolved_market_scope = resolved_scope
                 self._last_resolved_market_scope = resolved_scope
+                self._narrow_plan_after_market_clarification(resolved_scope)
 
         status = "ok" if (result.get("answer") or result.get("answers")) else "denied"
         self.messages.append(_tool_result_message(tool_call, result))
@@ -1662,6 +1941,42 @@ class TurnEngine:
                 "result_preview": _preview(result),
             },
         )
+
+    def _narrow_plan_after_market_clarification(self, scope: MarketScope) -> None:
+        """Expose the selected market provider only after `ask_user` resolves scope."""
+        plan = self._active_turn_plan
+        selection = plan.market_selection if plan is not None else None
+        if (
+            plan is None
+            or selection is None
+            or not plan.scenario_projection_applied
+            or plan.execution_profile is None
+            or plan.decision is None
+        ):
+            return
+        allowed = selection.tools_for_scope(scope)
+        if selection.web_is_supplemental:
+            web = tuple(
+                name
+                for name in (selection.allowed_tool_names or ())
+                if name in {"web_search", "web_fetch"}
+            )
+            allowed = tuple(dict.fromkeys((*allowed, *web)))
+        capability_plan = plan.capability_plan
+        if capability_plan is not None:
+            capability_plan = capability_plan.model_copy(
+                update={"selected_tool_names": allowed, "required_ready": bool(allowed)}
+            )
+        updated = replace(
+            plan,
+            decision=replace(plan.decision, allowed_tool_names=allowed),
+            execution_profile=replace(
+                plan.execution_profile, allowed_tool_names=allowed
+            ),
+            capability_plan=capability_plan,
+        )
+        self._active_turn_plan = updated
+        self._last_turn_plan = updated
 
     def _inject_steering(self) -> None:
         for text, source in self._steering:
@@ -1942,7 +2257,11 @@ def _tool_error_message(tool_call: ToolCall, reason: str) -> dict[str, Any]:
 
 
 def chart_finished_sidecar(result: Any) -> dict[str, Any]:
-    """Compact OHLC fields for GUI short-ref resolve (not the 300-char preview)."""
+    """Compact OHLC fields for GUI short-ref resolve (not the 300-char preview).
+
+    Product/series labels use ``series_name`` — never top-level ``name``, which is
+    reserved for the tool name on TOOL_FINISHED events (D-179).
+    """
     if not isinstance(result, dict):
         return {}
     extra: dict[str, Any] = {}
@@ -1952,9 +2271,9 @@ def chart_finished_sidecar(result: Any) -> dict[str, Any]:
     symbol = result.get("symbol")
     if isinstance(symbol, str) and symbol.strip():
         extra["symbol"] = symbol.strip()
-    name = result.get("name")
-    if isinstance(name, str) and name.strip():
-        extra["name"] = name.strip()
+    series_name = result.get("name")
+    if isinstance(series_name, str) and series_name.strip():
+        extra["series_name"] = series_name.strip()
     aliases = result.get("aliases")
     if isinstance(aliases, list):
         extra["aliases"] = [item for item in aliases if isinstance(item, str) and item.strip()]

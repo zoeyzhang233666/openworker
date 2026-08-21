@@ -229,3 +229,36 @@ describe("Markdown chart fence", () => {
     expect(screen.queryByTestId("chart-error")).toBeNull();
   });
 });
+
+describe("Markdown LaTeX math", () => {
+  it("renders inline $…$ with KaTeX", () => {
+    render(<Markdown text={"Lift $E=mc^2$ here."} />);
+    expect(document.querySelector(".katex")).toBeTruthy();
+    expect(document.body.textContent || "").not.toMatch(/\$E=mc\^2\$/);
+  });
+
+  it("renders display $$…$$ with KaTeX", () => {
+    render(<Markdown text={"$$\n\\frac{a}{b}\n$$"} />);
+    expect(document.querySelector(".katex-display")).toBeTruthy();
+    expect(document.querySelector(".katex")).toBeTruthy();
+  });
+
+  it("renders report-style Delta and dfrac fragments", () => {
+    const text = [
+      "步长 $\\Delta t = 1/252$。",
+      "",
+      "$$",
+      "z_t = \\dfrac{S_t - \\bar{S}_t}{\\sigma_{S,t}}",
+      "$$",
+    ].join("\n");
+    render(<Markdown text={text} />);
+    expect(document.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+    expect(document.querySelector(".katex-display")).toBeTruthy();
+  });
+
+  it("leaves unpaired currency $100 as plain text", () => {
+    render(<Markdown text={"Price is $100 today."} />);
+    expect(document.querySelector(".katex")).toBeNull();
+    expect(document.body.textContent || "").toContain("$100");
+  });
+});

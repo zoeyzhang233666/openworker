@@ -31,6 +31,11 @@ import {
   type SurfaceVisibility,
   type WorkspaceCommandTrust,
 } from "./api";
+import {
+  DEFAULT_PERMISSION_MODE,
+  modeFromHealth,
+  resolvePermissionMode,
+} from "./permissionMode";
 import type {
   ApprovalDecision,
   Attachment,
@@ -89,13 +94,13 @@ import {
   REQUEST_CRM_CREATE_TASK_EVENT,
   crmCreateTaskIntentMessage,
 } from "./requestCrmCreateTask";
-import {
-  REQUEST_LEAD_FOLLOWUP_EVENT,
-  leadFollowupIntentMessage,
-  type RequestLeadFollowupDetail,
-} from "./requestLeadFollowup";
 import { FirstTokenWaitLabel } from "./FirstTokenWaitLabel";
-import { isFirstTokenEmptyWindow, isFirstTokenThinkingOpen, waitCopyPool } from "./firstTokenWaitCopy";
+import {
+  isFirstTokenEmptyWindow,
+  isPlanningWaitWindow,
+  waitCopyPool,
+} from "./firstTokenWaitCopy";
+import { thinkingSlotView } from "./thinkingSlot";
 import { SearchModal } from "./components/SearchModal";
 import { SessionIntro, introVariantForAgent } from "./components/SessionIntro";
 import { FolderGate } from "./components/FolderGate";
@@ -107,9 +112,7 @@ import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
 import { ChemClawSkillsView } from "./components/ChemClawSkillsView";
 import { ChemClawExpertsView } from "./components/ChemClawExpertsView";
-import { LeadsWorkbench } from "./components/LeadsWorkbench";
 import { PersonaView } from "./components/PersonaView";
-import { AuditView } from "./components/AuditView";
 import { InboxView } from "./components/InboxView";
 import { ApprovalCard } from "./components/ApprovalCard";
 import { DirectoryRequestCard } from "./components/DirectoryRequestCard";
@@ -225,7 +228,8 @@ export function App() {
   // accumulated live from assistant_message events, reset with the transcript.
   const [usage, setUsage] = useState<SessionUsage>(emptyUsage());
   const [surfaces, setSurfaces] = useState<SurfaceVisibility>({ cowork: true, chat: false, code: false });
-  const [mode, setMode] = useState("interactive");
+  // Seeded from /v1/health.mode before splash clears; WS `ready` remains authoritative.
+  const [mode, setMode] = useState(DEFAULT_PERMISSION_MODE);
   const [connected, setConnected] = useState(false);
   const [running, setRunning] = useState(false);
   // Transient "Compacting context…" indicator (OPE-27): set by the `compacting` event,
@@ -291,13 +295,11 @@ export function App() {
     | "session"
     | "scheduled"
     | "integrations"
-    | "audit"
     | "inbox"
     | "persona"
     | "settings"
     | "skills"
     | "experts"
-    | "leads"
   >("session");
   // A remembered Scheduled-detail target must not outlive the surface (see the
   // scheduledOpenId comment above): nav re-entry lands on the list, never a
@@ -319,6 +321,7 @@ export function App() {
     setSurface("persona");
   };
   const [browserRefreshKey, setBrowserRefreshKey] = useState(0);
+  const [backgroundTaskRefreshKey, setBackgroundTaskRefreshKey] = useState(0);
   const [railHidden, setRailHidden] = useState(false);
   // Left-nav collapse (⌘B): when collapsed the sidebar leaves the grid so content reclaims the
   // width; hovering the left edge peeks it back as a floating overlay. Persisted per-device.
@@ -551,6 +554,9 @@ export function App() {
         .then(async (h) => {
           if (cancelled) return;
           setModel(h.model);
+          // Mirror setModel: seed Composer before WS ready (MCP/engine setup can lag).
+          const seededMode = modeFromHealth(h);
+          if (seededMode) setMode(seededMode);
           // First-run setup wizard (desktop): show until the user completes/dismisses it.
           if (isTauri()) {
             getSettings()
@@ -687,7 +693,8 @@ export function App() {
         case "ready":
           setConnected(true);
           if (d.model) setModel(d.model);
-          if (d.mode) setMode(d.mode);
+          // Authority after reconnect; boot already seeded from health to avoid interactive→auto flash.
+          if (d.mode) setMode(resolvePermissionMode(d.mode));
           if (d.command_trust?.required) setWorkspaceTrustRequest(d.command_trust);
           // Cowork: adopt the server-provisioned scratch dir (only when we don't already have one).
           if (d.workspace) setWorkspace((cur) => cur || d.workspace);
@@ -832,6 +839,9 @@ export function App() {
           if (String(d.name || "").startsWith("browser_") || FILE_WRITE_TOOLS.has(d.name)) {
             setBrowserRefreshKey((k) => k + 1);
           }
+          break;
+        case "background_task_changed":
+          setBackgroundTaskRefreshKey((key) => key + 1);
           break;
         case "turn_end":
           if (d.status === "max_iterations_exceeded")
@@ -996,7 +1006,7 @@ export function App() {
   }, [sessionId]);
   useEffect(() => {
     if (atBottomRef.current) scrollToBottom();
-  }, [items, streaming]);
+  }, [items, streaming, reasoningStream]);
 
   // Topbar Artifacts count for every agent (rail may be hidden and not fetching).
   useEffect(() => {
@@ -1097,18 +1107,6 @@ export function App() {
     return () =>
       window.removeEventListener(REQUEST_CRM_CREATE_TASK_EVENT, onCrmCreateTask);
   });
-  // D-102: lead-list «继续补查» / «重评» — inject chat intent only (no auto-run / send / CRM).
-  useEffect(() => {
-    const onLeadFollowup = (ev: Event) => {
-      if (running) return;
-      const detail = (ev as CustomEvent<RequestLeadFollowupDetail>).detail;
-      if (!detail?.kind) return;
-      send(leadFollowupIntentMessage(detail));
-      setSurface("session");
-    };
-    window.addEventListener(REQUEST_LEAD_FOLLOWUP_EVENT, onLeadFollowup);
-    return () => window.removeEventListener(REQUEST_LEAD_FOLLOWUP_EVENT, onLeadFollowup);
-  });
   // Resolving a LIVE prompt also resolves its parked Inbox mirror server-side, but the polled
   // `sessionInbox` copy stays "pending" for up to a poll cycle — long enough for the docked
   // answer-in-context card to flash the SAME request again right after the user answered it
@@ -1195,6 +1193,8 @@ export function App() {
     setStreaming("");
     setTodo([]);
     setRunning(false);
+    // Keep Composer mode across new-session WS reconnect; do not fall back to interactive.
+    // `ready` still corrects if this session's engine mode differs (e.g. resumed record).
     pendingSendRef.current = null;
     // Always bind so ▾ picks update the empty-state greeting immediately (D-067).
     setAgent(target);
@@ -1454,6 +1454,13 @@ export function App() {
   };
 
   const idle = items.length === 0 && !streaming;
+  // D-186: App-level thinking chrome through live → hold stream → settle (until Turn owns it).
+  const thinkingSlot = thinkingSlotView({
+    running,
+    reasoningStream,
+    streaming,
+    items,
+  });
   const pendingApproval = [...items].reverse().find((i) => i.kind === "approval" && !i.resolved);
   const pendingDirReq = [...items].reverse().find((i) => i.kind === "dirreq" && !i.resolved);
   const pendingPlan = [...items].reverse().find((i) => i.kind === "planreq" && !i.resolved);
@@ -1643,21 +1650,17 @@ export function App() {
           setSurface("scheduled");
         }}
         onOpenIntegrations={() => setSurface("integrations")}
-        onOpenAudit={() => setSurface("audit")}
         onOpenInbox={() => setSurface("inbox")}
         onOpenSkills={() => setSurface("skills")}
         onOpenExperts={() => setSurface("experts")}
-        onOpenLeads={() => setSurface("leads")}
         onOpenSession={() => setSurface("session")}
         onOpenSettings={() => openSettings("appearance")}
         scheduledActive={surface === "scheduled"}
         integrationsActive={surface === "integrations"}
-        auditActive={surface === "audit"}
         inboxActive={surface === "inbox"}
         sessionActive={surface === "session"}
         skillsActive={surface === "skills"}
         expertsActive={surface === "experts"}
-        leadsActive={surface === "leads"}
         settingsActive={surface === "settings"}
         collapsed={navCollapsed}
         onCollapse={toggleNav}
@@ -1675,8 +1678,6 @@ export function App() {
         <ChemClawSkillsView onCreateSkill={startSkillConversation} />
       ) : surface === "experts" ? (
         <ChemClawExpertsView onOpenPersona={(id) => openPersona(id, "experts")} />
-      ) : surface === "leads" ? (
-        <LeadsWorkbench />
       ) : surface === "settings" ? (
         <SettingsView
           key={settingsTab}
@@ -1684,8 +1685,6 @@ export function App() {
           onOpenPersona={(id) => openPersona(id, "settings")}
           onCreateSkill={startSkillConversation}
         />
-      ) : surface === "audit" ? (
-        <AuditView />
       ) : surface === "inbox" ? (
         <InboxView onOpenSession={openSessionFromInbox} />
       ) : surface === "persona" ? (
@@ -1890,16 +1889,28 @@ export function App() {
                     // floating paragraph.
                     streamingText={streamMode(streaming, items, running) === "quiet" ? streaming : undefined}
                   />
-                  {/* Live thinking (D-076): expand during first-token window so users see work. */}
-                  {running && reasoningStream && !streaming && (
+                  {/* D-186: same-slot thinking chrome (live forceOpen, or collapsed through hold/settle). */}
+                  {thinkingSlot && (
                     <div className="transcript">
                       <ThinkingBlock
-                        text={reasoningStream}
-                        live
-                        defaultOpen={isFirstTokenThinkingOpen(items)}
+                        key={thinkingSlot.live ? "thinking-live" : "thinking-settled"}
+                        text={thinkingSlot.text}
+                        live={thinkingSlot.live}
+                        defaultOpen={thinkingSlot.forceOpen}
+                        forceOpen={thinkingSlot.forceOpen}
                       />
                     </div>
                   )}
+                  {/* D-176/D-183: planning hint under live or settled thinking until tools/answer. */}
+                  <FirstTokenWaitLabel
+                    active={isPlanningWaitWindow(items, {
+                      running,
+                      compacting,
+                      reasoningStream,
+                      streaming,
+                    })}
+                    pool="planning"
+                  />
                   {/* Compaction runs between provider turns (nothing streams during it), so
                       the transient takes over the waiting slot with a specific label. */}
                   {running && compacting && <WaitingForAgent label={t("Compacting context…")} />}
@@ -2015,6 +2026,7 @@ export function App() {
             active={surface === "session" && !railHidden}
             sessionId={sessionId}
             refreshKey={browserRefreshKey}
+            taskRefreshKey={backgroundTaskRefreshKey}
             toolNames={items.filter((i) => i.kind === "tool").map((i: any) => i.name)}
             chartToolResults={yahooChartToolsFromItems(items)}
             todo={todo}
@@ -2088,15 +2100,22 @@ function ohlcChartPreviewFromEvent(d: {
   chart_spec?: unknown;
   symbol?: unknown;
   name?: unknown;
+  series_name?: unknown;
   aliases?: unknown;
   plot_status?: unknown;
   plot_error?: unknown;
 }): string | undefined {
   if (!d || typeof d.chart_spec !== "object" || d.chart_spec === null) return undefined;
+  const seriesName =
+    typeof d.series_name === "string" && d.series_name
+      ? d.series_name
+      : typeof d.name === "string" && d.name
+        ? d.name
+        : undefined;
   return JSON.stringify({
     status: typeof d.plot_status === "string" && d.plot_status ? d.plot_status : "ok",
     symbol: d.symbol,
-    name: d.name,
+    name: seriesName,
     aliases: d.aliases,
     chart_spec: d.chart_spec,
     error: d.plot_error,

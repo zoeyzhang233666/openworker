@@ -499,10 +499,38 @@ def test_chart_finished_sidecar_extracts_chart_spec_not_full_ohlc_dump():
     assert extra["chart_spec"] == spec
     assert extra["symbol"] == "GC=F"
     assert extra["plot_status"] == "ok"
-    assert extra["name"] == "Gold"
+    assert extra["series_name"] == "Gold"
+    assert "name" not in extra
     assert extra["aliases"] == ["gold"]
     assert "labels" not in extra
     assert "ohlc" not in extra
+
+
+def test_tool_finished_keeps_tool_name_when_ohlc_has_product_name():
+    """D-179: product label must not overwrite TOOL_FINISHED.data['name']."""
+    from coworker.engine import chart_finished_sidecar
+
+    result = {
+        "status": "ok",
+        "symbol": "MA2609.DCE",
+        "name": "甲醇",
+        "aliases": ["甲醇", "郑醇"],
+        "chart_spec": {
+            "version": 1,
+            "type": "candlestick",
+            "labels": ["2026-01-01"],
+            "ohlc": [{"o": 1, "h": 2, "l": 0, "c": 1}],
+        },
+    }
+    sidecar = chart_finished_sidecar(result)
+    merged = {
+        "name": "lookup_cn_futures_ohlc",
+        "status": "success",
+        **sidecar,
+    }
+    assert merged["name"] == "lookup_cn_futures_ohlc"
+    assert merged["series_name"] == "甲醇"
+    assert "甲醇" != merged["name"]
 
 
 def test_chart_finished_sidecar_empty_without_spec_or_error():
@@ -530,6 +558,7 @@ def _market_engine(tmp_path, turns, *, answer="化工现货"):
         ("lookup_cn_futures_quote", "market", ["cn_market"]),
         ("lookup_cn_futures_ohlc", "market", ["cn_market"]),
         ("lookup_yahoo_ohlc", "market", ["yahoo"]),
+        ("lookup_chemical_identity", "chemistry", ["chem_identity"]),
         ("web_search", "search", ["web"]),
     ):
 
@@ -574,6 +603,29 @@ def _market_engine(tmp_path, turns, *, answer="化工现货"):
         question_asker=question_asker,
     )
     return engine, calls
+
+
+def test_turn_plan_allowlist_guard_blocks_undeclared_capability_tool(tmp_path):
+    engine, calls = _market_engine(
+        tmp_path,
+        [
+            _tool_turn("web_search", {"query": "CAS 67-56-1"}),
+            _text_turn("未使用未声明的网页替代源"),
+        ],
+    )
+
+    events = _collect(engine, "查询 CAS 67-56-1")
+
+    assert calls.get("web_search", 0) == 0
+    denied = [
+        event
+        for event in events
+        if event.type is EventType.TOOL_FINISHED
+        and event.data.get("name") == "web_search"
+    ]
+    assert denied and denied[0].data["status"] == "denied"
+    assert denied[0].data["outcome"]["status"] == "denied"
+    assert "Scenario/Capability" in denied[0].data["reason"]
 
 
 def test_market_guard_rejects_price_tool_before_clarification(tmp_path):
@@ -646,6 +698,39 @@ def test_market_guard_rejects_futures_after_spot_was_selected(tmp_path):
     ]
     assert rejected and rejected[0].data["status"] == "denied"
     assert "市场口径不一致" in rejected[0].data["reason"]
+
+
+def test_market_guard_allows_spot_and_futures_for_basis_arb(tmp_path):
+    engine, calls = _market_engine(
+        tmp_path,
+        [
+            _multi_tool_turn(
+                [
+                    (
+                        "mcp__chem-data-hub__get_price_trend",
+                        {"product_name": "甲醇", "limit": 90},
+                    ),
+                    ("lookup_cn_futures_ohlc", {"symbol": "MA2509"}),
+                ]
+            ),
+            _text_turn("期现对照完成"),
+        ],
+    )
+    events = _collect(engine, "甲醇期货产业链上下游套利")
+    assert calls.get("mcp__chem-data-hub__get_price_trend", 0) == 1
+    assert calls.get("lookup_cn_futures_ohlc", 0) == 1
+    finished = {
+        event.data["name"]: event.data["status"]
+        for event in events
+        if event.type is EventType.TOOL_FINISHED
+        and event.data.get("name")
+        in {
+            "mcp__chem-data-hub__get_price_trend",
+            "lookup_cn_futures_ohlc",
+        }
+    }
+    assert finished["mcp__chem-data-hub__get_price_trend"] == "ok"
+    assert finished["lookup_cn_futures_ohlc"] == "ok"
 
 
 def test_market_guard_survives_durable_resume_of_pending_clarification(tmp_path):

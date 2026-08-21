@@ -20,7 +20,12 @@ export async function sendAppEvent(page: Page, obj: unknown): Promise<void> {
 // (sessions, personas, inbox, routing, channel subscriptions) are held in per-test in-memory state
 // so add/remove/toggle reflect through the real UI on re-fetch.
 
-const HEALTH = { status: "ok", default_workspace: null, model: "anthropic:claude-opus-4-8" };
+const HEALTH = {
+  status: "ok",
+  default_workspace: null,
+  model: "anthropic:claude-opus-4-8",
+  mode: "interactive",
+};
 
 const SETTINGS = {
   provider: "openai",

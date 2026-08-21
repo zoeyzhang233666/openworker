@@ -7,19 +7,19 @@ from coworker.agent import _CLARIFY_POINTER, _LONG_TASK_GUIDANCE
 
 def test_long_task_guidance_short_bubble_and_optional_webpage():
     text = _LONG_TASK_GUIDANCE
-    assert "OPTIONAL" in text
-    assert "align" in text.lower()
-    assert "keep the chat bubble SHORT" in text
-    assert "cooks an interactive webpage in the background" not in text
-    assert "CDN" in text or "read-only GET" in text
-    assert "second research agent" in text or "MCP/skills" in text
+    assert "可选" in text
+    assert "对齐" in text
+    assert "气泡要短" in text
+    assert "后台烹饪" not in text
+    assert "CDN" in text or "只读" in text
+    assert "第二套" in text or "MCP" in text
 
 
 def test_clarify_pointer_short_bubble_and_align():
     text = _CLARIFY_POINTER
-    assert "webpage" in text.lower()
-    assert "align" in text.lower()
-    assert "short" in text.lower()
+    assert "网页版" in text
+    assert "对齐" in text
+    assert "短" in text
     assert "Do not ask whether to make a nicer webpage" not in text
 
 

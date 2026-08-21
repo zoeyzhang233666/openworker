@@ -17,9 +17,10 @@ test("health reports ok with the fields the GUI reads", async () => {
   test.skip(!(await backendUp()), "backend not running on :8765");
   const s = await (await backendFetch("/v1/health")).json();
   expect(s.status).toBe("ok");
-  // The GUI's boot reads these three off /v1/health.
+  // The GUI's boot reads these off /v1/health (mode seeds Composer before WS ready).
   expect(s).toHaveProperty("model");
   expect(s).toHaveProperty("default_workspace");
+  expect(s).toHaveProperty("mode");
 });
 
 test("providers list has the shape the Settings pane expects", async () => {

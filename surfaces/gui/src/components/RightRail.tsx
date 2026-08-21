@@ -16,6 +16,7 @@ import { Markdown, OPEN_ARTIFACT_EVENT } from "./Markdown";
 import { artifactIdentity, normalizeSeparators } from "../artifactPath";
 import { prepareHtmlPreview } from "../htmlPreviewSandbox";
 import type { ChartToolResult } from "../chartSpec";
+import { BackgroundTasksSection } from "./BackgroundTasksSection";
 
 type Panel = "progress" | "artifacts";
 
@@ -46,6 +47,7 @@ interface Props {
   active: boolean;
   sessionId: string;
   refreshKey: number;
+  taskRefreshKey?: number;
   toolNames: string[];
   /** Same-session OHLC tool previews for ```chart short-ref in Markdown artifacts (D-162). */
   chartToolResults?: ChartToolResult[];
@@ -69,6 +71,7 @@ export function RightRail({
   active,
   sessionId,
   refreshKey,
+  taskRefreshKey = 0,
   toolNames,
   chartToolResults,
   todo,
@@ -201,6 +204,8 @@ export function RightRail({
           <RailSection title={t("Progress")} open={open.progress} onToggle={() => setOpen({ ...open, progress: !open.progress })}>
             <ProgressSummary running={running} toolNames={toolNames} todo={todo} />
           </RailSection>
+
+          <BackgroundTasksSection sessionId={sessionId} refreshKey={taskRefreshKey} />
 
           {showArtifacts && (
           <RailSection

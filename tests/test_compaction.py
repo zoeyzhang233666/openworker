@@ -514,6 +514,37 @@ def test_is_context_overflow():
     assert not is_context_overflow(Exception("connection reset"))
 
 
+def test_is_retryable_provider_reject():
+    from coworker.compaction import is_retryable_provider_reject
+
+    assert is_retryable_provider_reject(
+        Exception(
+            "Upstream rejected the request as invalid. "
+            "Check the request parameters and try again."
+        )
+    )
+    assert is_retryable_provider_reject(
+        Exception("Error code: 400 - invalid_request_error")
+    )
+    assert not is_retryable_provider_reject(
+        Exception("context_length_exceeded")
+    )
+    assert not is_retryable_provider_reject(
+        Exception("insufficient_quota for model")
+    )
+
+
+def test_is_provider_timeout():
+    from coworker.compaction import is_provider_timeout
+
+    assert is_provider_timeout(Exception("APITimeoutError: Request timed out."))
+    assert is_provider_timeout(TimeoutError("Request timed out."))
+    assert not is_provider_timeout(Exception("rate_limit_exceeded"))
+    assert not is_provider_timeout(
+        Exception("Upstream rejected the request as invalid.")
+    )
+
+
 def test_user_messages_capped_across_repeated_compactions():
     # The mechanical user-message list must not grow forever — newest _USER_MESSAGES_MAX
     # survive, the rest stay counted so the block's "omitted" note is honest.

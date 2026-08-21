@@ -2,6 +2,29 @@
 
 ## 当前状态
 
+- **D-187：双模式停止 + 主任务超时可恢复（2026-08-21）**：用户 GUI/HTTP `immediate` 立刻硬停；智能体/系统 `wrap_up` 先催写部分报告（~90s）再 force；流式 read=300s；timeout 且本轮有工具产物时 EF salvage。聚焦 background/subagent/EF/model_errors/compaction/provider kwargs：**54 passed**。规格/计划：[`D-187 design`](../superpowers/specs/2026-08-21-chemclaw-dual-mode-stop-timeout-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-dual-mode-stop-timeout.md)。**须重启 sidecar** 后验证：右栏停止立刻停；模型 `background_task_stop` 出现 wrap-up；长轮超时更少裸英文。
+- **D-186：思考同槽位交接防空白（2026-08-21）**：修 D-183 未覆盖的真空白——live 思考不再因早期 `assistant_delta`/`!streaming` 整块卸载；hold 间隙与 `assistant_message` 后同槽位收起保留「思考过程」；Turn 已挂 reasoning 时外挂让位避免双份。GUI `thinkingSlot` + firstTokenWaitCopy + ThinkingBlock + Transcript：**67 passed**。规格/计划：[`D-186 design`](../superpowers/specs/2026-08-21-chemclaw-thinking-slot-handoff-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-thinking-slot-handoff.md)。
+- **D-185：Markdown LaTeX 公式渲染（2026-08-21）**：共享 `Markdown.tsx` 接入 `remark-math` + `rehype-katex` + 直依赖 `katex`；对话最终回答与 RightRail `.md` 产物预览同时支持 `$…$` / `$$…$$`；坏公式 `throwOnError: false`；不成对 `$100` 保持文本。不改 prompt、ThinkingBlock、HTML 网页版。GUI `Markdown.test.tsx`：**19 passed**。规格/计划：[`D-185 design`](../superpowers/specs/2026-08-21-chemclaw-markdown-latex-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-markdown-latex.md)。
+- **D-184：研究套利强制委派 + LLM 超时可重试（2026-08-21）**：研究 Scenario 命中后 AGENT→DEEP_RESEARCH；父面去掉行情 MCP/CN 工具（合成写工具 + web + subagent 控制保留）；`make_execution_profile(DEEP_RESEARCH)` 尊重投影 allowlist；APITimeout 计入流式重试 + 中文 `llm_api` 分层错误。聚焦 scenario/planner/harness/model_errors/router/prompt/execution_profile：**104 passed**；扩展 market/subagent/EF/projection：**55 passed**。规格/计划：[`D-184 design`](../superpowers/specs/2026-08-21-chemclaw-research-delegate-force-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-research-delegate-force.md)。**须重启 sidecar** 后用「研究沥青期货产业链上下游套利怎么做」复验右栏 ≥2 research。
+- **D-183：思考结束收起连续可见（2026-08-21）**：live「正在思考」结束后改为收起「思考过程」标题（不整块消失）；settled thinking-only 间隙继续轮播规划等待文案；TurnGroup 上方保留可展开 reasoning。D-178 live forceOpen 不变。GUI `firstTokenWaitCopy` + `FirstTokenWaitLabel` + `ThinkingBlock` + `Transcript`：**61 passed**。规格/计划：[`D-183 design`](../superpowers/specs/2026-08-21-chemclaw-thinking-collapse-continuity-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-thinking-collapse-continuity.md)。
+- **D-182：研究路径剩余英文提示纠偏（2026-08-21）**：补丁 D-180——汉化 `start_subagent`/`background_task_*`/`explore`、技能目录头与 `load_skill`/`search_skills`、`<market-scope-policy>`、以及 research/explore/worker Profile instructions。GUI 仍透传 upstream reasoning。聚焦 `test_prompt_language_zh` + market_intent + emergency/skills/projection：**52 passed**。**须重启 sidecar** 后用「研究甲醇期货产业链上下游套利怎么做」复验思考语言。
+- **D-181：化工行情 Web 有序降级（2026-08-21）**：修订 D-166/D-177——化工现货/国内期货/期现双口径默认放行 `web_search`/`web_fetch`；先结构化、空结果再联网补价并标来源；仍禁交叉替代与 Yahoo 冒充国内期现。A 股/期权不变。TurnPlanner 将 chem Web 并入 Scenario 投影；澄清后仍保留 Web。聚焦 market/planner/projection/harness/prompt：**61 passed**；扩展 market 过滤：**23 passed**。规格/计划：[`D-181 design`](../superpowers/specs/2026-08-21-chemclaw-chem-web-ordered-fallback-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-chem-web-ordered-fallback.md)。
+- **D-180：第一方 system/tool 提示汉化（2026-08-21）**：默认 cowork/chat 主提示、`agent.py` 投影核心与共享 guidance、以及默认核心工具（read_file/grep/run_shell/todo_write/ask_user/web_search/web_fetch 等）的 schema `description` 改为简体中文，并写明「用简体中文思考与回复」；工具 name/参数键仍英文。GUI ThinkingBlock 继续原样透传 upstream reasoning。聚焦 `test_prompt_language_zh` + prompt/skills/batching/webpage/catalog/market：**58 passed**。不翻译 reasoning、不整库汉化 Skill。真机 ApiHub 思考语言待用户侧确认。
+- **D-179：研究效率首包硬伤修复（2026-08-21）**：子智能体继承父 `MarketToolSelection`（含 D-177 双口径）；ApiHub generic invalid 强制 compact 重试一次 + EF salvage + 中文友好错误；`chart_finished_sidecar` 用 `series_name` 不再覆盖 `TOOL_FINISHED.name`；research 补 `grep`；Windows shell 默认 UTF-8；cowork 优先 `grep`/`read_file`。聚焦 engine/market/subagent/EF/shell/catalog：**35 passed**；宽回归 subagent+EF+cohort+background：**40 passed**。规格/计划：[`D-179 design`](../superpowers/specs/2026-08-21-chemclaw-research-efficiency-hard-fixes-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-research-efficiency-hard-fixes.md)。
+- **D-178：步骤卡下方 live 思考强制展开（2026-08-21）**：补丁 D-176——live「正在思考」只要挂载即 `forceOpen`（含「正在运行 x 个步骤」之后 remount），正文贴底跟滚；步骤卡可同时展开。规划间隙提示仍仅首包前。GUI `ThinkingBlock` + `firstTokenWaitCopy`：**16 passed**。规格/计划：[`D-178 design`](../superpowers/specs/2026-08-21-chemclaw-live-thinking-open-with-steps-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-live-thinking-open-with-steps.md)。
+- **D-177：期现套利双口径放行（2026-08-21）**：修复「甲醇期货…套利/基差/结合现货」被 D-166 单口径守卫误拦 `get_price_trend` 的问题。新增 `CN_SPOT_FUTURES`：同句现货+期货、期现/基差、或期货+套利/上下游时同一轮放行 chem-data-hub 与 `lookup_cn_futures_*`；禁止交叉替代。纯期货/纯现货/裸甲醇澄清与区域现货套利不变。聚焦 `test_market_intent` + market guard + scenario/planner/projection：**54 passed**。规格/计划：[`D-177 design`](../superpowers/specs/2026-08-21-chemclaw-spot-futures-basis-dual-scope-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-spot-futures-basis-dual-scope.md)。
+- **D-176：思考框贴底滚动 + 规划间隙提示（2026-08-21）**：live `ThinkingBlock` 正文在贴底时随 reasoning 滚到最新（框内上翻暂停）；空白期强制展开思考正文，下方轮播「龙虾正在规划下一步」类提示，步骤卡/回答流出现后消失。不改 TurnGroup / settled 思考默认收起。GUI 定向 **41 passed**。规格/计划：[`D-176 design`](../superpowers/specs/2026-08-21-chemclaw-thinking-scroll-planning-wait-design.md) / [`plan`](../superpowers/plans/2026-08-21-chemclaw-thinking-scroll-planning-wait.md)。
+- **D-175：Subagent 自动汇合 + 短查兜底（2026-08-21）**：对照 Claude Code 完成通知、OpenHarness listener、DeerFlow 终态/短超时、Agents SDK fan-in；同批后台 Agent 全部终态后只注入一次汇合消息（`deliver_to_session`：idle 新回合 / busy steer），并接线 `WakeStore.complete_job`。`background_task_gather` 默认超时改为 **60s**，仅作短查/读报告；委派政策禁止长阻塞 gather 当主等待。新增 `DelegationCohortTracker`。聚焦 `test_delegation_cohort` + `test_subagent_cohort_wake` + `test_self_wake` + `test_subagent_runtime` + `test_background_tasks`：**34 passed**。不实现 AgentRoom，不占用 D-173。规格/计划：[`D-175 design`](../superpowers/specs/2026-08-20-chemclaw-subagent-auto-synthesis-design.md) / [`plan`](../superpowers/plans/2026-08-20-chemclaw-subagent-auto-synthesis.md)。
+- **按时间最近对话取消自动折叠（2026-08-20）**：`Chronological` / flat 布局不再用 `RECENT_PEEK=4` 截断；「再显示 xx 项」已去掉，侧栏滚动展示全部会话。按助手分组的 `sessions_peek` 不变。GUI `Sidebar` **8 passed**。
+- **D-174：Research Subagent 可执行权限 + 可靠停止（2026-08-20）**：修复研究子智能体卡在 plan 模式空转、缺国内期货工具、以及右栏停止后仍假 running 的问题。`research` 改为 `interactive` + `shared_workspace`，allowlist 含 `lookup_cn_futures_*` 与写报告工具，并继承父会话 PermissionEngine 模式（完全访问时写报告无需再卡审批）；停止超时强制 `cancelled` 且防竞态回写。`explore` 仍只读。聚焦 `test_subagent_runtime` + `test_background_tasks` + `test_subagent`：**26 passed**。不占用 D-173 Hook Bus。
+- **权限模式首帧闪烁修复（2026-08-20）**：`/v1/health` 暴露 `mode`（`manager.mode` / prefs `default_mode`）；GUI boot 在清 splash 前 `setMode`，新建会话不回落 `interactive`；WS `ready` 仍为权威纠偏。去掉「先请求批准再跳完全访问」的显示滞后。GUI `permissionMode` **3 passed**；Python health 聚焦 **2 passed**。
+- **D-172 补丁：研究意图优先于查价 Scenario（2026-08-20）**：修复「上海原油期货深度研究」等请求被 D-166 `cn_futures_market` / 现货查价 Scenario 抢走后 `subagent_eligible=false`、模型自报「并行派发被拒绝」的问题。含「深度研究/周报/产业链/供需分析」等标记时匹配 `chemical_market_research`（或企业研究），并禁止 market_intent 把 AGENT 降为 VERIFIED；纯查价（如「甲醇期货现在多少钱」「上海原油期货」）仍走查价 Scenario 且不开放 Subagent。`start_subagent` 默认 Profile 改为 `research`（代码探索须显式 `explore`）。聚焦 `test_scenario_resolver` + `test_turn_planner` + `test_agent_harness_routing` + `test_subagent_runtime`：**32 passed**。不占用 Phase 3 Hook Bus 的 D-173。
+- **Cursor 工程交接（2026-08-20）**：已新增 [`CURSOR_HANDOFF_2026-08-20.md`](CURSOR_HANDOFF_2026-08-20.md)，以实际 `chemclaw-UI@98d9ce6` dirty worktree 为基线，完整记录产品边界、D-165—D-172 已完成能力、Phase 1/2 interface、运行/测试/ACL 风险、donor 固定版本，以及 Phase 3 Hook/Fallback/Verifier、Phase 4 Scenario 工作台、Phase 5 AgentRoom、Phase 6 企业微信的分阶段交接方案。本文档不新增运行时代码、不替代已批准决策；下一执行者必须先保护 D-168—D-172 未提交改动，再为 D-173 写规格并等待批准。
+- **Agent Harness Phase 2 产品闭环（2026-08-20，D-172）**：D-171 的 runtime 已接入真实对话产品面。`chemical_company_research` / `chemical_market_research` 的 eligible TurnPlan 会投影 `start_subagent` 与任务控制工具，并注入“至少两个独立分支、最多 3 个研究子智能体”的有界委派政策；简单查价/身份查询不扩工具面。`BackgroundTaskManager` 的 created/status/output 变化经父会话 WS `background_task_changed` 通知，REST/SQLite 负责重连恢复。当前对话 RightRail 仅在存在任务时显示“子智能体与后台任务”，支持列表、状态/耗时、工作记录/结果、停止和 Agent 续发，不恢复独立“活动”页。真实 ApiHub 会话 `c3b686dc-2f8` 已并行完成上游原料、下游用途、代表企业 3 个 `research` task；父轮 Provider 超时后 child 仍继续直至全部完成并可在右栏点开，证明生命周期独立，其中两个分支产出带证据链接的完整复核报告；完成后的任务也已从右栏续发并以 `run_count=2` 读取原报告、再次完成。真实验收同时补给 `research` Profile 本地产物只读 `read_file/list_files`。聚焦 Python **52 passed**、GUI **34 passed**、production build 通过（仅既有警告）。规格/计划：[`D-172 design`](../superpowers/specs/2026-08-20-chemclaw-subagent-task-visibility-design.md) / [`plan`](../superpowers/plans/2026-08-20-chemclaw-subagent-task-visibility.md)。
+- **Agent Harness Phase 2（2026-08-20，D-171）**：已完成通用 `SubagentRuntime + BackgroundTaskManager`。Agent/Shell 统一为可查询、增量读输出、停止、wait/gather、completion listener、重启调和的持久 task；内置 `explore/research/worker` Profile，复用现有 `TurnEngine`、child Conversation、MCP、PermissionEngine 与 TurnTrace。`explore` 旧合同兼容，Agent 完成后可续发消息并沿用 child context；Shell 不自动重放。提供 runtime tools 与本地鉴权 REST，不恢复 D-170“活动”页面。聚焦回归：runtime/permission **85 passed**、Harness/Planner/Trace **134 passed**、D-166 市场门禁 **89 passed**、Automation **21 passed**；服务器组合仍受已记录 Windows SecretStore pytest ACL 污染影响，未宣称全量通过。规格/计划：[`D-171 design`](../superpowers/specs/2026-08-20-chemclaw-subagent-background-runtime-design.md) / [`plan`](../superpowers/plans/2026-08-20-chemclaw-subagent-background-runtime.md)。
+- **移除用户侧“活动/执行诊断”页面（2026-08-20，D-170）**：用户确认该开发排障页面难以理解且无直接业务价值；账号菜单已移除“活动”，App 删除 audit surface 与页面。D-169 的 Scenario/Capability、执行守卫、Trace 和诊断 API 继续在后端生效，不占用普通用户界面。Sidebar+i18n **30 passed**，D-169 Python 聚焦 **170 passed**，GUI build 通过。计划：[`D-170`](../superpowers/plans/2026-08-20-chemclaw-remove-activity-ui.md)。
+- **Agent Harness Phase 1（2026-08-20，D-169）**：在既有单一 `TurnPlanner -> TurnEngine` 链路内完成 5 个内置 Scenario、8 个业务 Capability、声明式 Provider binding、规划期 readiness/fallback、受开关控制的 Tool allowlist guard、兼容 `ToolOutcome`、无正文 `TurnTrace` 及 REST/WS Preview/Trace。`scenario_resolution_enabled` 为**候选 ON**；关闭后保持 D-165/D-166 legacy 投影。未引入第二套 Agent Loop，也未提前实现 Subagent/BackgroundTaskManager/Hook Bus。聚焦 Python **170 passed**；1000 次确定性解析 P95 < 10 ms、缓存 Preview P95 < 50 ms。最初附带的用户侧执行诊断页已按 D-170 移除，后端能力不变。规格/计划：[`D-169 design`](../superpowers/specs/2026-08-20-chemclaw-agent-harness-phase-1-design.md) / [`plan`](../superpowers/plans/2026-08-20-chemclaw-agent-harness-phase-1.md)。
+- **退役 GUI「客户清单」侧栏（2026-08-19，D-168）**：主导航去掉「客户清单」；删除 `LeadsWorkbench` / JSON 导入桥。对话侧 `format_lead_list` + `chem-lead-list` + 拓客龙虾产物保留。GUI `Sidebar`+`i18n`+`localization-audit` **31 passed**；`tsc --noEmit` OK。计划：[`retire-lead-list-nav`](../superpowers/plans/2026-08-19-chemclaw-retire-lead-list-nav.md)。
 - **内置 chem-data-hub / chem-biz-scope MCP（2026-08-19，D-167）**：安装包可携带混淆密钥 bundle（`packaging/builtin_mcp.secrets.json` 构建注入，不进 Git）；首次启动种入全局 `mcp.json`（仅 `${VAR}`）与状态目录 `.env`；连接页只读「内置」（可启停，不可删/改密钥）。用户已自配同名 server 不覆盖；两台 URL 均在仓库模板（biz-scope：`http://121.37.133.47:8900/mcp`）。混淆≠对外密钥保管。定向 `tests/test_builtin_mcp.py` **9 passed**。规格/计划：[`D-167 design`](../superpowers/specs/2026-08-19-chemclaw-builtin-mcp-design.md) / [`plan`](../superpowers/plans/2026-08-19-chemclaw-builtin-mcp.md)。
 - **化工现货与期货路由纠偏（2026-08-19，D-166）**：新增不可变市场意图/工具选择 seam；明确“现货”只投影 chem-data-hub `get_price_trend`，明确国内期货才投影 `lookup_cn_futures_quote/ohlc`，WTI/Brent 走 Yahoo OHLC。甲醇/原油等裸问价先 `ask_user`，Engine 在权限审批前阻止澄清前和错误口径调用；durable resume 重新读取原始用户请求，口径守卫不会因重启丢失。纯查价无 Web，MCP 缺失/空数据不以网页或期货补价。工具投影 OFF 或 Router OFF 保持 legacy。最终聚焦 **94 passed**（含 GUI WS 四场景 Tool 事件）；广泛回归 **319 passed, 8 deselected**，8 项均为既有/Windows ACL 环境失败。规格/计划：[`D-166 design`](../superpowers/specs/2026-08-19-chemclaw-spot-futures-routing-design.md) / [`plan`](../superpowers/plans/2026-08-19-chemclaw-spot-futures-routing.md) / [`execution log`](../superpowers/plans/2026-08-19-chemclaw-spot-futures-routing-execution-log.md)。
 - **ApiHub CN Flash 单独重跑（2026-08-18，D-164）**：长答协议、N=3、≥200ms 不放宽。Live 只跑 `deepseek-v4-flash`（~39s）**PASS**（三轮长答间隔约 4.7–5.1s，已写入对表）。默认 `apihub-cn:deepseek-v4-flash` 带工具可真流式。Pro/GLM 仍为 D-163 PASS；kimi-k3 仍 FAIL。Kill switch OFF / Intl / 自定义 host 仍 buffered。定向 `test_apihub_cn_stream_capability` + `test_providers` + live skip：**63 passed, 1 skipped**。夹具合并写入 `docs/chemclaw/fixtures/apihub_cn_stream_capability.json`。规格/计划：`docs/superpowers/specs/2026-08-18-apihub-cn-flash-reprobe-design.md` / `docs/superpowers/plans/2026-08-18-apihub-cn-flash-reprobe.md`。
@@ -52,13 +75,13 @@
 - **macOS DMG（2026-08-11）**：`packaging/build_dmg.sh` 的 APP 名改为读 `tauri.conf.json` `productName`（ChemClaw）；Release workflow 稳定产物名为 `ChemClaw-macos-arm64.dmg` / `ChemClaw-macos-x64.dmg`。须在 **macOS runner**（GitHub Actions `workflow_dispatch` 或标签 `app-v*`）或本机 Mac 构建，Windows 不能交叉编译。已推送 `chemclaw-clean` @ `9b0ac4c` 与标签 `app-v0.1.7-chemclaw-macos`。若 Actions 页仍为 0 runs：到仓库 Settings → Actions → General 允许 Actions 后再 **Re-run** / `workflow_dispatch`。无 Apple 证书时为未签名包：Mac 上右键打开或 `xattr -cr ChemClaw.app`。
 - **架构调整（2026-08-03）**：采用方案 A，从 OpenWorker 最新 `main`（含 2026-08-01 Skills PR #391）重建 ChemClaw 层，丢弃自研 `capabilities` 模块。
 - 当前阶段：阶段 1，上游 Skill + ChemClaw 品牌/汉化/导航（进行中，待用户界面验收）。
-- 当前分支：`chemclaw-clean`（Wave A+B+C 已合入；相对 origin ahead；push 须点名）
-- **唯一开发基线 Worktree**：`D:\OpenWorker\openworker\.worktrees\chemclaw-clean`（后续只在此继续开发）
+- 当前分支：`chemclaw-UI`，D-172 开始时提交 `98d9ce6`（工作树包含尚未提交的 D-168—D-172；push 须点名）
+- **当前开发 Worktree**：`D:\OpenWorker\openworker\.worktrees\chemclaw-UI`
 - 旧 Worktree（只读备份，待确认后删除，本次不删）：`D:\OpenWorker\openworker\.worktrees\chemclaw-design`（分支 `design/chemclaw-foundation` / 标签式备份 `backup/broken-2026-08-03` 已在 `backup` 远程）
 - 业务代码（本 Worktree）：
   - ✅ 基于 upstream/main（OpenWorker Skills 官方实现）
   - ✅ ChemClaw 品牌 + 全界面汉化（cherry-pick 自旧分支）
-  - ✅ D-006 主导航：对话 / 技能 / 智能体 / 客户清单 / 定时任务 / 连接 / 设置（D-098 增「客户清单」）
+  - ✅ D-006 主导航：对话 / 技能 / 智能体 / 定时任务 / 连接 / 设置（D-168 已退役 D-098 侧栏「客户清单」页）
   - ✅ D-066 智能体拆包联装：`package_scan` / `package_install`；`POST /v1/personas/install` 支持 `zip_b64`/`data_b64`/`package_dir` + 逐项 `decisions`；`skill_ids` + `persona_detail` 暴露 prompt/skills/路径
   - ✅ D-069 OpenClaw 工作区合成 + 冲突批量/汉化：无 ChemClaw persona 且有 IDENTITY/SOUL 时，将 IDENTITY/SOUL/AGENTS/USER/TOOLS/MEMORY 等合成进一个智能体提示词（不当作多个智能体）；`memory/` 不整树导入；预览「全部覆盖/全部跳过」+ i18n
   - ✅ 技能页使用上游 `SkillsTab`，已汉化；不再使用自研 `SkillsView` / `capabilities`
@@ -189,13 +212,14 @@
 
 ## 下一道门禁
 
-1. 用户在 `chemclaw-clean` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
+1. 用户在 `chemclaw-UI` 打开界面验收：品牌 ChemClaw、默认中文、主导航「智能体」、技能页、Mermaid neo、新建对话 ▾ 中文选择器、空会话主标题「与 xxx 畅谈」随 ▾ 变化、智能体页 Sliders 详情、zip 联装（先重启服务）。
 2. 验收满意后删除旧 `chemclaw-design` worktree（`git worktree remove`）；在此之前勿在旧树继续开发。
 3. 二期：智能体非内置编辑 / 内置另存为 / 本会话切换+按条 agent_id；对话挂载条；依赖型 Skill 安装器（D-019）。
 4. 销售主线含 D-105/D-109/D-127 HubSpot、D-106 SAM、D-108/D-110 海关、**D-113—D-120**（公开查询 + VAT/汇率/维基 + **化工社只读/写反应/SVG 落盘**）、内容重构 **D-128 M3**。**用户侧**补勾 D-108/109/110/127。**下一刀须点名**：① 合集 P0；②（可选）确认打安装包以补验 M3 frozen `load_skill`。
 
 ## 文档索引
 
+- [Cursor 完整工程交接（Agent Harness 后续 Phase 3—6）](CURSOR_HANDOFF_2026-08-20.md)
 - [完整产品设计](../superpowers/specs/2026-07-29-chemclaw-product-design.md)
 - [销售增长智能设计（D-086—D-112）](../superpowers/specs/2026-08-07-chemclaw-sales-growth-intelligence-design.md)
 - [外贸拓客内置能力包计划](../superpowers/plans/2026-08-07-chemclaw-export-sales-builtin-pack.md)
@@ -205,7 +229,8 @@
 - [PubChem 化学身份 Provider 计划](../superpowers/plans/2026-08-07-chemclaw-pubchem-identity-provider.md)
 - [GLEIF 法定主体 Provider 计划](../superpowers/plans/2026-08-09-chemclaw-gleif-legal-entity-provider.md)
 - [询盘转报价内置首包计划](../superpowers/plans/2026-08-09-chemclaw-inquiry-to-quote-builtin-pack.md)
-- [客户清单工作台计划（D-098）](../superpowers/plans/2026-08-09-chemclaw-lead-list-workbench.md)
+- [退役 GUI 客户清单侧栏（D-168）](../superpowers/plans/2026-08-19-chemclaw-retire-lead-list-nav.md)
+- [客户清单工作台计划（D-098，侧栏已退役）](../superpowers/plans/2026-08-09-chemclaw-lead-list-workbench.md)
 - [SMTP 发送审批计划（D-099）](../superpowers/plans/2026-08-09-chemclaw-smtp-send-approval.md)
 - [HubSpot CRM 审批写入（D-105）](../superpowers/plans/2026-08-10-chemclaw-hubspot-crm-write-approval.md)
 - [HubSpot 创建联系人审批（D-109）](../superpowers/plans/2026-08-10-chemclaw-hubspot-create-contact-approval.md)
@@ -248,11 +273,11 @@
 
 ## 当前环境检查
 
-- 日常开发请使用 **`chemclaw-clean` Worktree**（唯一开发基线；不要再在旧的 `chemclaw-design` 上改代码）。
+- 日常开发请使用 **`chemclaw-UI` Worktree**；不要从旧聊天记录推断分支，以本节当前状态和 `git status` 为准。
 - Python 下载缓存、开发状态和 pytest 临时目录统一放在 `D:\OpenWorker\.chemclaw-dev`。
 - 拉 upstream：`git fetch upstream main`（remote：`https://github.com/andrewyng/openworker`）。
 - 完整版本、命令、测试数字、启动顺序和已知缺陷以 [TESTING.md](TESTING.md) 为准。
 
 ## 新任务推荐开场
 
-> 继续 ChemClaw 阶段 1（分支与 worktree 均为 `chemclaw-clean`）。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划。Skill 功能以 OpenWorker 上游实现为准；ChemClaw 只做品牌、汉化、导航与 bundled Skill 薄层。一次只执行指定 Task。
+> 继续 ChemClaw 阶段 1（当前分支与 worktree 均为 `chemclaw-UI`）。请先阅读 AGENTS.md、项目控制台、已批准规格、TESTING.md 和实施计划。不要覆盖尚未提交的 D-168—D-172；一次只执行指定 Task。

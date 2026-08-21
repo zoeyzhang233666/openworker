@@ -154,6 +154,21 @@ describe("TurnGroup (Transcript §33)", () => {
     expect(screen.queryByTestId("turn-live-line")).toBeNull(); // live line only when collapsed
   });
 
+  it("keeps collapsed thought process above steps when reasoning-only was absorbed (D-183)", () => {
+    const items: Item[] = [
+      { kind: "user", text: "research methanol" },
+      { kind: "assistant", text: "", reasoning: "pick futures tools next" },
+      { kind: "tool", id: "t1", name: "lookup_cn_futures_quote", args: { symbol: "MA0" }, status: "…" },
+    ];
+    render(<Transcript items={items} onApprove={vi.fn()} running />);
+    expect(screen.getByText(/Running 1 step…|正在运行1 个步骤/)).toBeTruthy();
+    const toggle = screen.getByTestId("thinking-toggle");
+    expect(toggle.textContent).toMatch(/Thought process|思考过程/);
+    expect(screen.queryByTestId("thinking-body")).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByTestId("thinking-body").textContent).toBe("pick futures tools next");
+  });
+
   it("manual collapse sticks while still running", () => {
     const items: Item[] = [
       { kind: "assistant", text: "Looking at the repo." },

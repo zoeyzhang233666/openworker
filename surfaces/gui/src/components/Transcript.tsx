@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ApprovalDecision, Item } from "../types";
 import type { ChartToolResult } from "../chartSpec";
 import { isOhlcChartTool } from "../chartSpec";
@@ -101,31 +101,65 @@ function BubbleMeta({ text, ts, align }: { text: string; ts?: number; align: "le
 // collapsed by default, the trace one click away. `live` = still streaming (pulsing label);
 // App renders that variant above the transcript, this one rides a finalized assistant item.
 // `defaultOpen` (D-076 first-token): initial expand only; click sticky-overrides for this instance.
+// `forceOpen` (D-176 planning gap): keep body visible; toggle cannot collapse.
+const THINKING_BODY_AT_BOTTOM_PX = 48;
+
 export function ThinkingBlock({
   text,
   live,
   defaultOpen,
+  forceOpen,
 }: {
   text: string;
   live?: boolean;
   defaultOpen?: boolean;
+  forceOpen?: boolean;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(!!defaultOpen);
+  const [open, setOpen] = useState(!!defaultOpen || !!forceOpen);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const atBottomRef = useRef(true);
+  const showBody = !!forceOpen || open;
+
+  useEffect(() => {
+    if (forceOpen) setOpen(true);
+  }, [forceOpen]);
+
+  useEffect(() => {
+    if (!live || !showBody) return;
+    const el = bodyRef.current;
+    if (!el || !atBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
+  }, [text, live, showBody]);
+
+  const onBodyScroll = () => {
+    const el = bodyRef.current;
+    if (!el) return;
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < THINKING_BODY_AT_BOTTOM_PX;
+  };
+
   return (
     <div className="thinking">
       <button
         className="thinking-head"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (forceOpen) return;
+          setOpen((v) => !v);
+        }}
         data-testid="thinking-toggle"
       >
-        <Icon name="chevronDown" size={12} className={"thinking-caret" + (open ? " open" : "")} />
+        <Icon name="chevronDown" size={12} className={"thinking-caret" + (showBody ? " open" : "")} />
         <span className={live ? "thinking-live" : undefined}>
           {live ? t("Thinking…") : t("Thought process")}
         </span>
       </button>
-      {open && (
-        <div className="thinking-body" data-testid="thinking-body">
+      {showBody && (
+        <div
+          className="thinking-body"
+          data-testid="thinking-body"
+          ref={bodyRef}
+          onScroll={onBodyScroll}
+        >
           {text}
         </div>
       )}
@@ -137,6 +171,15 @@ type ToolItem = Extract<Item, { kind: "tool" }>;
 type ApprovalItem = Extract<Item, { kind: "approval" }>;
 type AssistantItem = Extract<Item, { kind: "assistant" }>;
 type TurnItem = ToolItem | ApprovalItem | AssistantItem;
+
+/** Latest non-empty reasoning in a turn (D-183: keep collapsed ThinkingBlock above steps). */
+export function latestTurnReasoning(items: TurnItem[]): string {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.kind === "assistant" && it.reasoning?.trim()) return it.reasoning;
+  }
+  return "";
+}
 
 /** OHLC previews from a turn — for ```chart short-ref resolve (D-136/D-152/D-159). */
 export function yahooChartToolsFromItems(items: Item[]): ChartToolResult[] {
@@ -332,71 +375,75 @@ function TurnGroup({
   const declined = items.filter((it) => it.kind === "approval" && it.resolved === "deny").length;
   const hiddenTotal = tools.reduce((n, t) => n + (t.hidden || 0), 0);
   const stepsLabel = t(nSteps === 1 ? "{count} step" : "{count} steps", { count: nSteps });
+  const turnReasoning = latestTurnReasoning(items);
 
   return (
-    <details className="stepgroup" open={open}>
-      <summary
-        className="stepgroup-head flex items-center gap-2 py-0.5 cursor-pointer select-none text-[12.5px] text-faint hover:text-muted"
-        onClick={(e) => {
-          e.preventDefault(); // drive open/closed from state, not the native toggle
-          setUserToggle(!open);
-        }}
-      >
-        <span className={"chev inline-block transition-transform" + (open ? " rotate-90" : "")}>›</span>
-        <span>
-          <span>{running ? t("Running {steps}…", { steps: stepsLabel }) : stepsLabel}</span>
-          {declined > 0 && (
-            <>
-              {" · "}
-              <span className="text-danger" data-testid="stepgroup-declined">
-                {t("{count} declined", { count: declined })}
-              </span>
-            </>
-          )}
-          {hiddenTotal > 0 && (
-            <>
-              {" · "}
-              <span className="text-warnInk" data-testid="stepgroup-hidden">
-                {t("{count} hidden by your filters", { count: hiddenTotal })}
-              </span>
-            </>
-          )}
-        </span>
-        {running && !open && liveLine && (
-          <span className="min-w-0 flex-1 truncate" data-testid="turn-live-line">
-            · {liveLine}
+    <div className="turn-with-thinking">
+      {turnReasoning ? <ThinkingBlock text={turnReasoning} /> : null}
+      <details className="stepgroup" open={open}>
+        <summary
+          className="stepgroup-head flex items-center gap-2 py-0.5 cursor-pointer select-none text-[12.5px] text-faint hover:text-muted"
+          onClick={(e) => {
+            e.preventDefault(); // drive open/closed from state, not the native toggle
+            setUserToggle(!open);
+          }}
+        >
+          <span className={"chev inline-block transition-transform" + (open ? " rotate-90" : "")}>›</span>
+          <span>
+            <span>{running ? t("Running {steps}…", { steps: stepsLabel }) : stepsLabel}</span>
+            {declined > 0 && (
+              <>
+                {" · "}
+                <span className="text-danger" data-testid="stepgroup-declined">
+                  {t("{count} declined", { count: declined })}
+                </span>
+              </>
+            )}
+            {hiddenTotal > 0 && (
+              <>
+                {" · "}
+                <span className="text-warnInk" data-testid="stepgroup-hidden">
+                  {t("{count} hidden by your filters", { count: hiddenTotal })}
+                </span>
+              </>
+            )}
           </span>
+          {running && !open && liveLine && (
+            <span className="min-w-0 flex-1 truncate" data-testid="turn-live-line">
+              · {liveLine}
+            </span>
+          )}
+        </summary>
+        {open && (
+          <div className="ml-1.5 mt-1 pl-2 border-l-2 border-line flex flex-col gap-0.5">
+            {rows.map((row, i) =>
+              row.type === "narr" ? (
+                <div className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]" key={i} data-testid="turn-narration">
+                  <Markdown text={row.text} chartToolResults={resolvedChartTools} />
+                </div>
+              ) : row.type === "ask" ? (
+                <div className="flex items-baseline gap-2 px-2 py-0.5" key={i} data-testid="turn-ask">
+                  <span className={"w-3.5 text-center text-[10px] shrink-0 " + (row.approval.resolved === "deny" ? "text-danger" : "text-ok")}>●</span>
+                  <LineText line={humanizeAsk(row.approval.name, row.approval.args, t)} />
+                  {approvalChip(row.approval.resolved, t)}
+                </div>
+              ) : (
+                <StepRow tool={row.tool} approval={row.approval} key={i} />
+              ),
+            )}
+            {streamingText && (
+              <div
+                className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]"
+                data-testid="turn-live-stream"
+              >
+                <Markdown text={streamingText} renderMermaid={false} renderCharts={false} />
+                <span className="stream-cursor">▍</span>
+              </div>
+            )}
+          </div>
         )}
-      </summary>
-      {open && (
-        <div className="ml-1.5 mt-1 pl-2 border-l-2 border-line flex flex-col gap-0.5">
-          {rows.map((row, i) =>
-            row.type === "narr" ? (
-              <div className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]" key={i} data-testid="turn-narration">
-                <Markdown text={row.text} chartToolResults={resolvedChartTools} />
-              </div>
-            ) : row.type === "ask" ? (
-              <div className="flex items-baseline gap-2 px-2 py-0.5" key={i} data-testid="turn-ask">
-                <span className={"w-3.5 text-center text-[10px] shrink-0 " + (row.approval.resolved === "deny" ? "text-danger" : "text-ok")}>●</span>
-                <LineText line={humanizeAsk(row.approval.name, row.approval.args, t)} />
-                {approvalChip(row.approval.resolved, t)}
-              </div>
-            ) : (
-              <StepRow tool={row.tool} approval={row.approval} key={i} />
-            ),
-          )}
-          {streamingText && (
-            <div
-              className="turn-narr px-2 py-1 text-[13px] text-muted max-w-[60ch]"
-              data-testid="turn-live-stream"
-            >
-              <Markdown text={streamingText} renderMermaid={false} renderCharts={false} />
-              <span className="stream-cursor">▍</span>
-            </div>
-          )}
-        </div>
-      )}
-    </details>
+      </details>
+    </div>
   );
 }
 
@@ -550,9 +597,12 @@ export function Transcript({
               </div>
             );
           case "assistant":
-            // Thinking-only item (stopped mid-reasoning): just the disclosure, no bubble.
+            // Thinking-only: while the turn is still running, App's D-186 thinkingSlot keeps
+            // chrome at the bottom — skip a second disclosure here to avoid blank+duplicate.
             if (!item.text && item.reasoning)
-              return (
+              return running ? (
+                <div key={bi} hidden aria-hidden />
+              ) : (
                 <div key={bi}>
                   <ThinkingBlock text={item.reasoning} />
                 </div>

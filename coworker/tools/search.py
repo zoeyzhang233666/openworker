@@ -49,28 +49,27 @@ _SCHEMA = {
     "function": {
         "name": "grep",
         "description": (
-            "Search the workspace for a regular-expression pattern and return matching lines as "
-            "file:line:text. Fast and .gitignore-aware (skips node_modules, build dirs, etc.). "
-            "Prefer this over reading files blindly to locate code. Read-only."
+            "在工作区内按正则搜索，返回匹配行（file:line:text）。快速且尊重 .gitignore"
+            "（跳过 node_modules、构建目录等）。定位代码时优先用本工具，不要盲目通读文件。只读。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "pattern": {
                     "type": "string",
-                    "description": "Regular expression to search for.",
+                    "description": "要搜索的正则表达式。",
                 },
                 "path": {
                     "type": "string",
-                    "description": "Subdirectory to search (default: whole workspace).",
+                    "description": "搜索子目录（默认：整个工作区）。",
                 },
                 "glob": {
                     "type": "string",
-                    "description": "Optional filename glob filter, e.g. '*.py'.",
+                    "description": "可选文件名 glob 过滤，例如 '*.py'。",
                 },
                 "max_results": {
                     "type": "integer",
-                    "description": "Max matches (default 100, max 1000).",
+                    "description": "最多返回条数（默认 100，上限 1000）。",
                 },
             },
             "required": ["pattern"],

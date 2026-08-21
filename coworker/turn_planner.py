@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Callable, Iterable
 
+from .capabilities import CapabilityPlan, CapabilityResolver
 from .config import Config
 from .execution_profile import ExecutionProfile, RequestRoute
 from .market_intent import MarketToolSelection, resolve_market_tools
@@ -20,6 +21,13 @@ from .request_router import (
     RouteDecision,
     RouterContext,
     decision_to_execution_profile,
+)
+from .scenarios import (
+    ScenarioResolution,
+    ScenarioResolver,
+    TurnPlanPreview,
+    builtin_scenario_registry,
+    text_has_deep_research_intent,
 )
 from .tool_policy import TurnToolPolicy
 from .tool_projection import select_agent_tool_names, select_verified_tool_names
@@ -47,6 +55,25 @@ _PROMPT_PROFILE_BY_ROUTE = {
     RequestRoute.DEEP_RESEARCH: PromptProfile.DEEP_RESEARCH,
 }
 
+_SUBAGENT_CONTROL_TOOL_NAMES = (
+    "start_subagent",
+    "background_task_status",
+    "background_task_output",
+    "background_task_send",
+    "background_task_stop",
+    "background_task_gather",
+)
+
+# Parent synthesis surface for allow_subagent research scenarios (D-184).
+# Quote/MCP market tools stay on research children — not merged back to parent.
+_RESEARCH_PARENT_SYNTHESIS_TOOL_NAMES = (
+    "read_file",
+    "list_files",
+    "write_file",
+    "edit_file",
+    "todo_write",
+)
+
 
 @dataclass(frozen=True)
 class TurnPlan:
@@ -65,6 +92,11 @@ class TurnPlan:
     market_selection: MarketToolSelection | None
     show_reasoning: bool
     router_elapsed_ms: float | None = None
+    scenario_resolution: ScenarioResolution | None = None
+    capability_plan: CapabilityPlan | None = None
+    scenario_projection_applied: bool = False
+    subagent_eligible: bool = False
+    subagent_tool_names: tuple[str, ...] = ()
 
     @classmethod
     def legacy(cls) -> "TurnPlan":
@@ -76,6 +108,47 @@ class TurnPlan:
             skill_names=None,
             market_selection=None,
             show_reasoning=True,
+        )
+
+    def preview(self) -> TurnPlanPreview:
+        scenario = self.scenario_resolution or ScenarioResolution(
+            status="general",
+            source="general",
+            reason="scenario resolution disabled",
+        )
+        capability = self.capability_plan or CapabilityPlan()
+        route = self.decision.route.value if self.decision is not None else "legacy"
+        warnings: list[str] = []
+        if scenario.status == "ambiguous":
+            warnings.append("需要先澄清 Scenario 或市场口径")
+        if capability.resolutions and not capability.required_ready:
+            warnings.append("一个或多个必需 Capability 当前不可用")
+        selected_tool_names = capability.selected_tool_names
+        if self.subagent_tool_names:
+            selected_tool_names = tuple(
+                dict.fromkeys((*selected_tool_names, *self.subagent_tool_names))
+            )
+        blocked_tool_names = tuple(
+            name
+            for name in capability.blocked_tool_names
+            if name not in self.subagent_tool_names
+        )
+        if self.subagent_eligible and not self.subagent_tool_names:
+            warnings.append("Subagent Runtime 当前不可用")
+        return TurnPlanPreview(
+            scenario=scenario,
+            route=route,
+            capability_readiness=tuple(
+                item.model_dump(exclude={"version"}) for item in capability.resolutions
+            ),
+            selected_tool_names=selected_tool_names,
+            blocked_tool_names=blocked_tool_names,
+            skill_names=self.skill_names,
+            fallback=capability.fallback,
+            estimated_model_calls=2 if capability.selected_tool_names else 1,
+            subagent_eligible=self.subagent_eligible,
+            subagent_started=False,
+            warnings=tuple(warnings),
         )
 
 
@@ -92,18 +165,24 @@ class TurnPlanner:
         config: Config,
         available_tool_names: Callable[[], Iterable[str]],
         available_tools: Callable[[], Iterable[ToolDescriptor]] | None = None,
+        configured_tool_names: Callable[[], Iterable[str]] | None = None,
         context_provider: ContextProvider | None = None,
         skill_selector: SkillSelector | None = None,
         preferred_skill_names: Iterable[str] = (),
         router: RequestRouter | None = None,
+        scenario_resolver: ScenarioResolver | None = None,
+        capability_resolver: CapabilityResolver | None = None,
     ) -> None:
         self.config = config
         self._available_tool_names = available_tool_names
         self._available_tools = available_tools
+        self._configured_tool_names = configured_tool_names or (lambda: ())
         self._context_provider = context_provider or RouterContext
         self._skill_selector = skill_selector
         self._preferred_skill_names = tuple(preferred_skill_names)
         self._router = router or RequestRouter(config=config)
+        self._scenario_resolver = scenario_resolver or ScenarioResolver()
+        self._capability_resolver = capability_resolver or CapabilityResolver()
 
     def plan(
         self,
@@ -112,6 +191,7 @@ class TurnPlanner:
         source: dict | None = None,
         display: str | None = None,
         durable_resume: bool = False,
+        scenario_id: str | None = None,
     ) -> TurnPlan:
         """Plan the turn; uncertain/unsafe state is forced to the full AGENT path."""
         if not self.config.request_routing_enabled:
@@ -167,9 +247,11 @@ class TurnPlanner:
                 and decision.route is RequestRoute.AGENT
                 and decision.source == "legacy_fallback"
                 and candidate_market.intent.is_market
+                and not text_has_deep_research_intent(text)
             ):
                 # Deterministic market intent outranks the generic classifier fallback.
-                # Product actions/deep research/pending state never reach this branch.
+                # Deep research keeps AGENT/DEEP_RESEARCH so Subagent eligibility survives;
+                # pure quote lookups still collapse to VERIFIED.
                 market_selection = candidate_market
                 decision = replace(
                     decision,
@@ -177,7 +259,87 @@ class TurnPlanner:
                     source="market_intent",
                     reason="deterministic market scope requires targeted data tools",
                 )
-        if decision.route is RequestRoute.VERIFIED:
+        scenario_resolution: ScenarioResolution | None = None
+        capability_plan: CapabilityPlan | None = None
+        scenario_projection_applied = False
+        subagent_eligible = False
+        subagent_tool_names: tuple[str, ...] = ()
+        if self.config.scenario_resolution_enabled:
+            descriptors = descriptors or self._tool_descriptors()
+            scenario_resolution = self._scenario_resolver.resolve(
+                text,
+                explicit_scenario_id=scenario_id,
+                tools=descriptors,
+                market_selection=market_selection,
+            )
+            if scenario_resolution.status == "invalid":
+                raise InvalidScenarioError(scenario_resolution.reason)
+            capability_plan = self._capability_resolver.resolve(
+                scenario_resolution,
+                text=text,
+                tools=descriptors,
+                configured_tool_names=self._configured_tool_names(),
+            )
+            scenario_spec = (
+                builtin_scenario_registry().get(scenario_resolution.scenario_id)
+                if scenario_resolution.scenario_id
+                else None
+            )
+            # D-184: matched research scenarios upgrade AGENT → DEEP_RESEARCH so
+            # scenario projection narrows the parent tool surface and forces delegation.
+            if (
+                not guarded_full_agent
+                and scenario_spec is not None
+                and scenario_spec.allow_subagent
+                and scenario_resolution.status == "matched"
+                and decision.route is RequestRoute.AGENT
+            ):
+                decision = replace(
+                    decision,
+                    route=RequestRoute.DEEP_RESEARCH,
+                    source="scenario_research",
+                    reason="matched research scenario requires bounded subagent delegation",
+                )
+            subagent_eligible = bool(
+                scenario_spec
+                and scenario_spec.allow_subagent
+                and scenario_resolution.status == "matched"
+                and decision.route in {RequestRoute.AGENT, RequestRoute.DEEP_RESEARCH}
+            )
+            if subagent_eligible:
+                live_names = set(self._available_tool_names())
+                subagent_tool_names = tuple(
+                    name for name in _SUBAGENT_CONTROL_TOOL_NAMES if name in live_names
+                )
+            scenario_projection_applied = bool(
+                not guarded_full_agent
+                and self.config.tool_projection_enabled
+                and decision.route in {RequestRoute.VERIFIED, RequestRoute.DEEP_RESEARCH}
+                and scenario_resolution.status in {"matched", "ambiguous"}
+            )
+            if scenario_projection_applied:
+                selected = capability_plan.selected_tool_names
+                if subagent_tool_names:
+                    selected = tuple(
+                        dict.fromkeys((*selected, *subagent_tool_names))
+                    )
+                # Research parents keep synthesis + web/subagent only — never re-merge
+                # market quote tools that would let the parent serially skip delegation.
+                if (
+                    scenario_spec is not None
+                    and scenario_spec.allow_subagent
+                    and scenario_resolution.status == "matched"
+                ):
+                    live_names = set(self._available_tool_names())
+                    synthesis = tuple(
+                        name
+                        for name in _RESEARCH_PARENT_SYNTHESIS_TOOL_NAMES
+                        if name in live_names
+                    )
+                    selected = tuple(dict.fromkeys((*selected, *synthesis)))
+                decision = replace(decision, allowed_tool_names=selected)
+
+        if decision.route is RequestRoute.VERIFIED and not scenario_projection_applied:
             if self.config.tool_projection_enabled:
                 descriptors = descriptors or self._tool_descriptors()
                 market_selection = market_selection or resolve_market_tools(
@@ -193,8 +355,14 @@ class TurnPlanner:
                     text, self._available_tool_names()
                 )
             decision = replace(decision, allowed_tool_names=selected)
-        elif decision.route is RequestRoute.AGENT and not guarded_full_agent:
+        elif (
+            decision.route is RequestRoute.AGENT
+            and not guarded_full_agent
+            and not scenario_projection_applied
+        ):
             selected = select_agent_tool_names(text, self._available_tool_names())
+            if selected is not None and subagent_tool_names:
+                selected = tuple(dict.fromkeys((*selected, *subagent_tool_names)))
             if (
                 selected is not None
                 and market_selection is not None
@@ -204,6 +372,10 @@ class TurnPlanner:
                     dict.fromkeys((*selected, *market_selection.allowed_tool_names))
                 )
             decision = replace(decision, allowed_tool_names=selected)
+
+        decision, capability_plan = self._apply_chem_web_fallback(
+            decision, capability_plan, market_selection
+        )
 
         profile = decision_to_execution_profile(decision, self.config)
         skill_names: tuple[str, ...] | None
@@ -269,7 +441,47 @@ class TurnPlanner:
             # that emits reasoning is always surfaced immediately.
             show_reasoning=True,
             router_elapsed_ms=(time.perf_counter() - started) * 1000.0,
+            scenario_resolution=scenario_resolution,
+            capability_plan=capability_plan,
+            scenario_projection_applied=scenario_projection_applied,
+            subagent_eligible=subagent_eligible,
+            subagent_tool_names=subagent_tool_names,
         )
+
+    def _apply_chem_web_fallback(
+        self,
+        decision: RouteDecision,
+        capability_plan: CapabilityPlan | None,
+        market_selection: MarketToolSelection | None,
+    ) -> tuple[RouteDecision, CapabilityPlan | None]:
+        """D-181: keep scenario-narrow primary tools, but always expose chem Web fallback."""
+        if (
+            market_selection is None
+            or not market_selection.web_is_supplemental
+            or decision.allowed_tool_names is None
+        ):
+            return decision, capability_plan
+        web = tuple(
+            name
+            for name in (market_selection.allowed_tool_names or ())
+            if name in {"web_search", "web_fetch"}
+        )
+        if not web:
+            return decision, capability_plan
+        allowed = tuple(dict.fromkeys((*decision.allowed_tool_names, *web)))
+        decision = replace(decision, allowed_tool_names=allowed)
+        if capability_plan is not None:
+            selected = tuple(
+                dict.fromkeys((*capability_plan.selected_tool_names, *web))
+            )
+            live = set(self._available_tool_names())
+            capability_plan = capability_plan.model_copy(
+                update={
+                    "selected_tool_names": selected,
+                    "blocked_tool_names": tuple(sorted(live - set(selected))),
+                }
+            )
+        return decision, capability_plan
 
     def _tool_descriptors(self) -> tuple[ToolDescriptor, ...]:
         if self._available_tools is not None:
@@ -277,6 +489,10 @@ class TurnPlanner:
         return tuple(
             ToolDescriptor(name=name) for name in self._available_tool_names()
         )
+
+
+class InvalidScenarioError(ValueError):
+    """Raised at the planner boundary so REST/WS can reject invalid explicit IDs."""
 
 
 def _text_and_attachment(user_input: str | list) -> tuple[str, bool]:

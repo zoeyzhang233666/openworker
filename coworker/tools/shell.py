@@ -49,6 +49,9 @@ _NONINTERACTIVE_ENV = {
     "DEBIAN_FRONTEND": "noninteractive",
     "PYTHONUNBUFFERED": "1",
     "PIP_NO_INPUT": "1",
+    # D-179: UTF-8 for Chinese paths/patterns on Windows (and consistent elsewhere).
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8",
 }
 
 
@@ -127,6 +130,13 @@ class _BackgroundTask:
                 )
             except (OSError, subprocess.SubprocessError):
                 pass
+            # Some managed Windows environments deny taskkill's tree query even though
+            # the process handle itself is ours. Always retain the direct-handle fallback.
+            if self.proc.poll() is None:
+                try:
+                    self.proc.kill()
+                except OSError:
+                    pass
             return
         try:
             os.killpg(os.getpgid(self.proc.pid), signal.SIGTERM)
@@ -143,6 +153,8 @@ class LocalExecutor(Executor):
         shell_path: Optional[str] = None,
         default_timeout: float = _DEFAULT_TIMEOUT,
         max_output_chars: int = 20_000,
+        background_manager: Optional[Any] = None,
+        owner_session_id: Optional[str] = None,
     ) -> None:
         self.cwd = str(Path(cwd).expanduser().resolve())
         self.default_timeout = default_timeout
@@ -151,6 +163,9 @@ class LocalExecutor(Executor):
         self._is_windows = _IS_WINDOWS
         self._bg_tasks: dict[str, _BackgroundTask] = {}
         self._bg_counter = 0
+        self._background_manager = background_manager
+        self._background_owner_session_id = owner_session_id or ""
+        self._background_cursors: dict[str, int] = {}
         # Set by interrupt_now() (user Stop) — run()'s read loop treats it like an
         # early deadline, so the in-flight foreground command dies within one tick.
         self._abort = threading.Event()
@@ -205,7 +220,13 @@ class LocalExecutor(Executor):
 
         if self._is_windows and self._proc.stdin is not None:
             # Silence the REPL prompt so it never pollutes captured command output.
-            self._proc.stdin.write("function prompt { '' }\n")
+            # Force UTF-8 console/output so Chinese patterns and file paths survive.
+            self._proc.stdin.write(
+                "function prompt { '' }; "
+                "[Console]::InputEncoding = [System.Text.UTF8Encoding]::new(); "
+                "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+                "$OutputEncoding = [Console]::OutputEncoding\n"
+            )
             self._proc.stdin.flush()
 
     def _read_loop(self) -> None:
@@ -305,6 +326,28 @@ class LocalExecutor(Executor):
 
     # -- background tasks ---------------------------------------------------------
     def run_background(self, command: str) -> dict[str, Any]:
+        if self._background_manager is not None and self._background_owner_session_id:
+            from ..background_tasks import BackgroundTaskSpec
+
+            try:
+                record = self._background_manager.start_shell(
+                    BackgroundTaskSpec(
+                        kind="shell",
+                        owner_session_id=self._background_owner_session_id,
+                        description=(command.strip() or "background shell")[:240],
+                        workspace=self.cwd,
+                    ),
+                    command=command,
+                )
+            except Exception as exc:
+                return {"error": f"failed to start background task: {exc}"}
+            self._background_cursors[record.id] = 0
+            return {
+                "task_id": record.id,
+                "command": command,
+                "status": "running",
+                "note": "use shell_task_output to read its output, shell_task_kill to stop it",
+            }
         self._bg_counter += 1
         task_id = f"bg-{self._bg_counter}"
         try:
@@ -320,6 +363,37 @@ class LocalExecutor(Executor):
         }
 
     def background_output(self, task_id: str) -> dict[str, Any]:
+        if self._background_manager is not None and self._background_owner_session_id:
+            record = self._background_manager.get(
+                task_id, owner_session_id=self._background_owner_session_id
+            )
+            if record is None or record.kind != "shell":
+                return {"error": f"unknown task: {task_id}"}
+            cursor = self._background_cursors.get(task_id, 0)
+            page = self._background_manager.read_output(
+                task_id,
+                owner_session_id=self._background_owner_session_id,
+                cursor=cursor,
+                max_chars=self.max_output_chars,
+            )
+            self._background_cursors[task_id] = page.next_cursor
+            if record.status in {"queued", "running"}:
+                status = "running"
+            elif record.status == "cancelled":
+                status = "killed"
+            else:
+                status = "exited"
+            return {
+                "task_id": task_id,
+                "status": status,
+                "exit_code": record.exit_code,
+                "output": "".join(
+                    chunk.text
+                    for chunk in page.chunks
+                    if chunk.stream in {"stdout", "stderr", "system"}
+                ),
+                "truncated": page.truncated,
+            }
         task = self._bg_tasks.get(task_id)
         if task is None:
             return {"error": f"unknown task: {task_id}"}
@@ -337,6 +411,24 @@ class LocalExecutor(Executor):
         }
 
     def background_kill(self, task_id: str) -> dict[str, Any]:
+        if self._background_manager is not None and self._background_owner_session_id:
+            record = self._background_manager.get(
+                task_id, owner_session_id=self._background_owner_session_id
+            )
+            if record is None or record.kind != "shell":
+                return {"error": f"unknown task: {task_id}"}
+            stopped = self._background_manager.stop(
+                task_id, owner_session_id=self._background_owner_session_id
+            )
+            return {
+                "task_id": task_id,
+                "status": (
+                    "killed"
+                    if stopped.status in {"cancelled", "interrupted"}
+                    else stopped.status
+                ),
+                "exit_code": stopped.exit_code,
+            }
         task = self._bg_tasks.get(task_id)
         if task is None:
             return {"error": f"unknown task: {task_id}"}
@@ -405,6 +497,11 @@ class LocalExecutor(Executor):
                 )
             except (OSError, subprocess.SubprocessError):
                 pass
+            if self._proc.poll() is None:
+                try:
+                    self._proc.kill()
+                except OSError:
+                    pass
             try:
                 self._proc.wait(timeout=5)
             except (subprocess.TimeoutExpired, OSError):
@@ -452,37 +549,35 @@ _RUN_SHELL_SCHEMA = {
     "function": {
         "name": "run_shell",
         "description": (
-            "Run a shell command in the persistent session (cwd and env persist across "
-            "calls). Output longer than the limit keeps the END (where test/build verdicts "
-            "are). Set run_in_background for long-running processes like dev servers, then "
-            "poll with shell_task_output."
+            "在持久会话中运行 shell 命令（cwd 与环境跨调用保持）。输出超限时保留末尾"
+            "（测试/构建结论通常在末尾）。长进程（如开发服务器）设 run_in_background，"
+            "再用 shell_task_output 轮询。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "The command to run.",
+                    "description": "要运行的命令。",
                 },
                 "description": {
                     "type": "string",
                     "description": (
-                        "Short human-readable summary of what the command does (e.g. "
-                        "'Install dependencies'), shown in approval prompts and logs."
+                        "命令作用的简短可读摘要（例如「安装依赖」），用于审批提示与日志。"
                     ),
                 },
                 "timeout_seconds": {
                     "type": "integer",
                     "description": (
-                        f"Max seconds to wait (default {int(_DEFAULT_TIMEOUT)}, "
-                        f"max {int(_MAX_TIMEOUT)}). Ignored for background tasks."
+                        f"最长等待秒数（默认 {int(_DEFAULT_TIMEOUT)}，"
+                        f"上限 {int(_MAX_TIMEOUT)}）。后台任务忽略此参数。"
                     ),
                 },
                 "run_in_background": {
                     "type": "boolean",
                     "description": (
-                        "Run detached and return a task_id immediately instead of waiting. "
-                        "Use for servers, watchers, and very long builds."
+                        "后台运行并立即返回 task_id，不等待结束。"
+                        "用于服务器、监视器与很长的构建。"
                     ),
                 },
             },
@@ -496,15 +591,15 @@ _TASK_OUTPUT_SCHEMA = {
     "function": {
         "name": "shell_task_output",
         "description": (
-            "Read NEW output (since the last read) from a background task started with "
-            "run_shell run_in_background=true, plus its status and exit code."
+            "读取由 run_shell run_in_background=true 启动的后台任务的新增输出"
+            "（自上次读取以来），以及状态与退出码。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "The task_id returned by run_shell.",
+                    "description": "run_shell 返回的 task_id。",
                 }
             },
             "required": ["task_id"],
@@ -516,13 +611,13 @@ _TASK_KILL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "shell_task_kill",
-        "description": "Stop a background task started with run_shell run_in_background=true.",
+        "description": "停止由 run_shell run_in_background=true 启动的后台任务。",
         "parameters": {
             "type": "object",
             "properties": {
                 "task_id": {
                     "type": "string",
-                    "description": "The task_id returned by run_shell.",
+                    "description": "run_shell 返回的 task_id。",
                 }
             },
             "required": ["task_id"],

@@ -33,6 +33,9 @@ class ToolDescriptor:
     name: str
     category: str = ""
     capabilities: tuple[str, ...] = ()
+    provider_id: str = ""
+    network_scope: str = ""
+    risk: str = ""
 
 
 class ToolRegistry:
@@ -82,9 +85,28 @@ class ToolRegistry:
                     name=spec.name,
                     category=str(getattr(metadata, "category", "") or ""),
                     capabilities=tuple(str(item) for item in raw_capabilities),
+                    provider_id=str(
+                        getattr(metadata, "provider_id", "")
+                        or getattr(metadata, "server_id", "")
+                        or ""
+                    ),
+                    network_scope=str(
+                        getattr(metadata, "network_scope", "") or ""
+                    ),
+                    risk=str(getattr(metadata, "risk_level", "") or ""),
                 )
             )
         return out
+
+    def retain(self, names: set[str] | frozenset[str] | tuple[str, ...]) -> None:
+        """Restrict this registry to a platform-owned allowlist.
+
+        Used only while constructing a child Agent profile. PermissionEngine remains the
+        authority for every retained tool; this method prevents undeclared tools from being
+        projected or executed at all.
+        """
+        allowed = set(names)
+        self._tools = {name: spec for name, spec in self._tools.items() if name in allowed}
 
     def execute(self, name: str, arguments: Optional[dict[str, Any]] = None) -> Any:
         spec = self._tools.get(name)

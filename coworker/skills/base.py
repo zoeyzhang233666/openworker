@@ -114,8 +114,7 @@ def skill_catalog_text(
         return ""
     lines = [f"- {c['name']}: {c['description']}" for c in catalog]
     return (
-        "Available skills — call load_skill(name) to load one's full instructions when "
-        "it's relevant to the task:\n" + "\n".join(lines)
+        "可用技能——任务相关时调用 load_skill(name) 加载完整说明：\n" + "\n".join(lines)
     )
 
 
@@ -193,8 +192,7 @@ def skill_tools(loader: SkillLoader, allowed: AllowedSkills = None) -> list:
         return allowed() if callable(allowed) else allowed
 
     def load_skill(name: str) -> dict:
-        """Load a skill's full instructions + resources path by name. Call this when a
-        skill from the catalog is relevant to the current task."""
+        """按名称加载技能的完整说明与资源路径。当目录中某技能与当前任务相关时调用。"""
         skill = loader.get(name)
         if skill is None:
             loader.rescan()  # created after this session started? pick it up now
@@ -212,8 +210,7 @@ def skill_tools(loader: SkillLoader, allowed: AllowedSkills = None) -> list:
         }
 
     def search_skills(query: str, limit: int = 8) -> dict:
-        """Search enabled skills by name/description. Returns metadata only; call
-        load_skill(name) separately to load the latest full instructions."""
+        """按名称/描述搜索已启用技能。只返回元数据；另调 load_skill(name) 加载最新完整说明。"""
         loader.rescan()
         gate = _allowed_now()
         names = select_skill_names(

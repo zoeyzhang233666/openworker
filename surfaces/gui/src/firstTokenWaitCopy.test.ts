@@ -5,14 +5,19 @@ import {
   FIRST_TOKEN_WAIT_LATE_KEYS,
   FIRST_TOKEN_WAIT_ROTATE_MS,
   FIRST_TOKEN_WAIT_ROTATION_KEYS,
+  PLANNING_WAIT_ROTATION_KEYS,
   advanceFirstTokenWaitIndex,
   nextFirstTokenWaitIndex,
   isFirstTokenEmptyWindow,
   isFirstTokenThinkingOpen,
+  isPlanningWaitWindow,
   hasPostAnchorActivity,
+  hasPostAnchorProgress,
+  hasPostAnchorReasoning,
   hasPostUserTurnActivity,
   waitAnchorIndex,
   waitCopyPool,
+  waitRotationKeys,
 } from "./firstTokenWaitCopy";
 
 describe("firstTokenWaitCopy", () => {
@@ -26,6 +31,8 @@ describe("firstTokenWaitCopy", () => {
     expect(FIRST_TOKEN_WAIT_ROTATION_KEYS.length).toBe(6);
     expect(FIRST_TOKEN_WAIT_ROTATE_MS).toBe(3000);
     expect(FEEDBACK_WAIT_ROTATION_KEYS.length).toBe(4);
+    expect(PLANNING_WAIT_ROTATION_KEYS.length).toBe(3);
+    expect(waitRotationKeys("planning")).toEqual(PLANNING_WAIT_ROTATION_KEYS);
   });
 
   it("advances and wraps rotation indices", () => {
@@ -34,6 +41,7 @@ describe("firstTokenWaitCopy", () => {
     expect(advanceFirstTokenWaitIndex(5)).toBe(0);
     expect(advanceFirstTokenWaitIndex(5, FIRST_TOKEN_WAIT_ROTATION_KEYS.length)).toBe(0);
     expect(advanceFirstTokenWaitIndex(3, FEEDBACK_WAIT_ROTATION_KEYS.length)).toBe(0);
+    expect(advanceFirstTokenWaitIndex(2, PLANNING_WAIT_ROTATION_KEYS.length)).toBe(0);
   });
 
   it("detects first-token empty window vs post-user activity", () => {
@@ -57,6 +65,47 @@ describe("firstTokenWaitCopy", () => {
     expect(hasPostUserTurnActivity([...idle, { kind: "tool" }])).toBe(true);
     expect(isFirstTokenThinkingOpen(idle)).toBe(true);
     expect(isFirstTokenThinkingOpen([...idle, { kind: "tool" }])).toBe(false);
+  });
+
+  it("opens the planning wait window when reasoning is present before tools", () => {
+    const idle = [{ kind: "user" }];
+    const opts = {
+      running: true,
+      compacting: false,
+      reasoningStream: "think",
+      streaming: "",
+    };
+    expect(isPlanningWaitWindow(idle, opts)).toBe(true);
+    expect(isPlanningWaitWindow(idle, { ...opts, reasoningStream: "" })).toBe(false);
+    expect(isPlanningWaitWindow(idle, { ...opts, streaming: "hello" })).toBe(false);
+    expect(isPlanningWaitWindow([...idle, { kind: "tool" }], opts)).toBe(false);
+    expect(isPlanningWaitWindow(idle, { ...opts, compacting: true })).toBe(false);
+  });
+
+  it("keeps planning wait after settled thinking-only (D-183 collapse continuity)", () => {
+    const items = [
+      { kind: "user" },
+      { kind: "assistant", text: "", reasoning: "weigh options" },
+    ];
+    const opts = {
+      running: true,
+      compacting: false,
+      reasoningStream: "",
+      streaming: "",
+    };
+    expect(hasPostAnchorActivity(items)).toBe(true);
+    expect(hasPostAnchorProgress(items)).toBe(false);
+    expect(hasPostAnchorReasoning(items)).toBe(true);
+    expect(isPlanningWaitWindow(items, opts)).toBe(true);
+    expect(
+      isPlanningWaitWindow([...items, { kind: "tool" }], opts),
+    ).toBe(false);
+    expect(
+      isPlanningWaitWindow(
+        [{ kind: "user" }, { kind: "assistant", text: "here is the answer", reasoning: "done" }],
+        opts,
+      ),
+    ).toBe(false);
   });
 
   it("treats resolved ask_user as a new wait anchor (empty window again)", () => {

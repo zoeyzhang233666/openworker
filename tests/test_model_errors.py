@@ -6,6 +6,7 @@ use them (GPT-5.6 rolls out per-organization; quota/credits can run out on any m
 from coworker.config import Config
 from coworker.providers.errors import friendly_model_error
 from coworker.providers.matrix import MATRIX, models_for_provider
+from coworker.providers.openai_provider import _is_stream_transport_error
 from coworker.providers.registry import get_descriptor
 
 
@@ -76,6 +77,26 @@ def test_incomplete_chunked_read_is_translated():
         ),
     )
     assert msg and "重试" in msg and "流式" in msg
+
+
+def test_api_timeout_is_translated_with_layer_hint():
+    msg = friendly_model_error(
+        "apihub-cn:deepseek-v4-flash",
+        RuntimeError("APITimeoutError: Request timed out."),
+    )
+    assert msg is not None
+    assert "模型接口超时" in msg
+    assert "llm_api" in msg
+
+
+def test_api_timeout_counts_as_stream_transport_error():
+    assert _is_stream_transport_error(RuntimeError("APITimeoutError: Request timed out."))
+    assert _is_stream_transport_error(TimeoutError("Request timed out."))
+    class APITimeoutError(Exception):
+        pass
+
+    assert _is_stream_transport_error(APITimeoutError("Request timed out."))
+    assert not _is_stream_transport_error(RuntimeError("rate_limit_exceeded"))
 
 
 def test_unrelated_errors_pass_through_raw():

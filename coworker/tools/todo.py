@@ -23,7 +23,7 @@ _TODO_SCHEMA = {
     "type": "function",
     "function": {
         "name": "todo_write",
-        "description": "Replace the task list. Provide the full list of todos each call.",
+        "description": "替换任务清单。每次调用都要提供完整的待办列表。",
         "parameters": {
             "type": "object",
             "properties": {

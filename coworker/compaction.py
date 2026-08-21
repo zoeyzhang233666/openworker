@@ -919,9 +919,61 @@ _OVERFLOW_MARKERS = (
     "exceeds the maximum number of tokens",
 )
 
+_RETRYABLE_PROVIDER_REJECT_MARKERS = (
+    "upstream rejected the request as invalid",
+    "request as invalid",
+    "rejected the request as invalid",
+    "invalid_request_error",
+)
+
 
 def is_context_overflow(exc: BaseException) -> bool:
     """A raw context-overflow 400 from the main model (compaction mispredicted, e.g. the
     estimate path) — routed into the compaction policy instead of surfacing."""
     text = str(exc).lower()
     return any(marker in text for marker in _OVERFLOW_MARKERS)
+
+
+def is_retryable_provider_reject(exc: BaseException) -> bool:
+    """Generic ApiHub/gateway 'invalid request' that often means context/shape issues.
+
+    Distinct from quota/access errors. Callers compact once and retry (D-179).
+    """
+    if is_context_overflow(exc):
+        return False
+    text = str(exc).lower()
+    # Do not treat billing/access as compact-retryable.
+    if any(
+        marker in text
+        for marker in (
+            "insufficient_quota",
+            "credit balance",
+            "model_not_found",
+            "does not have access",
+            "permission_error",
+        )
+    ):
+        return False
+    return any(marker in text for marker in _RETRYABLE_PROVIDER_REJECT_MARKERS)
+
+
+_PROVIDER_TIMEOUT_MARKERS = (
+    "timed out",
+    "apitimeouterror",
+    "readtimeout",
+    "request timeout",
+)
+
+
+def is_provider_timeout(exc: BaseException) -> bool:
+    """True when the model HTTP/SDK call hit a read/request timeout (D-187)."""
+    text = str(exc).lower()
+    name = type(exc).__name__.lower()
+    if any(marker in text for marker in _PROVIDER_TIMEOUT_MARKERS):
+        return True
+    if name.endswith("timeouterror") or name.endswith("timeout"):
+        return True
+    cause = getattr(exc, "__cause__", None) or getattr(exc, "__context__", None)
+    if cause is not None and cause is not exc:
+        return is_provider_timeout(cause)
+    return False

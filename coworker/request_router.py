@@ -351,7 +351,8 @@ _VERIFIED_PREFER_RE = re.compile(
 
 _DEEP_RE = re.compile(
     r"(深度研究|全面调研|尽职调查|尽调|完整行业报告|完整研究|形成行业报告|"
-    r"市场研究报告|竞争格局报告|"
+    r"市场研究报告|竞争格局报告|产业链|上下游|套利怎么做|"
+    r"研究.{0,20}套利|套利.{0,20}(研究|策略|方法)|"
     r"多来源研究|交叉验证多个来源|systematic research|deep research|"
     r"due diligence|comprehensive (market )?report)",
     re.I,

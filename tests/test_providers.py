@@ -974,7 +974,7 @@ def test_sdk_client_kwargs_stream_owns_retry_with_explicit_timeout():
     assert kw["base_url"] == "https://example.test/v1"
     timeout = kw["timeout"]
     assert timeout.connect == 15.0
-    assert timeout.read == 120.0
+    assert timeout.read == 300.0
     assert timeout.write == 30.0
     assert timeout.pool == 15.0
 
@@ -984,7 +984,7 @@ def test_sdk_client_kwargs_complete_keeps_sdk_retry_ownership():
 
     kw = _sdk_client_kwargs(api_key="sk-test", streaming_retry_owned=False)
     assert "max_retries" not in kw
-    assert kw["timeout"].read == 120.0
+    assert kw["timeout"].read == 300.0
 
 
 def test_make_sdk_client_passes_streaming_retry_ownership(monkeypatch):

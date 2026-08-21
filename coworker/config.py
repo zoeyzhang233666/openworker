@@ -42,6 +42,9 @@ class Config:
     # all candidate ON (post-regression independent rollouts).
     request_routing_enabled: bool = True
     tool_projection_enabled: bool = True
+    # D-169: declarative Scenario/Capability resolution. Independent kill switch;
+    # False restores the D-165/D-166 planner and Tool Projection behavior.
+    scenario_resolution_enabled: bool = True
     # D-165: outbound-only prompt/skill projection for new policy-v1 sessions.
     # Existing sessions without the policy marker keep their original system prompt.
     prompt_projection_enabled: bool = True
@@ -89,6 +92,7 @@ _FIELDS = {
     "verified_max_iterations",
     "request_routing_enabled",
     "tool_projection_enabled",
+    "scenario_resolution_enabled",
     "prompt_projection_enabled",
     "structured_tools_true_streaming_enabled",
     "emergency_finalization_enabled",

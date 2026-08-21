@@ -41,20 +41,46 @@ _STREAM_TRANSPORT = (
     "remoteprotocolerror",
     "connection error",
 )
+_LLM_TIMEOUT = (
+    "timed out",
+    "apitimeouterror",
+    "readtimeout",
+    "request timeout",
+)
 
 
 def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
     """One actionable sentence for "your account can't use this model" failures, or None."""
     text = str(exc).lower()
+    exc_name = type(exc).__name__.lower()
     no_access = (
         f"Your account doesn't have access to {model} — new models can roll out "
         "gradually or require a plan upgrade. Pick a different model, or check "
         "the provider's console for availability."
     )
+    if any(marker in text for marker in _LLM_TIMEOUT) or exc_name.endswith(
+        "timeouterror"
+    ):
+        return (
+            f"模型 {model} 的模型接口超时（layer=llm_api）。"
+            "ChemClaw 会在尚无有效输出时自动重试一次；若仍失败请点击重试，或缩短任务后稍后再试。"
+        )
     if any(marker in text for marker in _STREAM_TRANSPORT):
         return (
             f"模型 {model} 的流式连接被中断（服务端提前关闭了响应）。"
             "请点击重试；若反复出现，可更换模型或稍后再试。"
+        )
+    if any(
+        marker in text
+        for marker in (
+            "upstream rejected the request as invalid",
+            "request as invalid",
+            "rejected the request as invalid",
+        )
+    ):
+        return (
+            f"模型 {model} 拒绝了本次请求（上游参数/上下文校验失败）。"
+            "ChemClaw 已尝试压缩上下文后重试；若仍失败，请缩短任务或分批研究。"
         )
     if any(marker in text for marker in _NO_QUOTA):
         return (

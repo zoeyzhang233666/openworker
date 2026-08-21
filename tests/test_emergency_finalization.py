@@ -137,6 +137,147 @@ def test_builtin_emergency_finalization_default_on():
     assert Config().emergency_finalization_enabled is True
 
 
+class RejectOnceThenOkProvider(ProviderClient):
+    """First stream raises Upstream rejected; second returns a short answer."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def complete(self, *, model, messages, tools=None, **settings):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError(
+                "Upstream rejected the request as invalid. "
+                "Check the request parameters and try again."
+            )
+        return AssistantTurn(text="salvaged after compact", finish_reason="stop")
+
+    def capabilities(self, model):
+        return ModelCapabilities()
+
+    def stream(self, *, model, messages, tools=None, **settings):
+        turn = self.complete(
+            model=model, messages=messages, tools=tools, **settings
+        )
+        if turn.text:
+            yield StreamChunk(text_delta=turn.text)
+        yield StreamChunk(turn=turn)
+
+
+class RejectAlwaysProvider(RejectOnceThenOkProvider):
+    def complete(self, *, model, messages, tools=None, **settings):
+        self.calls += 1
+        raise RuntimeError(
+            "Upstream rejected the request as invalid. "
+            "Check the request parameters and try again."
+        )
+
+
+def test_provider_reject_compacts_once_then_succeeds(tmp_path):
+    provider = RejectOnceThenOkProvider()
+    engine = _engine(tmp_path, provider, emergency_finalization_enabled=True)
+    events = _collect(engine, "summarize findings")
+    types = [e.type for e in events]
+    assert EventType.COMPACTING in types or EventType.COMPACTED in types
+    assert EventType.ERROR not in types
+    assert any(
+        e.type == EventType.ASSISTANT_MESSAGE
+        and "salvaged" in str(e.data.get("text", ""))
+        for e in events
+    )
+    assert provider.calls >= 2
+
+
+def test_provider_reject_twice_surfaces_chinese_friendly_error(tmp_path):
+    provider = RejectAlwaysProvider()
+    engine = _engine(tmp_path, provider, emergency_finalization_enabled=False)
+    events = _collect(engine, "write long report")
+    errors = [e for e in events if e.type == EventType.ERROR]
+    assert errors
+    assert "拒绝" in str(errors[0].data.get("error") or "")
+    assert provider.calls >= 2  # initial + one compact retry
+
+
+class TimeoutAfterToolsProvider(ProviderClient):
+    """First stream call after tools exist times out; EF salvage then succeeds."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def capabilities(self, model):
+        return ModelCapabilities()
+
+    def complete(self, *, model, messages, tools=None, **settings):
+        self.calls += 1
+        if tools is None:
+            return AssistantTurn(text="timeout salvage ok", finish_reason="stop")
+        if self.calls == 1:
+            return AssistantTurn(
+                tool_calls=[
+                    ToolCall(
+                        id="t1",
+                        name="read_file",
+                        arguments={"path": "a.txt"},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+        raise RuntimeError("APITimeoutError: Request timed out.")
+
+    def stream(self, *, model, messages, tools=None, **settings):
+        turn = self.complete(
+            model=model, messages=messages, tools=tools, **settings
+        )
+        if turn.text:
+            yield StreamChunk(text_delta=turn.text)
+        yield StreamChunk(turn=turn)
+
+
+def test_provider_timeout_after_tools_emergency_finalizes(tmp_path):
+    provider = TimeoutAfterToolsProvider()
+    engine = _engine(tmp_path, provider, emergency_finalization_enabled=True)
+    events = _collect(engine, "summarize after tools")
+    types = [e.type for e in events]
+    assert EventType.ERROR not in types
+    assert any(
+        e.type == EventType.ASSISTANT_MESSAGE
+        and "salvage" in str(e.data.get("text", ""))
+        for e in events
+    )
+    assert provider.calls >= 3  # tool call + timeout + EF
+
+
+def test_provider_timeout_without_tools_surfaces_error(tmp_path):
+    class TimeoutAlways(ProviderClient):
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+        def complete(self, *, model, messages, tools=None, **settings):
+            raise RuntimeError("APITimeoutError: Request timed out.")
+
+        def stream(self, *, model, messages, tools=None, **settings):
+            self.complete(model=model, messages=messages, tools=tools, **settings)
+            yield StreamChunk(turn=AssistantTurn(text="x"))
+
+    provider = TimeoutAlways()
+    engine = _engine(tmp_path, provider, emergency_finalization_enabled=True)
+    events = _collect(engine, "hello")
+    errors = [e for e in events if e.type == EventType.ERROR]
+    assert errors
+    assert "超时" in str(errors[0].data.get("error") or "") or "timed out" in str(
+        errors[0].data.get("error") or ""
+    ).lower() or "llm_api" in str(errors[0].data.get("error") or "")
+
+
+def test_research_instructions_prefer_write_file_before_long_bubble():
+    from coworker.subagents.registry import RESEARCHER_INSTRUCTIONS
+
+    assert "write_file" in RESEARCHER_INSTRUCTIONS
+    assert "短摘要" in RESEARCHER_INSTRUCTIONS or "短" in RESEARCHER_INSTRUCTIONS
+    assert "上游拒答" in RESEARCHER_INSTRUCTIONS or "拒答" in RESEARCHER_INSTRUCTIONS
+    assert "用简体中文思考与回复" in RESEARCHER_INSTRUCTIONS
+
+
 def test_kill_switch_off_keeps_legacy_hard_limit(tmp_path):
     provider = RecordingProvider()
     engine = _engine(

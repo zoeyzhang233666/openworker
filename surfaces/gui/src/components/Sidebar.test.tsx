@@ -57,11 +57,9 @@ const baseProps = {
   onOpenScheduled: vi.fn(),
   onOpenAutomation: vi.fn(),
   onOpenIntegrations: vi.fn(),
-  onOpenAudit: vi.fn(),
   onOpenInbox: vi.fn(),
   scheduledActive: false,
   integrationsActive: false,
-  auditActive: false,
   inboxActive: false,
 };
 
@@ -283,6 +281,7 @@ describe("New-session split button", () => {
     const menu = await screen.findByTestId("account-menu");
     expect(within(menu).getByTestId("account-local-header")).toBeTruthy();
     expect(within(menu).getByText(/编辑资料|Edit profile/)).toBeTruthy();
+    expect(within(menu).queryByText(/活动|Activity/)).toBeNull();
     expect(within(menu).queryByTestId("account-sign-in")).toBeNull();
   });
 });

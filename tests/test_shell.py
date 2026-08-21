@@ -181,3 +181,16 @@ def test_background_unknown_task_errors(executor):
     assert (
         "unknown task" in reg.execute("shell_task_kill", {"task_id": "bg-99"})["error"]
     )
+
+
+def test_shell_env_defaults_include_utf8():
+    from coworker.tools.shell import _NONINTERACTIVE_ENV
+
+    assert _NONINTERACTIVE_ENV.get("PYTHONUTF8") == "1"
+    assert _NONINTERACTIVE_ENV.get("PYTHONIOENCODING") == "utf-8"
+    ex = LocalExecutor(cwd=".", default_timeout=5)
+    try:
+        assert ex._env.get("PYTHONUTF8") == "1"
+        assert ex._env.get("PYTHONIOENCODING") == "utf-8"
+    finally:
+        ex.close()

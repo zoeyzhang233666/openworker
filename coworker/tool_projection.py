@@ -36,8 +36,8 @@ def select_verified_tool_names(
     candidates: list[str] = []
 
     # Market scope is a domain decision, not a tool-name-prefix heuristic.  A
-    # recognized market request may intentionally return an empty tuple (for example,
-    # chem-data-hub is unavailable); never fail open to Web/full registry in that case.
+    # recognized chemical market request may include ordered Web fallback tools
+    # (D-181) when structured sources are empty; never fail open to the full registry.
     selection = market_selection or resolve_market_tools(
         t, (ToolDescriptor(name=name) for name in available_names)
     )
@@ -162,6 +162,19 @@ _CAPABILITY_PACKS = {
         }
     ),
     "messages": frozenset({"send_message", "send_file"}),
+    "background_tasks": frozenset(
+        {
+            "explore",
+            "start_subagent",
+            "background_task_status",
+            "background_task_output",
+            "background_task_send",
+            "background_task_stop",
+            "background_task_gather",
+            "shell_task_kill",
+            "shell_task_output",
+        }
+    ),
     "sales": frozenset(
         {
             "calculate_quote",
@@ -204,6 +217,13 @@ def select_agent_tool_names(
         packs.extend(["skills", "workspace"])
     if re.search(r"(提醒我|定时|计划任务|schedule|remind|self-?wake)", t, re.I):
         packs.append("schedule")
+    if re.search(
+        r"(subagent|sub-agent|子智能体|子\s*agent|后台任务|background\s+task|"
+        r"并行.*(?:研究|探索|任务)|parallel.*(?:research|task)|\bexplore\b)",
+        t,
+        re.I,
+    ):
+        packs.append("background_tasks")
     if re.search(r"(发给|发送给|发消息|发邮件|send .* to|message .+)", t, re.I):
         packs.append("messages")
     if re.search(

@@ -8,6 +8,10 @@ import {
 } from "react";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import type { PluggableList } from "unified";
+import "katex/dist/katex.min.css";
 import { Icon } from "./Icon";
 import { useI18n } from "../i18n";
 import { MermaidBlock, type MermaidRepairContext } from "./MermaidBlock";
@@ -22,7 +26,9 @@ import { REQUEST_WEBPAGE_EVENT } from "../requestWebpage";
 // the session's artifact list, App un-hides the rail.
 export const OPEN_ARTIFACT_EVENT = "ocw-open-artifact";
 
-const REMARK_PLUGINS = [remarkGfm];
+// Module-level plugin arrays stay referentially stable (see Markdown remount note below).
+const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath];
+const REHYPE_PLUGINS: PluggableList = [[rehypeKatex, { throwOnError: false }]];
 
 /** Suffixes that open in the session artifact viewer (aligned with server list_artifacts). */
 const ARTIFACT_SUFFIXES = new Set([
@@ -179,13 +185,15 @@ function MarkdownLink({
 }
 
 // Assistant messages rendered as GitHub-flavored markdown (headings, lists, tables, code,
-// links). Links open externally — never navigate the app shell — except artifact: links,
-// which open the session's artifact viewer. Fenced ```mermaid / ```chart blocks become
-// MermaidBlock / ChartBlock unless the matching render* flag is false (live streaming).
+// links, LaTeX via remark-math + KaTeX). Links open externally — never navigate the app
+// shell — except artifact: links, which open the session's artifact viewer. Fenced
+// ```mermaid / ```chart blocks become MermaidBlock / ChartBlock unless the matching
+// render* flag is false (live streaming).
 //
-// remarkPlugins / urlTransform / components MUST stay referentially stable across parent
-// re-renders. Inline object/array identities made react-markdown remount custom nodes,
-// which cleared MermaidBlock state, collapsed scrollHeight, and jittered the transcript.
+// remarkPlugins / rehypePlugins / urlTransform / components MUST stay referentially stable
+// across parent re-renders. Inline object/array identities made react-markdown remount
+// custom nodes, which cleared MermaidBlock state, collapsed scrollHeight, and jittered
+// the transcript.
 export function Markdown({
   text,
   renderMermaid = true,
@@ -231,6 +239,7 @@ export function Markdown({
     <div className="md">
       <ReactMarkdown
         remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
         urlTransform={urlTransform}
         components={components}
       >

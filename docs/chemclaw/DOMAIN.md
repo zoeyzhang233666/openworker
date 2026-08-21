@@ -118,7 +118,7 @@ OpenWorker 原有的调度执行能力。ChemClaw 的定时任务界面复用该
 
 ### Reasoning 请求与展示
 
-`reasoning_mode` 表达向 Provider 请求的推理模式；`show_reasoning` 独立决定已返回 reasoning 是否广播到界面。只有模型能力明确支持时才发送关闭参数；Provider 有 reasoning 时默认实时展示，没有时沿用等待提示且不伪造。
+`reasoning_mode` 表达向 Provider 请求的推理模式；`show_reasoning` 独立决定已返回 reasoning 是否广播到界面。只有模型能力明确支持时才发送关闭参数；Provider 有 reasoning 时默认实时展示，没有时沿用等待提示且不伪造。第一方 system/guidance 与核心工具 description 默认简体中文并要求用简体中文思考与回复（D-180）；研究路径上的子智能体工具、技能目录、行情口径政策与 Profile instructions 亦默认简体中文（D-182）；界面不翻译、不改写 upstream reasoning 正文。
 
 ### 步骤组
 
@@ -188,7 +188,7 @@ Ideal Customer Profile，目标客户画像。定义本次寻找哪些行业、�
 
 ### `LeadList`
 
-可经营的客户清单制品：分桶为可联系 / 待补查 / 已排除，含企业、双评分、下一步与销售状态。由平台 Tool `format_lead_list` 生成 Markdown/CSV；GUI「客户清单」可导入 JSON、导出 CSV、展开证据、注入补查/重评对话意图，并本地标记状态。清单不等于已发送邮件，也不等于 CRM 写入；工作台不静默改分。
+可经营的客户清单制品：分桶为可联系 / 待补查 / 已排除，含企业、双评分、下一步与销售状态。由平台 Tool `format_lead_list` 生成 Markdown/CSV，作为对话产物供人工经营。清单不等于已发送邮件，也不等于 CRM 写入。GUI 不再提供独立「客户清单」导航页（D-168）；补查与重评在对话中进行。
 
 ### `Lead Fit Score`
 
@@ -451,7 +451,7 @@ ChemClaw 对话框与 2D 图谱并列联动的工作界面。对话检索可定�
 
 ### 市场口径
 
-一次行情请求所指的交易与报价体系，例如化工现货、国内期货或全球期货。市场口径由用户明确说出的“现货/期货”、交易所或合约代码决定，品种名本身不等于市场口径；甲醇、原油等裸品种问价存在多种合理口径时必须先澄清。
+一次行情请求所指的交易与报价体系，例如化工现货、国内期货或全球期货。市场口径由用户明确说出的“现货/期货”、交易所或合约代码决定，品种名本身不等于市场口径；甲醇、原油等裸品种问价存在多种合理口径时必须先澄清。**默认一次只选一个口径**；当用户明确要求期现对照、基差或期货套利并结合现货时，允许同一轮同时读取化工现货与国内期货（D-177），但仍须标注来源，禁止把期货价冒充现货或反之。
 
 ### 化工现货价格
 
@@ -460,3 +460,71 @@ chem-data-hub MCP 返回的分区域、带时间戳和来源的化工商品现�
 ### 期货行情
 
 交易所合约、主力/连续合约的报价或 OHLC 序列。国内期货由 `lookup_cn_futures_*` 提供，WTI/Brent 等全球期货由 Yahoo OHLC best-effort 提供。期货行情不能冒充化工现货价格。
+
+## Agent Harness 规划与诊断
+
+### Scenario
+
+一次用户请求的业务执行场景。Scenario 描述业务目标、所需与可选 Capability、输出约定、fallback policy 和 Subagent eligibility；它不是 Persona、Skill 或 Agent，也不直接保存底层 Tool 名。
+
+### Capability
+
+可由一个或多个 Provider 实现的稳定业务能力，例如化工现货价格、国内期货报价或化学品身份识别。Capability taxonomy 是面向规划的有限业务词表，不替代 ToolRegistry。
+
+### Capability Provider binding
+
+Capability 到具体 built-in Tool 或动态 MCP Tool 的唯一绑定位置，同时声明 authority、freshness、latency、cost、network scope、risk 与 fallback 关系。动态 MCP 可在未连接时显示 configured，但只有 live ToolDescriptor 匹配后才是 ready。
+
+### Capability Resolution
+
+按当前 ToolRegistry 与 MCP 配置解析每个 required/optional Capability 的 provider、工具集合和 `ready/configured/unavailable` 状态。required capability 不可用时不得偷偷开放未声明的 Web、期货或其他替代源。
+
+### TurnPlan Preview
+
+对真实 Planner/Resolver 的无副作用预演，展示 Scenario、route、readiness、选中/阻止工具、Skill、fallback、预计模型调用数、Subagent eligibility 与 warnings。Preview 不追加消息、不执行 Tool、不写 Audit 或 TurnTrace。
+
+### ToolOutcome
+
+Tool 执行结果的兼容状态层：`success/unavailable/partial/failed/denied`。模型继续读取 legacy raw result；诊断界面与 Trace 读取标准化摘要，持久 Trace 不保存 `data` 或 `source_refs`。
+
+### TurnTrace
+
+一次普通 turn、retry、durable resume 或后台投递的内容无关执行诊断记录。只保存 trace/session/source、Scenario/route、Capability/Tool 名称、调用与 token 计数、阶段耗时、fallback、Outcome 分类和最终状态；不保存消息正文、提示词、Tool 参数/结果或 reasoning。它与合规 Audit 分表，默认保留 30 天且全局最多 5000 条。
+
+### Subagent Profile
+
+平台声明式子智能体合同，定义 agent/mode/model/effort/max turns、Tool allowlist/denylist、Skill、声明 MCP、后台与隔离策略。Profile 不是 Persona，也不拥有独立权限系统。`explore` 为 plan + 只读；`research`（D-174）为 interactive + shared_workspace，可写报告并含国内期货等研究工具，子引擎继承父会话 PermissionEngine 模式；`worker` 等同属 shared_workspace，每次实际 Tool 调用仍由既有 PermissionEngine 和审批裁决。禁止默认嵌套 Subagent。
+
+### Subagent Runtime
+
+把 `SubagentProfile` 绑定到现有 `TurnEngine` 与持久 child conversation 的编排层。它负责创建/恢复 child session、前台兼容返回、后台 task、steering、stop 与 parent trace 关联；不实现第二套 Planner、Session、Memory、Permission 或 Tool 执行循环。停止分双模式（D-187）：用户手动 `immediate` 立刻 interrupt；智能体/系统 `wrap_up` 先 steer 催写部分报告再硬停。协作超时后仍非终态则 BackgroundTaskManager 强制落库 `cancelled`，晚到的 worker 不得回写覆盖。
+
+### Background Task
+
+Agent 或 Shell 的统一生命周期记录，状态为 `queued/running/completed/failed/cancelled/interrupted`。包含 owner session、父子关联、最小 metadata、时间与计数；输出另表按 cursor 增量读取。完成的 Agent 可接收后续消息并复用 child session；Shell 不接受消息且重启后不自动重放。
+
+### Task Gather
+
+在 owner session 边界内等待一组 Background Task 到达 terminal 状态并汇总记录。D-175 后它主要是短查/读终态报告的兜底（默认超时 60s），不再作为并行研究最终综合的主等待通道。
+
+### Delegation Cohort
+
+同批后台 Agent 子任务的汇合跟踪，键为 `(owner_session_id, parent_trace_id)`。全部到达终态后只触发一次合成通知；失败/取消/中断也算终态。前台 `explore`/同步子任务不入 cohort。
+
+### Cohort Synthesis Wake
+
+Cohort 全齐后由 harness 向父会话注入的汇合消息（`source.kind=subagent_cohort_complete`）。复用既有 `deliver_to_session`：父轮 idle 则开新回合，busy 则 steer 注入。这是最终综合的主触发通道，对标 Claude Code 完成后通知，不引入第二套 Agent Loop。
+
+### Background Task Change
+
+后台任务生命周期的轻量变化通知，类型为 `created/status/output`，只携带最新任务记录，不携带 Prompt、Tool 参数/结果正文、凭据或 reasoning。`SessionManager` 将其发送到 owner session 的 `background_task_changed` WebSocket 事件；事件只提示客户端刷新，REST/SQLite 才是权威状态。
+
+### 会话任务栏
+
+当前对话 RightRail 中按需出现的“子智能体与后台任务”模块。无任务时完全隐藏；有任务时按 owner session 加载列表和输出，可查看状态/耗时/工具工作记录/最终文本，停止运行中任务，或向 Agent task 续发要求。它不是合规 Audit、执行诊断页或隐藏推理查看器，也不提供权限提升。
+
+### Subagent eligibility
+
+TurnPlan 对“当前业务场景是否允许有界委派”的声明，不代表已启动子智能体。只有模型成功调用 `start_subagent` 后才产生 Background Task；默认委派门槛是存在至少两个互不依赖的研究分支，单事实查询与简单查价不启动。
+
+Eligibility 需要同时满足：匹配到 `allow_subagent=true` 的 Scenario（当前为 `chemical_company_research` / `chemical_market_research`），且本轮 route 为 `AGENT` 或 `DEEP_RESEARCH`。含「深度研究/周报/产业链/上下游/套利研究」等研究标记的请求优先于 D-166 现货/期货查价 Scenario；命中研究 Scenario 后 TurnPlanner 可将仍为 `AGENT` 的路由升级为 `DEEP_RESEARCH`，并对父代理投影窄工具面（web + subagent 控制 + 合成写工具，不含行情 MCP/CN），避免主代理串行代劳查价（D-184）。纯「多少钱/报价」仍走查价 Scenario。模型若读到 readiness 中的 `subagent_eligible: false` 而自报「未被授权」，属于规划结果，不是 PermissionEngine 拒绝。`start_subagent` 默认 Profile 为 `research`；代码探索须显式 `explore`。

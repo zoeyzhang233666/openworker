@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -161,12 +161,14 @@ from ..engine import ApprovalOutcome
 from ..inbox import VIS_INBOX, VIS_INLINE, args_preview
 from ..permissions import Mode
 from ..providers import AssistantTurn
+from ..scenarios import builtin_scenario_registry
 from .manager import SessionManager
 
 
 def create_app(manager: SessionManager) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        manager.bind_background_task_event_loop(asyncio.get_running_loop())
         try:
             live = (
                 await manager.start_gateway()
@@ -241,6 +243,8 @@ def create_app(manager: SessionManager) -> FastAPI:
             "status": "ok",
             "default_workspace": manager.default_workspace,
             "model": manager.model,
+            # Composer seeds from this before WS `ready` (MCP/engine setup can lag).
+            "mode": manager.mode.value,
         }
 
     @app.get("/v1/agents")
@@ -682,6 +686,161 @@ def create_app(manager: SessionManager) -> FastAPI:
     @app.get("/v1/sessions/{session_id}/messages")
     def session_messages(session_id: str) -> dict[str, Any]:
         return {"messages": manager.session_messages(session_id)}
+
+    @app.get("/v1/scenarios")
+    def scenarios_list(session_id: str | None = None) -> dict[str, Any]:
+        return {"scenarios": manager.list_scenarios(session_id)}
+
+    @app.get("/v1/subagent-profiles")
+    def subagent_profiles_list() -> dict[str, Any]:
+        return {"profiles": manager.list_subagent_profiles()}
+
+    @app.post("/v1/background-tasks/agent")
+    def background_agent_start(body: dict) -> dict[str, Any]:
+        body = body or {}
+        session_id = body.get("session_id")
+        task = body.get("task")
+        profile_id = body.get("profile_id", "explore")
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise HTTPException(status_code=422, detail="session_id is required")
+        if not isinstance(task, str) or not task.strip():
+            raise HTTPException(status_code=422, detail="task is required")
+        if not isinstance(profile_id, str):
+            raise HTTPException(status_code=422, detail="profile_id must be a string")
+        try:
+            return {
+                "task": manager.start_background_agent(
+                    session_id,
+                    task=task,
+                    profile_id=profile_id,
+                    description=(
+                        body.get("description")
+                        if isinstance(body.get("description"), str)
+                        else None
+                    ),
+                    model=(body.get("model") if isinstance(body.get("model"), str) else None),
+                )
+            }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/background-tasks")
+    def background_tasks_list(
+        session_id: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "tasks": manager.list_background_tasks(
+                    session_id=session_id, status=status, limit=limit
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/v1/background-tasks/gather")
+    def background_tasks_gather(body: dict) -> dict[str, Any]:
+        body = body or {}
+        session_id = body.get("session_id")
+        task_ids = body.get("task_ids")
+        if not isinstance(session_id, str) or not session_id:
+            raise HTTPException(status_code=422, detail="session_id is required")
+        if not isinstance(task_ids, list) or not all(isinstance(v, str) for v in task_ids):
+            raise HTTPException(status_code=422, detail="task_ids must be a string array")
+        try:
+            timeout = max(0.0, min(float(body.get("timeout_seconds", 600)), 1800.0))
+            return {
+                "tasks": manager.gather_background_tasks(
+                    task_ids, session_id=session_id, timeout=timeout
+                )
+            }
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/v1/background-tasks/{task_id}")
+    def background_task_get(
+        task_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        task = manager.get_background_task(task_id, session_id=session_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail="background task not found")
+        return {"task": task}
+
+    @app.get("/v1/background-tasks/{task_id}/output")
+    def background_task_output_get(
+        task_id: str,
+        session_id: str | None = None,
+        cursor: int = 0,
+        max_chars: int = 20_000,
+    ) -> dict[str, Any]:
+        try:
+            return {
+                "output": manager.background_task_output(
+                    task_id,
+                    session_id=session_id,
+                    cursor=cursor,
+                    max_chars=max_chars,
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/background-tasks/{task_id}/messages")
+    def background_task_message_post(task_id: str, body: dict) -> dict[str, Any]:
+        body = body or {}
+        session_id, message = body.get("session_id"), body.get("message")
+        if not isinstance(session_id, str) or not session_id:
+            raise HTTPException(status_code=422, detail="session_id is required")
+        if not isinstance(message, str) or not message.strip():
+            raise HTTPException(status_code=422, detail="message is required")
+        try:
+            return {
+                "task": manager.send_background_task_message(
+                    task_id, session_id=session_id, message=message
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/background-tasks/{task_id}/stop")
+    def background_task_stop_post(task_id: str, body: dict) -> dict[str, Any]:
+        session_id = (body or {}).get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise HTTPException(status_code=422, detail="session_id is required")
+        mode = (body or {}).get("mode", "immediate")
+        if mode not in {"immediate", "wrap_up"}:
+            raise HTTPException(
+                status_code=422, detail="mode must be 'immediate' or 'wrap_up'"
+            )
+        try:
+            return {
+                "task": manager.stop_background_task(
+                    task_id, session_id=session_id, mode=mode
+                )
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/v1/sessions/{session_id}/plan-preview")
+    def session_plan_preview(session_id: str, body: dict) -> dict[str, Any]:
+        body = body or {}
+        text = body.get("text", "")
+        scenario_id = body.get("scenario_id")
+        if not isinstance(text, str):
+            raise HTTPException(status_code=422, detail="text must be a string")
+        if scenario_id is not None and not isinstance(scenario_id, str):
+            raise HTTPException(status_code=422, detail="scenario_id must be a string")
+        try:
+            return {
+                "preview": manager.plan_preview(
+                    session_id, text=text, scenario_id=scenario_id
+                )
+            }
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.post("/v1/sessions/{session_id}/mermaid-repair")
     async def session_mermaid_repair(session_id: str, body: dict) -> dict[str, Any]:
@@ -1435,6 +1594,21 @@ def create_app(manager: SessionManager) -> FastAPI:
             )
         }
 
+    @app.get("/v1/turn-traces")
+    def turn_traces_list(
+        session_id: str | None = None, limit: int = 100
+    ) -> dict[str, Any]:
+        return {
+            "traces": manager.list_turn_traces(session_id=session_id, limit=limit)
+        }
+
+    @app.get("/v1/turn-traces/{trace_id}")
+    def turn_trace_get(trace_id: str) -> dict[str, Any]:
+        trace = manager.get_turn_trace(trace_id)
+        if trace is None:
+            raise HTTPException(status_code=404, detail="turn trace not found")
+        return {"trace": trace}
+
     @app.get("/v1/browser/state")
     def browser_state_get() -> dict[str, Any]:
         return manager.browser_state()
@@ -1955,14 +2129,18 @@ def create_app(manager: SessionManager) -> FastAPI:
             "iteration_end",
         }
 
-        async def run_turn(content, *, retry: bool = False, display=None) -> None:
+        async def run_turn(
+            content, *, retry: bool = False, display=None, scenario_id=None
+        ) -> None:
             # The receive loop atomically claims this session before scheduling the task.
             # Keeping the claim outside prevents two back-to-back frames from both starting.
             try:
                 events = (
                     engine.retry()
                     if retry
-                    else engine.run(content, display=display)
+                    else engine.run(
+                        content, display=display, scenario_id=scenario_id
+                    )
                 )
                 async for event in events:
                     # Broadcast to every socket viewing this session (this socket included — it's a
@@ -1989,13 +2167,22 @@ def create_app(manager: SessionManager) -> FastAPI:
             # or flush an in-progress assistant stream in the GUI.
             await ws.send_json({"type": "input_rejected", "data": {"error": reason}})
 
-        async def claim_turn(*, retry: bool = False, content=None, display=None) -> None:
+        async def claim_turn(
+            *, retry: bool = False, content=None, display=None, scenario_id=None
+        ) -> None:
             if not manager.try_mark_running(session_id):
                 await reject_input(
                     "This session is already running a turn. Wait for it to finish or stop it."
                 )
                 return
-            asyncio.create_task(run_turn(content, retry=retry, display=display))
+            asyncio.create_task(
+                run_turn(
+                    content,
+                    retry=retry,
+                    display=display,
+                    scenario_id=scenario_id,
+                )
+            )
 
         try:
             while True:
@@ -2077,6 +2264,15 @@ def create_app(manager: SessionManager) -> FastAPI:
                         await reject_input("Invalid message text: expected a string.")
                         continue
                     text = raw_text.strip()
+                    scenario_id = message.get("scenario_id")
+                    if scenario_id is not None:
+                        if not isinstance(scenario_id, str) or not scenario_id.strip():
+                            await reject_input("Invalid scenario_id: expected a non-empty string.")
+                            continue
+                        scenario_id = scenario_id.strip()
+                        if builtin_scenario_registry().get(scenario_id) is None:
+                            await reject_input(f"Unknown scenario_id: {scenario_id}")
+                            continue
                     raw_attachments = message.get("attachments")
                     attachments = [] if raw_attachments is None else raw_attachments
                     # Reject an oversized frame instead of buffering it into a turn. Send a
@@ -2179,7 +2375,11 @@ def create_app(manager: SessionManager) -> FastAPI:
                     await _apply_model(model)
                     if text or attachments:
                         content = build_user_content(text, attachments)
-                        await claim_turn(content=content, display=display)
+                        await claim_turn(
+                            content=content,
+                            display=display,
+                            scenario_id=scenario_id,
+                        )
                 else:
                     await reject_input(f"Unknown WebSocket message type: {kind}.")
         except WebSocketDisconnect:
