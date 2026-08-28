@@ -21,11 +21,11 @@
 2. 构建时读取 gitignore 的 secrets → 生成 `builtin_mcp.bundle` 打进 sidecar datas。
 3. `SessionManager` 启动调用 `seed_builtin_mcp()`：
    - 缺同名 server → 写入 `mcp.json`（仅 `${VAR}`）+ 将 token 写入状态目录 `.env`（现有 `${VAR}` 解析通道）。
-   - 已有且 `chemclaw_builtin` → 可按 version 更新非密字段；**不覆盖**已有 `.env` 中同名 VAR。
-   - 已有且非 builtin（用户自配）→ **跳过**。
+   - 已有且 `chemclaw_builtin` → 可按 version 更新非密字段；**产品托管** `CHEMCLAW_BUILTIN_MCP_*` 每次可由 bundle **覆盖** `.env`（D-189；修脏 token）。
+   - 已有且非 builtin（用户自配）→ **跳过** `mcp.json` 覆盖。
    - 无 bundle / 无 token / 无可用 URL → 不种该 server。
-4. REST：`builtin: true`；禁止 delete / 覆盖 / 改 url·headers·env；允许 `enabled`；`_redact` 保持。
-5. GUI：徽章「内置」；隐藏删除；启停可用。
+4. REST：`builtin: true`；禁止 delete / 覆盖 / 改 url·headers·env；允许 `enabled`；`_redact` 保持。连接失败或未解析 `${VAR}` 时 `status: misconfigured` + `last_error`（D-189）。
+5. GUI：徽章「内置」；隐藏删除；启停可用；`misconfigured` →「配置不完整」。
 
 ## 4. 非目标
 

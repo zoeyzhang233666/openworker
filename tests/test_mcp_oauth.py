@@ -144,8 +144,14 @@ def test_list_mcp_oauth_statuses(tmp_path, monkeypatch):
     manager._mcp_errors["granola"] = "sign-in timed out"
     row = client.get("/v1/mcp").json()["servers"][0]
     assert row["last_error"] == "sign-in timed out"
+    # Still needs_auth until tokens exist (more actionable than misconfigured).
+    assert row["status"] == "needs_auth"
 
     manager.secrets.put("mcp-oauth:granola", {"tokens": {"access_token": "at"}})
+    # Tokens present but prior connect failure still recorded → not healthy configured.
+    assert client.get("/v1/mcp").json()["servers"][0]["status"] == "misconfigured"
+
+    manager._mcp_errors.pop("granola", None)
     assert client.get("/v1/mcp").json()["servers"][0]["status"] == "configured"
 
     assert client.post("/v1/mcp/granola/signout").json()["ok"] is True

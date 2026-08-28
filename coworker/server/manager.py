@@ -78,14 +78,17 @@ from ..connectors.browser_automation import (
 from ..connectors.parked import ParkedStore
 from ..mcp import (
     MCPManager,
+    assert_mcp_secrets_resolved,
     build_callables,
     delete_global_server,
+    format_mcp_connect_error,
+    has_unresolved_refs,
     is_builtin_config,
     load_mcp_servers,
     patch_global_server,
     put_global_server,
     read_global,
-    seed_builtin_mcp,
+    retire_builtin_mcp,
 )
 from ..memory import MemorySettingsStore, MemoryStore, Scope, SQLiteMemoryStore
 from ..permissions import Mode
@@ -272,8 +275,8 @@ class SessionManager:
         seed_bundled_skills(self.skill_store)
         sync_managed_lexicon(self.skill_store)
         refresh_finance_skills_without_wind(self.skill_store)
-        # Managed chem MCP (D-167): seed mcp.json + .env from install-time bundle.
-        seed_builtin_mcp()
+        # D-190: builtin chem MCP retired — scrub legacy seeded rows on boot.
+        retire_builtin_mcp()
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).
@@ -1165,16 +1168,30 @@ class SessionManager:
             self.mark_idle(item.session_id)
 
     # -- MCP --------------------------------------------------------------------
+    def _mcp_error_message(self, exc: BaseException) -> str:
+        """Short connect-failure text for GUI / logs (never include secrets)."""
+        return format_mcp_connect_error(exc)
+
+    def _engine_has_mcp_prefix(self, session_id: str, server_name: str) -> bool:
+        engine = self._engines.get(session_id)
+        if engine is None:
+            return False
+        prefix = f"mcp__{server_name}__"
+        try:
+            return any(n.startswith(prefix) for n in engine.registry.names())
+        except Exception:
+            return False
+
     async def prepare_mcp_tools(
         self, session_id: str, *, workspace: Optional[str] = None, agent: str = "code"
     ) -> list[Any]:
         """Connect enabled MCP servers (global + workspace) and return their tool callables.
 
-        Called from the async WS handler before `get_engine`; no-op if the engine is already
-        built (its MCP tools are attached). Servers that fail to connect are skipped.
+        Called from the async WS handler before `get_engine`. When an engine already
+        exists but is missing tools for an enabled server, those tools are connected
+        and registered onto the live registry (D-189). Servers that fail to connect
+        are skipped after recording ``_mcp_errors``.
         """
-        if session_id in self._engines:
-            return []
         from ..connectors.descriptors import get_descriptor
         from ..connectors.tool_defs import (
             approval_for_tool,
@@ -1184,6 +1201,7 @@ class SessionManager:
 
         from ..mcp import oauth as mcp_oauth
 
+        engine = self._engines.get(session_id)
         ws = self.engine_workspace(session_id, workspace=workspace, agent=agent)
         loop = asyncio.get_running_loop()
         effective: Optional[set[str]] = None  # computed lazily, once
@@ -1194,6 +1212,11 @@ class SessionManager:
             workspace_trusted=self._mcp_workspace_trusted(ws),
         ):
             if not server.enabled:
+                continue
+            if engine is not None and self._engine_has_mcp_prefix(
+                session_id, server.name
+            ):
+                # Already attached on this session's engine — skip reconnect.
                 continue
             if server.auth == "oauth" and not mcp_oauth.has_tokens(
                 server.name, self.secrets
@@ -1222,6 +1245,7 @@ class SessionManager:
                     if tool_enabled(self.secrets, server.name, t.name)
                 ]
             try:
+                assert_mcp_secrets_resolved(server)
                 conn = await self.mcp.ensure(server)
             except Exception as exc:
                 if mcp_oauth.is_auth_required(exc):
@@ -1235,8 +1259,15 @@ class SessionManager:
                     logger.info(
                         "mcp %s needs re-auth; skipped for this session", server.name
                     )
-                # else: bad command / unreachable url — skip, don't break the session
+                else:
+                    self._mcp_errors[server.name] = self._mcp_error_message(exc)
+                    logger.warning(
+                        "mcp %s connect failed; skipped for this session: %s",
+                        server.name,
+                        self._mcp_errors[server.name],
+                    )
                 continue
+            self._mcp_errors.pop(server.name, None)
             callables = build_callables(
                 server,
                 conn.tools,
@@ -1251,6 +1282,8 @@ class SessionManager:
                     fn.__aisuite_tool_metadata__.requires_approval = approval_for_tool(
                         fn.__aisuite_tool_metadata__.name, default=True
                     )
+            if engine is not None and callables:
+                engine.registry.register_all(callables)
             out.extend(callables)
         return out
 
@@ -1281,6 +1314,17 @@ class SessionManager:
                 continue
             connected = name in self.mcp._conns
             is_oauth = str(raw.get("auth", "")).lower() == "oauth"
+            resolved = self.secrets.resolve(dict(raw))
+            unresolved = has_unresolved_refs(
+                {
+                    "url": resolved.get("url"),
+                    "headers": resolved.get("headers") or {},
+                    "env": resolved.get("env") or {},
+                    "command": resolved.get("command"),
+                    "args": resolved.get("args") or [],
+                }
+            )
+            last_error = self._mcp_errors.get(name)
             if connected:
                 status = "connected"
             elif not raw.get("enabled", True):
@@ -1289,6 +1333,15 @@ class SessionManager:
                 status = "authorizing"
             elif is_oauth and not mcp_oauth.has_tokens(name, self.secrets):
                 status = "needs_auth"
+            elif unresolved:
+                status = "misconfigured"
+                if not last_error:
+                    last_error = (
+                        "unresolved ${VAR} in url/headers — check state-dir .env"
+                    )
+            elif last_error:
+                # Prior connect failure: do not claim healthy "configured".
+                status = "misconfigured"
             else:
                 status = "configured"
             out.append(
@@ -1307,7 +1360,7 @@ class SessionManager:
                     "requires_approval": bool(raw.get("requires_approval", True)),
                     "auth": "oauth" if is_oauth else None,
                     "status": status,
-                    "last_error": self._mcp_errors.get(name),
+                    "last_error": last_error,
                     "tool_count": (
                         len(self.mcp._conns[name].tools) if connected else None
                     ),
@@ -1331,11 +1384,13 @@ class SessionManager:
             self._mcp_authorizing.add(name)
             self._mcp_errors.pop(name, None)
             try:
+                assert_mcp_secrets_resolved(server)
                 # The ONE place a browser sign-in may start: an explicit connect.
                 conn = await self.mcp.ensure(server, interactive=True)
+                self._mcp_errors.pop(name, None)
                 return {"ok": True, "tools": len(conn.tools)}
             except Exception as exc:
-                self._mcp_errors[name] = str(exc) or exc.__class__.__name__
+                self._mcp_errors[name] = self._mcp_error_message(exc)
                 return {"ok": False, "error": self._mcp_errors[name]}
             finally:
                 self._mcp_authorizing.discard(name)
@@ -1390,13 +1445,6 @@ class SessionManager:
         return {"ok": True, "had_tokens": removed}
 
     def add_mcp(self, name: str, config: dict[str, Any]) -> dict[str, Any]:
-        existing = read_global().get(name)
-        if is_builtin_config(existing):
-            return {
-                "ok": False,
-                "error": "无法覆盖内置 MCP 服务器；请仅使用启停开关。",
-                "name": name,
-            }
         # Refuse marking arbitrary paste-ins as ChemClaw builtin via REST.
         cleaned = dict(config)
         cleaned.pop("chemclaw_builtin", None)
@@ -1405,31 +1453,10 @@ class SessionManager:
         return {"ok": True, "name": name}
 
     def patch_mcp(self, name: str, changes: dict[str, Any]) -> dict[str, Any]:
-        existing = read_global().get(name)
-        if is_builtin_config(existing):
-            allowed = {k: v for k, v in changes.items() if k == "enabled"}
-            blocked = [k for k in changes if k != "enabled"]
-            if blocked:
-                return {
-                    "ok": False,
-                    "error": "内置 MCP 仅允许修改启用状态，不能更改地址或密钥。",
-                    "name": name,
-                }
-            if not allowed:
-                return {"ok": True, "name": name}
-            ok = patch_global_server(name, allowed)
-            return {"ok": ok, "name": name}
         ok = patch_global_server(name, changes)
         return {"ok": ok, "name": name}
 
     def delete_mcp(self, name: str) -> dict[str, Any]:
-        existing = read_global().get(name)
-        if is_builtin_config(existing):
-            return {
-                "ok": False,
-                "error": "无法删除内置 MCP 服务器；可关闭启用开关。",
-                "name": name,
-            }
         ok = delete_global_server(name)
         return {"ok": ok, "name": name}
 
@@ -1442,9 +1469,17 @@ class SessionManager:
         ):
             if server.name == name:
                 try:
+                    assert_mcp_secrets_resolved(server)
                     conn = await self.mcp.ensure(server)
                 except Exception as exc:
-                    return {"name": name, "ok": False, "error": str(exc), "tools": []}
+                    self._mcp_errors[name] = self._mcp_error_message(exc)
+                    return {
+                        "name": name,
+                        "ok": False,
+                        "error": self._mcp_errors[name],
+                        "tools": [],
+                    }
+                self._mcp_errors.pop(name, None)
                 return {
                     "name": name,
                     "ok": True,
@@ -2469,10 +2504,9 @@ class SessionManager:
         env_key = bool(os.environ.get("OPENAI_API_KEY"))
         stored = bool((self.secrets.get("provider:openai") or {}).get("api_key"))
         # Only surface models whose provider is actually configured — the composer picker
-        # reflects exactly what's connected. The active default is always kept selectable
-        # (it's hidden behind the "No model" state until a provider is connected anyway).
-        # Ollama is keyless, so "configured" is meaningless there — its models show only
-        # while a local Ollama answers (cached liveness probe).
+        # reflects exactly what's connected. Ollama is keyless, so "configured" is
+        # meaningless there — its models show only while a local Ollama answers
+        # (cached liveness probe).
         def _selectable(m: str) -> bool:
             provider = self._model_provider(m)
             if provider == "ollama":
@@ -2480,6 +2514,15 @@ class SessionManager:
             return self._provider_configured(provider)
 
         selectable = [m for m in self._curated_models() if _selectable(m)]
+        # If the saved default's provider has no key but another provider does, heal the
+        # default (same rule as set_provider). Otherwise Composer hides the picker behind
+        # "No model" even though Settings already has working keys (owner-hit 2026-08-27).
+        if selectable and self.model not in selectable:
+            healed = selectable[0]
+            self.model = healed
+            self._prefs["default_model"] = healed
+            self._save_prefs()
+            selectable = [m for m in self._curated_models() if _selectable(m)]
         if self.model not in selectable:
             selectable.insert(0, self.model)
         from ..providers.matrix import model_context_windows, model_labels
@@ -2495,10 +2538,8 @@ class SessionManager:
             # drives the composer's context-fill meter (absent id → meter hides).
             "model_context_windows": model_context_windows(),
             "has_key": env_key or stored,
-            # Provider-agnostic "can this default model actually run?" — true when the default
-            # model's provider is configured (any provider, not just OpenAI). Drives the GUI's
-            # "No model connected" composer chip and the onboarding Skip warning.
-            "model_ready": self._provider_configured(self._model_provider(self.model)),
+            # True when at least one picker model can run (any configured provider).
+            "model_ready": any(_selectable(m) for m in selectable),
             "source": "env" if env_key else ("store" if stored else None),
             "onboarded": bool(self._prefs.get("onboarded")),
             "experimental_connectors": experimental_enabled(self.secrets),
@@ -3702,6 +3743,17 @@ class SessionManager:
     async def _resume_wake(self, wake) -> None:
         await self.deliver_to_session(wake.session_id, self._wake_message(wake))
 
+    async def _prepare_engine_for_turn(
+        self, session_id: str, *, agent: Optional[str] = None
+    ) -> Optional[TurnEngine]:
+        """Connect enabled MCP servers and return the session engine.
+
+        Shared by GUI WebSocket attach and background turns (channel delivery, self-wake).
+        """
+        persona = self._persona_of(session_id, agent)
+        mcp_tools = await self.prepare_mcp_tools(session_id, agent=persona)
+        return self.get_engine(session_id, extra_tools=mcp_tools, agent=persona)
+
     async def deliver_to_session(
         self, session_id: str, message: str, *, source: Optional[dict[str, Any]] = None
     ) -> None:
@@ -3712,7 +3764,7 @@ class SessionManager:
         by self-wake and channel-subscription delivery. `source` is the display-only MessageSource
         sidecar for connector messages (framed `message` stays the model-facing text).
         """
-        engine = self.get_engine(session_id)
+        engine = await self._prepare_engine_for_turn(session_id)
         if engine is None:
             return
         if not self.try_mark_running(session_id):

@@ -52,6 +52,16 @@ describe("ConnectorIcon", () => {
       (bright.container.querySelector(".connector-icon") as HTMLElement).hasAttribute("data-dark-mark"),
     ).toBe(false);
   });
+
+  it("renders the WeCom logo id from the registry", () => {
+    const { container } = render(
+      <ConnectorIcon connector={{ logo: "wecom", brand_color: "#2b7bd6" }} />,
+    );
+    const el = container.querySelector("[data-logo]") as HTMLElement;
+    expect(el.getAttribute("data-logo")).toBe("wecom");
+    expect(el.querySelector("svg")).not.toBeNull();
+    expect(el.style.getPropertyValue("--brand")).toBe("#2b7bd6");
+  });
 });
 
 describe("ConnectorBadge", () => {

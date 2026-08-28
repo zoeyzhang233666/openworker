@@ -553,7 +553,8 @@ export function App() {
       getHealth()
         .then(async (h) => {
           if (cancelled) return;
-          setModel(h.model);
+          // Unauthenticated health only returns {status:"ok"} — don't wipe the model chip.
+          if (h.model) setModel(h.model);
           // Mirror setModel: seed Composer before WS ready (MCP/engine setup can lag).
           const seededMode = modeFromHealth(h);
           if (seededMode) setMode(seededMode);
@@ -614,7 +615,9 @@ export function App() {
         setModelLabels(s.model_labels || {});
         setModelContextWindows(s.model_context_windows || {});
         setContextBar(s.context_bar === true);
-        setModelReady(s.model_ready);
+        // Only accept an explicit boolean — a 401/error body must not clear readiness.
+        if (typeof s.model_ready === "boolean") setModelReady(s.model_ready);
+        if (s.model) setModel(s.model);
         if (s.surfaces) setSurfaces(s.surfaces);
       })
       .catch(() => {});
@@ -1143,7 +1146,7 @@ export function App() {
     setItems((p) => resolveLastPlan(p, approved ? "approved" : "rejected"));
     dropSessionInbox("plan");
     sessionRef.current?.respondPlan(approved, mode, feedback);
-    if (approved && mode) setMode(mode); // the server flips the live engine to this mode
+    if (approved && mode) setMode(resolvePermissionMode(mode)); // the server flips the live engine to this mode
   };
   const respondDirectory = (granted: boolean, path?: string, writable?: boolean) => {
     setItems((p) => resolveLastDirReq(p, granted ? "granted" : "denied"));
@@ -1175,8 +1178,9 @@ export function App() {
     );
   };
   const changeMode = (m: string) => {
-    setMode(m);
-    sessionRef.current?.setMode(m);
+    const resolved = resolvePermissionMode(m);
+    setMode(resolved);
+    sessionRef.current?.setMode(resolved);
   };
   const changeModel = (m: string) => {
     if (running) return; // the server refuses mid-turn rebinds — don't let the header lie

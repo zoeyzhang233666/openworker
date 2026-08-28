@@ -16,6 +16,8 @@ ABOUT: dict[str, str] = {
     "telegram": "Chat with your coworker from Telegram. Messages to your bot "
     "reach the agent and replies come back to the same chat — only senders on "
     "your allow-list get through.",
+    "wecom": "通过企业微信智能机器人（长连接）与 ChemClaw 对话：私聊或群聊 @，"
+    "回复回到同一会话。桌面端主动连出，无需公网回调；仅允许名单内用户可触发。",
     "slack": "Bring your coworker into Slack: mention it in a channel or DM it, "
     "and replies land in-thread. Any number of workspaces can be connected, "
     "each with its own allow-list of who may talk to the agent.",
@@ -63,6 +65,11 @@ ACCESS: dict[str, list[str]] = {
         "Reads messages sent to your bot — never your personal chats.",
         "Sends messages as the bot.",
         "Only senders on your allow-list are answered.",
+    ],
+    "wecom": [
+        "读取发往本智能机器人的私聊，以及群聊中 @ 本机器人的消息。",
+        "以智能机器人身份回复文本（WebSocket 主动推送 / 流式回复）。",
+        "仅允许名单内的企业微信用户 ID 会被应答；凭据只保存在本机。",
     ],
     "slack": [
         "Reads channels the bot is invited to, and its DMs.",

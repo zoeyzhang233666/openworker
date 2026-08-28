@@ -441,6 +441,10 @@ def make_adapter(
     """
     if platform == "telegram" and profile.get("bot_token"):
         return TelegramAdapter(profile["bot_token"])
+    if platform == "wecom" and profile.get("bot_id") and profile.get("secret"):
+        from .wecom_bot import WecomBotAdapter
+
+        return WecomBotAdapter(str(profile["bot_id"]), str(profile["secret"]))
     if platform == "slack":
         if profile.get("mode") == "relay":
             if not (relay_url and token_provider):

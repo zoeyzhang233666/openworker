@@ -12,11 +12,12 @@ import path from "node:path";
 export default defineConfig(({ command }) => {
   let devToken = "";
   if (command === "serve") {
+    // Must match coworker.secrets.state_dir() / Tauri lib.rs (ChemClaw, not legacy coworker).
     const state =
       process.env.COWORKER_STATE_DIR ||
       (process.platform === "win32"
-        ? path.join(process.env.APPDATA || os.homedir(), "coworker")
-        : path.join(os.homedir(), ".config", "coworker"));
+        ? path.join(process.env.APPDATA || os.homedir(), "ChemClaw")
+        : path.join(os.homedir(), ".config", "chemclaw"));
     try {
       devToken = fs.readFileSync(path.join(state, "sidecar-8765.token"), "utf8").trim();
     } catch {

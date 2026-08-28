@@ -13,6 +13,7 @@ target the **global** file.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -20,6 +21,8 @@ from typing import Any, Optional
 from ..secrets import SecretStore, state_dir
 
 _HTTP_TYPES = {"http", "https", "sse", "streamable-http", "streamable_http"}
+# Unresolved ${VAR} left intact by SecretStore.resolve — must not be sent as auth.
+_UNRESOLVED_REF = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 
 @dataclass
@@ -63,6 +66,47 @@ def _config_paths(
     if workspace and workspace_trusted:
         paths.append(Path(workspace).expanduser() / ".coworker" / "mcp.json")
     return paths
+
+
+def has_unresolved_refs(value: Any) -> bool:
+    """True if ``value`` still contains a literal ``${VAR}`` after resolve."""
+    if isinstance(value, str):
+        return bool(_UNRESOLVED_REF.search(value))
+    if isinstance(value, dict):
+        return any(has_unresolved_refs(v) for v in value.values())
+    if isinstance(value, list):
+        return any(has_unresolved_refs(v) for v in value)
+    return False
+
+
+def unresolved_ref_fields(server: MCPServerDef) -> list[str]:
+    """Human-readable field names that still contain unresolved ``${VAR}``."""
+    bad: list[str] = []
+    if server.url and has_unresolved_refs(server.url):
+        bad.append("url")
+    for key, val in (server.headers or {}).items():
+        if has_unresolved_refs(val):
+            bad.append(f"headers.{key}")
+    for key, val in (server.env or {}).items():
+        if has_unresolved_refs(val):
+            bad.append(f"env.{key}")
+    if server.command and has_unresolved_refs(server.command):
+        bad.append("command")
+    for i, arg in enumerate(server.args or []):
+        if has_unresolved_refs(arg):
+            bad.append(f"args[{i}]")
+    return bad
+
+
+def assert_mcp_secrets_resolved(server: MCPServerDef) -> None:
+    """Raise before connect when Authorization/url/env still contain ``${VAR}``."""
+    bad = unresolved_ref_fields(server)
+    if not bad:
+        return
+    raise RuntimeError(
+        f"MCP server '{server.name}' has unresolved ${{VAR}} in {', '.join(bad)} "
+        f"— check state-dir .env or environment"
+    )
 
 
 def _parse(name: str, raw: dict[str, Any], secrets: SecretStore) -> MCPServerDef:

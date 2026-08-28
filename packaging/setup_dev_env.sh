@@ -11,9 +11,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV="$ROOT/.venv"
 
 python3 -m venv "$VENV"
-# The coworker package (server, engine, connectors) + inbound-messaging extras.
-# aisuite comes in as a regular dependency (git-pinned in pyproject.toml until
-# the next PyPI release).
+# The coworker package (server, engine, connectors) + inbound-messaging extras
+# (Slack/Telegram + WeCom AI Bot SDK / D-188). aisuite comes in as a regular
+# dependency (git-pinned in pyproject.toml until the next PyPI release).
 "$VENV/bin/pip" install --quiet --upgrade pip
 "$VENV/bin/pip" install --quiet -e "$ROOT[messaging,dev]"
 

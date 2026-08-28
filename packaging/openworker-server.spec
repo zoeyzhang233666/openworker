@@ -9,7 +9,7 @@ actual Python import is ~0.5s). The wrinkles handled here:
     aisuite submodules from the venv.
   - uvicorn loads its protocol/lifespan impls dynamically → collect_all.
   - certifi's CA bundle must ship for TLS (OpenAI, web search, Telegram/Slack).
-  - messaging extras (slack_bolt, telegram) are optional; collected if importable.
+  - messaging extras (slack_bolt, telegram, wecom_aibot_sdk) are optional; collected if importable.
 
 Cross-platform: paths are derived from this spec's own location (SPECPATH), never hardcoded,
 so the same spec builds native binaries on macOS, Windows, and Linux. On Windows PyInstaller
@@ -81,7 +81,7 @@ for pkg in ("boto3", "botocore"):
     except Exception:
         pass
 
-for pkg in ("slack_bolt", "telegram"):  # [messaging] extra — optional
+for pkg in ("slack_bolt", "telegram", "wecom_aibot_sdk"):  # [messaging] extra — optional
     try:
         hiddenimports += collect_submodules(pkg)
     except Exception:
@@ -115,14 +115,7 @@ datas += _data_tree(
     os.path.join("coworker", "personas", "builtin"),
 )
 
-# D-167: builtin MCP templates (+ optional obfuscated secrets bundle).
-_mcp_dir = os.path.join(ROOT, "coworker", "mcp")
-_builtin_servers = os.path.join(_mcp_dir, "builtin_servers.json")
-if os.path.isfile(_builtin_servers):
-    datas += [(_builtin_servers, os.path.join("coworker", "mcp"))]
-_builtin_bundle = os.path.join(_mcp_dir, "builtin_mcp.bundle")
-if os.path.isfile(_builtin_bundle):
-    datas += [(_builtin_bundle, os.path.join("coworker", "mcp"))]
+# D-167 retired (D-190): builtin MCP no longer seeded or packaged.
 
 a = Analysis(
     [os.path.join(PACKAGING, "server_entry.py")],

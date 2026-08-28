@@ -128,6 +128,9 @@ def _resolve_token(secrets: SecretStore, platform: str, chat_id: str) -> Optiona
             per_team = secrets.get(f"slack:team:{team}") or {}
             return per_team.get("bot_token")
     creds = secrets.get(f"{platform}:default") or {}
+    if platform == "wecom":
+        # Live WS adapter is keyed by bot_id (see wecom_bot._LIVE / senders._send_wecom).
+        return creds.get("bot_id")
     return creds.get("bot_token")
 
 
@@ -154,6 +157,8 @@ def make_send_message_tool(
                 return {"error": err}
         token = _resolve_token(secrets, platform, chat_id)
         if not token:
+            if platform == "wecom":
+                return {"error": "企业微信未连接 — 请先在连接设置中填写 bot_id 与 secret"}
             return {"error": f"no bot token for {platform} — connect it first"}
         if platform == "slack":
             from .attribution import sender_prefix

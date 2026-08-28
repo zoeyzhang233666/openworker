@@ -900,6 +900,9 @@ export const interfaceMessagesZh = {
     "所有 Agent 共享的外部工具服务器（stdio 或 HTTP）。已启用服务器的工具受权限控制。更改将应用于新对话——",
   "reload now": "立即重新加载",
   "No MCP servers configured.": "尚未配置 MCP 服务器。",
+  "configured": "已配置",
+  "misconfigured": "配置不完整",
+
   "Add a server": "添加服务器",
   "+ Add server": "+ 添加服务器",
   "failed to connect": "连接失败",

@@ -124,6 +124,9 @@ async def test_prepare_mcp_tools_does_not_spawn_untrusted_workspace(
 ):
     """End-to-end for #213: untrusted workspace MCP never reaches MCPManager.ensure."""
     monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        "coworker.server.manager.retire_builtin_mcp", lambda *a, **k: []
+    )
     ws = tmp_path / "cloned-repo"
     _write_json(
         ws / ".coworker" / "mcp.json",
@@ -239,6 +242,9 @@ async def test_bridge_invokes_session_on_loop():
 # -- REST ----------------------------------------------------------------------
 def test_rest_crud(tmp_path, monkeypatch):
     monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        "coworker.server.manager.retire_builtin_mcp", lambda *a, **k: []
+    )
     manager = SessionManager(data_dir=tmp_path / "data")
     client = TestClient(create_app(manager))
 

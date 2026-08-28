@@ -1,11 +1,11 @@
-"""ChemClaw managed builtin MCP servers (chem-data-hub / chem-biz-scope).
+"""Builtin MCP seed (legacy D-167) and retire (D-190).
 
-Templates live in-repo without secrets. Build injects an obfuscated bundle;
-``seed_builtin_mcp`` writes ``mcp.json`` with ``${VAR}`` refs and seeds tokens
-into the state-dir ``.env`` (the existing SecretStore ``${VAR}`` resolution path).
+D-190: product no longer seeds chem-data-hub / chem-biz-scope. Boot calls
+``retire_builtin_mcp`` to scrub ``chemclaw_builtin`` rows and product
+``CHEMCLAW_BUILTIN_MCP_*`` keys from the state-dir ``.env``.
 
-Obfuscation is intentional mild deterrence for casual APPDATA inspection — not
-cryptographic protection against reverse engineering.
+``seed_builtin_mcp`` remains for historical / offline tooling only — it is not
+invoked by SessionManager.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 from ..runtime_paths import packaged_coworker_dir
 from ..secrets import write_private_text
-from .config import put_global_server, read_global
+from .config import delete_global_server, put_global_server, read_global
 
 logger = logging.getLogger(__name__)
 
@@ -166,21 +166,45 @@ def _read_dotenv_map(path: Path) -> dict[str, str]:
     return out
 
 
-def _write_dotenv_map(path: Path, values: dict[str, str]) -> None:
-    """Merge ``values`` into ``.env`` without overwriting existing keys."""
+def _write_dotenv_map(
+    path: Path,
+    values: dict[str, str],
+    *,
+    overwrite_keys: frozenset[str] | None = None,
+) -> dict[str, str]:
+    """Merge ``values`` into ``.env``.
+
+    Keys in ``overwrite_keys`` (product-managed builtin tokens) always replace
+    existing non-empty values when the new value is non-empty. Other keys keep
+    the historical never-overwrite-if-present behavior.
+
+    Returns a map of keys that were newly written or overwritten.
+    """
+    overwrite = overwrite_keys or frozenset()
     existing = _read_dotenv_map(path)
     changed = False
+    refreshed: dict[str, str] = {}
     for key, val in values.items():
         if not val:
             continue
-        if key in existing and existing[key]:
+        prior = existing.get(key) or ""
+        if key in overwrite:
+            if prior == val:
+                continue
+            existing[key] = val
+            changed = True
+            refreshed[key] = "updated" if prior else "created"
+            continue
+        if prior:
             continue
         existing[key] = val
         changed = True
+        refreshed[key] = "created"
     if not changed and path.is_file():
-        return
+        return refreshed
     lines = [f"{k}={v}" for k, v in sorted(existing.items())]
     write_private_text(path, "\n".join(lines) + ("\n" if lines else ""))
+    return refreshed
 
 
 def _token_for_server(payload: dict[str, Any], server: str) -> str:
@@ -280,8 +304,56 @@ def seed_builtin_mcp(*, state_dir: Path | None = None) -> list[str]:
             existing[name] = merged
 
     if env_to_set:
-        _write_dotenv_map(_dotenv_path(state), env_to_set)
+        # Product-managed CHEMCLAW_BUILTIN_MCP_* keys always refresh from bundle
+        # (D-189 / D-167 revision). User-owned non-builtin mcp.json entries above
+        # still skip config overwrite, but tokens for servers we did process here
+        # remain product-injected.
+        product_keys = frozenset(TOKEN_ENV_BY_SERVER.values())
+        refreshed = _write_dotenv_map(
+            _dotenv_path(state),
+            env_to_set,
+            overwrite_keys=product_keys,
+        )
+        if refreshed:
+            logger.info(
+                "builtin MCP .env tokens: %s",
+                ", ".join(f"{k}={v}" for k, v in sorted(refreshed.items())),
+            )
 
     if seeded:
         logger.info("seeded builtin MCP servers: %s", ", ".join(seeded))
     return seeded
+
+
+def retire_builtin_mcp(*, state_dir: Path | None = None) -> list[str]:
+    """Remove product-managed builtin MCP entries (D-190).
+
+    Deletes ``chemclaw_builtin`` servers from global ``mcp.json`` and scrubs
+    product-managed ``CHEMCLAW_BUILTIN_MCP_*`` keys from the state-dir ``.env``.
+    User-added servers with the same names are untouched (no builtin flag).
+    """
+    from ..secrets import state_dir as default_state_dir
+
+    state = Path(state_dir) if state_dir else default_state_dir()
+    removed: list[str] = []
+    for name, cfg in list(read_global().items()):
+        if is_builtin_config(cfg):
+            if delete_global_server(name):
+                removed.append(name)
+
+    dotenv_path = _dotenv_path(state)
+    if dotenv_path.is_file():
+        env = _read_dotenv_map(dotenv_path)
+        product_keys = set(TOKEN_ENV_BY_SERVER.values())
+        changed = False
+        for key in list(env.keys()):
+            if key in product_keys:
+                del env[key]
+                changed = True
+        if changed:
+            lines = [f"{k}={v}" for k, v in sorted(env.items())]
+            write_private_text(dotenv_path, "\n".join(lines) + ("\n" if lines else ""))
+
+    if removed:
+        logger.info("retired builtin MCP servers: %s", ", ".join(removed))
+    return removed

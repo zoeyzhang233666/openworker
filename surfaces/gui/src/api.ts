@@ -295,8 +295,8 @@ export interface McpServer {
   enabled: boolean;
   transport: string;
   requires_approval: boolean;
-  // "connected" | "configured" | "disabled" | and for auth:"oauth" servers:
-  // "needs_auth" (no tokens yet) | "authorizing" (browser sign-in in flight)
+  // "connected" | "configured" | "misconfigured" | "disabled" |
+  // auth:"oauth" → "needs_auth" | "authorizing"
   status: string;
   auth?: "oauth" | null;
   last_error?: string | null;
@@ -976,7 +976,7 @@ export interface ModelSettings {
   model: string;
   models: string[];
   has_key: boolean;
-  model_ready: boolean; // can the default model's provider actually run (any provider)?
+  model_ready: boolean; // at least one picker model can run (any configured provider)
   source: "env" | "store" | null;
   onboarded: boolean;
   surfaces: SurfaceVisibility;
@@ -1827,6 +1827,9 @@ export async function setUnattended(
 
 export async function getSettings(): Promise<ModelSettings> {
   const res = await fetch(`${httpBase()}/v1/settings`);
+  if (!res.ok) {
+    throw new Error(`settings ${res.status}`);
+  }
   return res.json();
 }
 

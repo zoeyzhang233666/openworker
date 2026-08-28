@@ -392,6 +392,40 @@ def test_manager_provider_config(tmp_path, monkeypatch):
     assert mgr.set_provider("nope", {})["ok"] is False  # unknown provider rejected
 
 
+def test_model_ready_heals_stale_default_when_other_provider_works(
+    tmp_path, monkeypatch
+):
+    """Composer showed「无模型」when default's provider lost its key but another
+    provider still had one — picker was hidden behind model_ready=false."""
+    monkeypatch.setenv("COWORKER_STATE_DIR", str(tmp_path / "state"))
+    from coworker.providers.registry import provider_descriptors
+
+    for d in provider_descriptors():
+        if d.env_key:
+            monkeypatch.delenv(d.env_key, raising=False)
+    from coworker.secrets import SecretStore
+    from coworker.server.manager import SessionManager
+
+    mgr = SessionManager(data_dir=tmp_path, model="openrouter:mimo-v2.5-free")
+    # Bypass set_provider so it cannot auto-steal the default onto apihub.
+    SecretStore().put(
+        "provider:apihub-cn",
+        {"api_key": "sk-test", "base_url": "https://apihub.example/v1"},
+    )
+    mgr._refresh_provider("apihub-cn")
+    mgr.model = "openrouter:mimo-v2.5-free"
+    mgr._prefs["default_model"] = "openrouter:mimo-v2.5-free"
+    mgr._save_prefs()
+
+    assert mgr._provider_configured("openrouter") is False
+    assert mgr._provider_configured("apihub-cn") is True
+
+    s = mgr.get_settings()
+    assert s["model_ready"] is True
+    assert s["model"].startswith("apihub-cn:")
+    assert any(m.startswith("apihub-cn:") for m in s["models"])
+
+
 def test_manager_curated_models(tmp_path, monkeypatch):
     """No seed list: the picker is the curated matrix filtered to key-holding providers,
     plus user-added custom ids. A fresh install shows only the (not-yet-usable) default.

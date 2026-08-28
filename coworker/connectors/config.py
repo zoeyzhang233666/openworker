@@ -14,7 +14,7 @@ from typing import Optional
 from ..secrets import SecretStore
 from .base import SessionSource
 
-PLATFORMS = ("telegram", "slack", "github")
+PLATFORMS = ("telegram", "slack", "github", "wecom")
 
 
 @dataclass
@@ -89,6 +89,12 @@ def load_settings(
             enabled = bool(profile.get("enabled", True))
         elif platform == "github":
             enabled = False
+        elif platform == "wecom":
+            # WeCom AI Bot uses bot_id + secret (not Slack-style bot_token).
+            enabled = (
+                bool(profile.get("bot_id") and profile.get("secret"))
+                and profile.get("enabled", True)
+            )
         else:
             enabled = bool(token) and profile.get("enabled", True)
         teams: dict[str, TeamAuth] = {}

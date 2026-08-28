@@ -137,6 +137,29 @@ def _validate_slack(creds: dict) -> ValidationResult:
     return ValidationResult(False, error=data.get("error") or "invalid bot token")
 
 
+def _validate_wecom(creds: dict) -> ValidationResult:
+    """Format + optional SDK import check. Full WS auth happens on gateway connect."""
+    bot_id = str(creds.get("bot_id") or "").strip()
+    secret = str(creds.get("secret") or "").strip()
+    if not bot_id or not secret:
+        return ValidationResult(False, error="请填写企业微信智能机器人的 bot_id 与 secret")
+    if len(bot_id) < 4 or len(secret) < 8:
+        return ValidationResult(False, error="bot_id 或 secret 看起来不完整，请从企业微信后台重新复制")
+    try:
+        import wecom_aibot_sdk  # noqa: F401
+    except ImportError:
+        return ValidationResult(
+            False,
+            error=(
+                "未安装企业微信 SDK。请在 ChemClaw 运行环境（开发态多为 worktree 的 .venv）"
+                "执行：python -m pip install 'wecom-aibot-sdk>=1.0.8'（或 pip install -e '.[messaging]'），"
+                "然后重启 ChemClaw / sidecar 再试"
+            ),
+        )
+    short = bot_id if len(bot_id) <= 12 else f"{bot_id[:8]}…"
+    return ValidationResult(True, identity=f"企业微信智能机器人 / {short}")
+
+
 def _validate_whoami(
     method: str,
     url: str,
@@ -445,6 +468,42 @@ DESCRIPTORS: list[ConnectorDescriptor] = [
             "After connecting, DM your new bot once, then use Capture to grab your user ID.",
         ],
         validate=_validate_telegram,
+    ),
+    ConnectorDescriptor(
+        name="wecom",
+        title="企业微信",
+        icon="企",
+        blurb="企业微信智能机器人（API 模式 · WebSocket 长连接）。桌面 ChemClaw 无需公网回调 URL。",
+        auth="bot_token",
+        two_way=True,
+        channels=True,
+        brand_color="#2b7bd6",
+        logo="wecom",
+        aliases=("企业微信", "wecom", "wechat work", "企微", "wxwork"),
+        fields=[
+            Field(
+                "bot_id",
+                "Bot ID",
+                help="企业微信管理后台 → 智能机器人 → API 模式 → 长连接 中的 Bot ID。",
+                placeholder="aibot-…",
+            ),
+            Field(
+                "secret",
+                "Secret",
+                secret=True,
+                help="同一页面中的 Secret。保存在本机 SecretStore，不会写入日志或发给模型。",
+                placeholder="…",
+            ),
+            _ALLOWED_FIELD,
+        ],
+        instructions=[
+            "打开企业微信管理后台，创建或进入「智能机器人」。",
+            "开启「API 模式」，连接方式选择「长连接」（不是 Webhook 短连接）。",
+            "复制 Bot ID 与 Secret，粘贴到下方。ChemClaw 桌面端主动连出，无需公网 IP 或备案域名。",
+            "连接成功后，在私聊中发消息，或在群聊中 @机器人；再用 Capture 把你的用户 ID 加入允许名单。",
+            "若提示未安装 SDK：在 ChemClaw 运行环境执行 python -m pip install 'wecom-aibot-sdk>=1.0.8'（或 pip install -e '.[messaging]'），然后重启。",
+        ],
+        validate=_validate_wecom,
     ),
     ConnectorDescriptor(
         name="slack",

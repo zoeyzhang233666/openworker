@@ -15,7 +15,7 @@ vi.mock("../api", async (importOriginal) => {
         requires_approval: true,
         status: "configured",
         tool_count: null,
-        builtin: true,
+        builtin: false,
         config: { headers: { Authorization: "***" } },
       },
     ]),
@@ -29,19 +29,19 @@ vi.mock("../api", async (importOriginal) => {
   };
 });
 
-describe("McpTab builtin row", () => {
+describe("McpTab user-added row", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("shows builtin badge and hides remove", async () => {
+  it("shows remove for user-managed servers", async () => {
     render(
       <LocaleProvider>
         <McpTab />
       </LocaleProvider>,
     );
-    expect(await screen.findByTestId("mcp-builtin-chem-data-hub")).toBeTruthy();
-    expect(screen.getByTestId("mcp-builtin-badge").textContent).toMatch(/内置|Built-in/);
-    expect(screen.queryByRole("button", { name: /remove|删除|移除/i })).toBeNull();
+    expect(await screen.findByText("chem-data-hub")).toBeTruthy();
+    expect(screen.queryByTestId("mcp-builtin-badge")).toBeNull();
+    expect(screen.getByRole("button", { name: /remove|删除|移除/i })).toBeTruthy();
   });
 });

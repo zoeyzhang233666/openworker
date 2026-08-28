@@ -138,9 +138,25 @@ def _send_slack_interactive(
     return SendResult(False, error=data.get("error") or "slack send failed")
 
 
+def _send_wecom(
+    token: str, chat_id: str, text: str, thread_id: Optional[str] = None
+) -> SendResult:
+    """Outbound via the live WeCom WebSocket adapter (`token` is bot_id)."""
+    from .wecom_bot import live_adapter
+
+    adapter = live_adapter(token)
+    if adapter is None:
+        return SendResult(
+            False,
+            error="企业微信未连接 — 请在连接设置中连接智能机器人，并确认 sidecar 已加载 wecom-aibot-sdk",
+        )
+    return adapter.send_sync(chat_id, text, thread_id=thread_id)
+
+
 DEFAULT_SENDERS: dict[str, Sender] = {
     "telegram": _send_telegram,
     "slack": _send_slack,
+    "wecom": _send_wecom,
 }
 
 

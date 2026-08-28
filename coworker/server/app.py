@@ -73,6 +73,7 @@ _BRAND_COLORS = {
     "hubspot": "#ff7a59",
     "gmail": "#ea4335",
     "google_calendar": "#4285f4",
+    "wecom": "#2b7bd6",
 }
 
 

@@ -181,6 +181,14 @@ const HunterLogo = strokeLogo(
   </>,
 );
 
+/** Simplified WeCom / WeChat Work mark — speech bubble with W (no official mono in simple-icons). */
+const WecomLogo = strokeLogo(
+  <>
+    <path d="M4 8.5c0-2.8 3.6-5 8-5s8 2.2 8 5-3.6 5-8 5c-.7 0-1.4-.1-2-.2L6.5 16.5 7.2 13C5.2 12 4 10.4 4 8.5z" />
+    <path d="M8.5 8.2h1.6l1.1 2.6 1.1-2.6H14" />
+  </>,
+);
+
 const PlugLogo = strokeLogo(
   <>
     <path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5" />
@@ -232,6 +240,7 @@ export const CONNECTORS: Record<string, ConnectorRegistryEntry> = {
   amplitude: { label: "Amplitude", logo: AmplitudeLogo },
   apollo: { label: "Apollo.io", logo: ApolloLogo },
   hunter: { label: "Hunter", logo: HunterLogo },
+  wecom: { label: "企业微信", logo: WecomLogo },
   // Non-brand utilities.
   email: { label: "Email", logo: EmailLogo },
   browser: { label: "Browser", logo: BrowserLogo },
