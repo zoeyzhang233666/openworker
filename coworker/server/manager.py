@@ -21,6 +21,13 @@ from typing import Any, Optional
 from ..agent import build_engine
 from ..agents import get_agent
 from ..chemclaw_paths import stable_session_workspace, workspace_relpath_or_none
+from ..channels import (
+    ChannelDeliveryCoordinator,
+    ChannelMediaManager,
+    MessageDeduplicator,
+    OutboundEnvelope,
+)
+from ..attachments import build_user_content, content_to_text
 from ..connections import (
     PersonaConnectionStore,
     SessionConnectionStore,
@@ -75,6 +82,11 @@ from ..connectors.browser_automation import (
     browser_state,
     browser_take_screenshot,
 )
+from ..connectors.context import (
+    current_channel_target,
+    reset_current_channel_target,
+    set_current_channel_target,
+)
 from ..connectors.parked import ParkedStore
 from ..mcp import (
     MCPManager,
@@ -116,6 +128,10 @@ from ..skills import (
 _SCOPES = {s.value for s in Scope}
 
 logger = logging.getLogger("coworker.manager")
+
+
+def _delivery_text(message: str | list) -> str:
+    return content_to_text(message, image_placeholder="[附件]")
 
 
 def _grants_of(engine) -> dict[str, Any]:
@@ -192,6 +208,13 @@ class SessionManager:
         self._mcp_errors: dict[str, str] = {}
         self.gateway: Optional[Gateway] = None
         self._data_base = base
+        self.channel_media = ChannelMediaManager(base / "channel-media")
+        self.channel_message_dedup = MessageDeduplicator()
+        self.channel_delivery = ChannelDeliveryCoordinator(
+            self._run_channel_delivery,
+            max_concurrency=int(os.environ.get("CHEMCLAW_CHANNEL_CONCURRENCY", "10")),
+            turn_timeout=float(os.environ.get("CHEMCLAW_CHANNEL_TURN_TIMEOUT", "300")),
+        )
         # Desktop/UI prefs (default model, onboarding state) — not secrets; a plain JSON file.
         self._prefs = self._load_prefs()
         if self._prefs.get("default_model"):
@@ -551,6 +574,7 @@ class SessionManager:
             or None,
             subagent_runtime=self.subagent_runtime,
             background_task_manager=self.background_tasks,
+            file_storage=self.file_storage(),
         )
         # An automation run rebuilt here (manual "Run now" over WS, durable resume) still
         # carries its task's standing allowances — the rules live on the task record.
@@ -664,6 +688,7 @@ class SessionManager:
             disallowed_tool_names=profile.disallowed_tools,
             system_prompt_override=profile.instructions,
             background_task_manager=self.background_tasks,
+            file_storage=self.file_storage(),
         )
         from ..market_intent import restore_market_selection_from_metadata
 
@@ -1500,7 +1525,23 @@ class SessionManager:
         # Enrich two-way connectors with the live gateway's recently-seen senders, so the Connectors
         # tab can manage the allow-list inline (each recent sender flagged authorized or not).
         connectors = connector_list(self.secrets)
+        status_fn = getattr(self.gateway, "status", None) if self.gateway else None
+        live_status = {
+            row["platform"]: row for row in (status_fn() if callable(status_fn) else [])
+        }
         for c in connectors:
+            status = dict(live_status.get(c["name"]) or {})
+            delivery = self.channel_delivery.platform_status(c["name"])
+            if status:
+                status["queue_length"] = delivery["queue_length"]
+                if delivery["last_received_at"] is not None:
+                    status["last_received_at"] = delivery["last_received_at"]
+                if delivery["delivery_last_error"]:
+                    status["last_error"] = delivery["delivery_last_error"]
+                c["channel_status"] = status
+                c["capabilities"] = status.get("capabilities") or c.get(
+                    "capabilities", {}
+                )
             if not (c.get("two_way") and c.get("connected")):
                 continue
             allowed = set(c.get("allowed_users") or [])
@@ -1557,6 +1598,19 @@ class SessionManager:
         if conn is not None:
             conn.shutdown.set()
         return disconnect_connector(self.secrets, name)
+
+    def submit_weixin_verify_code(
+        self, account_id: str, verify_code: str
+    ) -> dict[str, Any]:
+        """Pass a transient iLink pairing code to the live QR poller."""
+        from ..connectors.weixin_ilink import live_adapter
+
+        adapter = live_adapter(str(account_id or "default"))
+        if adapter is None:
+            return {"ok": False, "error": "微信扫码会话未运行，请先刷新二维码"}
+        if not adapter.submit_verify_code(verify_code):
+            return {"ok": False, "error": "配对码应为手机微信显示的 4–8 位数字"}
+        return {"ok": True}
 
     def update_connector_tools(
         self, name: str, enabled: dict[str, Any]
@@ -2555,6 +2609,7 @@ class SessionManager:
             **self.local_profile_payload(),
             **self.pdf_settings(),
             **self.compaction_settings_payload(),
+            **self.filestore_settings(),
         }
 
     def _surfaces(self) -> dict[str, bool]:
@@ -2616,6 +2671,104 @@ class SessionManager:
         self._prefs["context_bar"] = bool(shown)
         self._save_prefs()
         return {"ok": True, "context_bar": self.context_bar()}
+
+    def file_storage(self):
+        """Live FileStorage for Channel send_file (D-194). Null when COS unset."""
+        from ..filestore import load_file_storage
+
+        return load_file_storage(self.secrets, self._prefs)
+
+    def filestore_settings(self) -> dict[str, Any]:
+        from ..filestore.config import filestore_public_status
+
+        status = filestore_public_status(self.secrets, self._prefs)
+        return {
+            "filestore_enabled": status["enabled"],
+            "filestore_configured": status["configured"],
+            "filestore_has_secrets": status["has_secrets"],
+            "filestore_bucket": status["bucket"],
+            "filestore_region": status["region"],
+            "filestore_pub_url": status["pub_url"],
+            "filestore_folder": status["folder"],
+            "filestore_blurb": status["blurb"],
+        }
+
+    def set_filestore_settings(
+        self,
+        *,
+        enabled: Any = None,
+        bucket: Any = None,
+        region: Any = None,
+        pub_url: Any = None,
+        folder: Any = None,
+        secret_id: Any = None,
+        secret_key: Any = None,
+        clear_secrets: bool = False,
+    ) -> dict[str, Any]:
+        """Persist COS public prefs + optional SecretStore credentials (D-194)."""
+        from ..filestore.config import (
+            DEFAULT_BUCKET,
+            DEFAULT_FOLDER,
+            DEFAULT_PUB_URL,
+            DEFAULT_REGION,
+            FILESTORE_SECRET_PROFILE,
+            validate_public_config,
+        )
+
+        public = dict(self._prefs.get("filestore_cos") or {})
+        if enabled is not None:
+            public["enabled"] = bool(enabled)
+        if bucket is not None:
+            public["bucket"] = str(bucket).strip() or DEFAULT_BUCKET
+        if region is not None:
+            public["region"] = str(region).strip() or DEFAULT_REGION
+        if pub_url is not None:
+            public["pub_url"] = str(pub_url).strip() or DEFAULT_PUB_URL
+        if folder is not None:
+            cleaned = str(folder).strip().strip("/") or DEFAULT_FOLDER
+            public["folder"] = cleaned
+        error = validate_public_config(
+            str(public.get("bucket") or DEFAULT_BUCKET),
+            str(public.get("region") or DEFAULT_REGION),
+            str(public.get("pub_url") or DEFAULT_PUB_URL),
+            str(public.get("folder") or DEFAULT_FOLDER),
+        )
+        if error:
+            return {"ok": False, "error": error, **self.filestore_settings()}
+        self._prefs["filestore_cos"] = public
+        self._save_prefs()
+
+        if clear_secrets:
+            self.secrets.delete(FILESTORE_SECRET_PROFILE)
+        elif secret_id is not None or secret_key is not None:
+            existing = self.secrets.get(FILESTORE_SECRET_PROFILE) or {}
+            # get() resolves env refs; re-read raw for merge of partial updates.
+            raw = {}
+            try:
+                import json
+
+                store = json.loads(self.secrets.path.read_text(encoding="utf-8"))
+                raw = store.get(FILESTORE_SECRET_PROFILE) or {}
+            except (OSError, ValueError, TypeError):
+                raw = {}
+            data = {
+                "type": "filestore",
+                "secret_id": str(
+                    secret_id if secret_id is not None else raw.get("secret_id") or existing.get("secret_id") or ""
+                ).strip(),
+                "secret_key": str(
+                    secret_key if secret_key is not None else raw.get("secret_key") or existing.get("secret_key") or ""
+                ).strip(),
+            }
+            if not data["secret_id"] or not data["secret_key"]:
+                return {
+                    "ok": False,
+                    "error": "请同时提供 secret_id 与 secret_key，或使用清除密钥",
+                    **self.filestore_settings(),
+                }
+            self.secrets.put(FILESTORE_SECRET_PROFILE, data)
+
+        return {"ok": True, **self.filestore_settings()}
 
     # -- PDF attachments / token savings (owner ask, 2026-07-17) ----------------
     DEFAULT_PDF_MAX_PAGES = 20
@@ -3295,18 +3448,28 @@ class SessionManager:
         for platform, st in settings.items():
             if not st.enabled:
                 continue
-            profile = self.secrets.get(f"{platform}:default") or {}
-            adapter = make_adapter(
-                platform,
-                profile,
-                secrets=self.secrets,
-                token_provider=_relay_token,
-                relay_url=relay_ws_url,
-                relay_hub=relay_hub,
-                github_token_client=_github_token,
-            )
-            if adapter is not None:
-                self.gateway.register(adapter)
+            profiles: list[tuple[str, dict[str, Any]]]
+            if platform == "weixin":
+                from ..connectors import accounts as channel_accounts
+
+                profiles = channel_accounts.list_accounts(self.secrets, platform)
+            else:
+                profiles = [("default", self.secrets.get(f"{platform}:default") or {})]
+            for account_id, stored_profile in profiles:
+                profile = dict(stored_profile)
+                profile["account_id"] = account_id
+                adapter = make_adapter(
+                    platform,
+                    profile,
+                    secrets=self.secrets,
+                    token_provider=_relay_token,
+                    relay_url=relay_ws_url,
+                    relay_hub=relay_hub,
+                    github_token_client=_github_token,
+                    media_manager=self.channel_media,
+                )
+                if adapter is not None:
+                    self.gateway.register(adapter)
         return await self.gateway.start()
 
     async def stop_gateway(self) -> None:
@@ -3422,6 +3585,7 @@ class SessionManager:
     async def aclose(self) -> None:
         await self.scheduler.stop()
         await self.stop_gateway()
+        await self.channel_delivery.close()
         self.bind_background_task_event_loop(None)
         self._background_task_unsubscribe()
         self.background_tasks.close(wait=False)
@@ -3592,6 +3756,7 @@ class SessionManager:
                 if sid in self.effective_skill_names(session_id, task.workspace)
             ]
             or None,
+            file_storage=self.file_storage(),
         )
         self._seed_task_permissions(engine, task)
         return engine
@@ -3755,7 +3920,12 @@ class SessionManager:
         return self.get_engine(session_id, extra_tools=mcp_tools, agent=persona)
 
     async def deliver_to_session(
-        self, session_id: str, message: str, *, source: Optional[dict[str, Any]] = None
+        self,
+        session_id: str,
+        message: str | list,
+        *,
+        source: Optional[dict[str, Any]] = None,
+        queue_if_busy: bool = False,
     ) -> None:
         """Deliver an out-of-band message to a (durable) session — the agent stays resumable
         forever, so this works with no live socket. Busy (mid tool-loop): steer it into the live
@@ -3767,9 +3937,18 @@ class SessionManager:
         engine = await self._prepare_engine_for_turn(session_id)
         if engine is None:
             return
+        queue_if_busy = queue_if_busy or bool((source or {}).get("connector"))
         if not self.try_mark_running(session_id):
-            engine.queue_steering(message, source)
-            return
+            if not queue_if_busy:
+                engine.queue_steering(message, source)
+                return
+            while not self.try_mark_running(session_id):
+                await asyncio.sleep(0.05)
+        channel_target_token = set_current_channel_target(
+            str((source or {}).get("target") or current_channel_target())
+        )
+        final_text = ""
+        channel_reply_sent = False
         try:
             async for event in engine.run(
                 message,
@@ -3785,6 +3964,18 @@ class SessionManager:
                 await self.broadcast_session(
                     session_id, {"type": event.type.value, "data": event.data}
                 )
+                if event.type.value == "assistant_message":
+                    candidate = str((event.data or {}).get("text") or "").strip()
+                    if candidate:
+                        final_text = candidate
+                elif event.type.value == "tool_finished" and (
+                    (event.data or {}).get("name") == "send_message"
+                ):
+                    outcome = (event.data or {}).get("outcome") or {}
+                    if (event.data or {}).get("status") == "ok" and outcome.get(
+                        "status"
+                    ) == "success":
+                        channel_reply_sent = True
                 # A background turn has no user watching to read an inline error: a dead model or
                 # tool failure would otherwise vanish. Log it and park it in the dead-letter store.
                 if event.type.value == "error":
@@ -3792,19 +3983,135 @@ class SessionManager:
                     logger.warning(
                         "background turn failed for %s: %s", session_id, reason
                     )
-                    self.unrouted.record(session_id, "-", message, reason=reason)
+                    self.unrouted.record(
+                        session_id, "-", _delivery_text(message), reason=reason
+                    )
             self.save(session_id, engine)
+            channel_target = str((source or {}).get("target") or "")
+            connector = str((source or {}).get("connector") or "")
+            # A Channel surface owns delivery of its final answer.  Tool-aware models may
+            # explicitly call send_message; plain-answer models still get a reliable reply.
+            # This applies only to the new Channel adapters, preserving legacy Slack/
+            # Telegram subscription behaviour and never auto-sending files.
+            if (
+                final_text
+                and not channel_reply_sent
+                and channel_target
+                and connector in {"wecom", "feishu", "dingtalk", "weixin"}
+                and self.gateway is not None
+            ):
+                message_key = str((source or {}).get("message_id") or len(engine.messages))
+                result = await self.gateway.deliver_envelope(
+                    channel_target,
+                    OutboundEnvelope(
+                        platform=connector,
+                        account_id="default",
+                        conversation_id="",
+                        kind="final",
+                        text=final_text,
+                        idempotency_key=f"channel-final:{session_id}:{message_key}",
+                    ),
+                )
+                if not result.ok:
+                    logger.warning(
+                        "channel final delivery failed for %s (%s)",
+                        session_id,
+                        connector,
+                    )
         except (
             Exception
         ) as exc:  # an unexpected raise out of the turn must not be swallowed
             logger.warning("background turn crashed for %s: %s", session_id, exc)
-            self.unrouted.record(session_id, "-", message, reason=str(exc))
+            self.unrouted.record(
+                session_id, "-", _delivery_text(message), reason=str(exc)
+            )
             await self.broadcast_session(
                 session_id, {"type": "error", "data": {"error": str(exc)}}
             )
         finally:
+            reset_current_channel_target(channel_target_token)
             self.mark_idle(session_id)
             await self.broadcast_session(session_id, {"type": "turn_done", "data": {}})
+
+    async def deliver_channel_to_session(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        event: Any,
+        source: Optional[dict[str, Any]] = None,
+        target: str = "",
+    ) -> None:
+        """Queue an ordinary Channel message as its own future turn.
+
+        Explicit steering remains opt-in. All other messages wait for the current GUI or
+        Channel turn and are never injected into its tool loop.
+        """
+        text = (getattr(event, "text", "") or "").strip()
+        lowered = text.lower()
+        engine = self._engines.get(session_id)
+        if lowered in {"/stop", "停止当前任务", "停止"}:
+            if engine is not None and self.is_running(session_id):
+                engine.request_interrupt()
+            return
+        steering_prefixes = ("/steer ", "/补充 ", "补充当前任务：", "补充当前任务:")
+        source = dict(source or {})
+        source["target"] = target or event.source.target
+        source["message_id"] = str(getattr(event, "message_id", "") or "")
+        if any(lowered.startswith(prefix.lower()) for prefix in steering_prefixes):
+            channel_token = set_current_channel_target(target or event.source.target)
+            try:
+                if engine is not None and self.is_running(session_id):
+                    engine.queue_steering(message, source)
+                else:
+                    await self.deliver_to_session(session_id, message, source=source)
+            finally:
+                reset_current_channel_target(channel_token)
+            return
+        src = event.source
+        route_key = (
+            src.platform,
+            getattr(src, "account_id", "default") or "default",
+            src.chat_id,
+        )
+        await self.channel_delivery.submit(
+            session_id,
+            route_key,
+            {
+                "message": message,
+                "source": source,
+                "event": event,
+                "target": target or event.source.target,
+            },
+            wait=True,
+        )
+
+    async def _run_channel_delivery(self, session_id: str, payload: dict[str, Any]) -> None:
+        event = payload["event"]
+        message: str | list = payload["message"]
+        attachments = list(getattr(event, "attachments", None) or [])
+        if attachments:
+            workspace = self.engine_workspace(session_id)
+            if not workspace:
+                workspace = self._provision_scratch(session_id)
+                if self.session_store.load(session_id) is not None:
+                    self.session_store.set_workspace(session_id, workspace)
+            framed, prompt_attachments = self.channel_media.prompt_parts(
+                str(message), attachments, workspace
+            )
+            message = build_user_content(framed, prompt_attachments)
+        event_target = str(getattr(event.source, "target", "") or "")
+        channel_token = set_current_channel_target(
+            str(payload.get("target") or event_target)
+        )
+        try:
+            await self.deliver_to_session(
+                session_id,
+                message,
+                source=payload.get("source"),
+            )
+        finally:
+            reset_current_channel_target(channel_token)
 
     # -- channel subscriptions (inbound messaging) ------------------------------
     async def _dispatch_inbound(self, event) -> None:
@@ -3813,9 +4120,23 @@ class SessionManager:
         DM session (delivered like any background turn) or, if none is set, is parked as unrouted.
         """
         src = event.source
+        message_id = getattr(event, "message_id", None)
+        if message_id and not self.channel_message_dedup.accept(
+            (
+                src.platform,
+                getattr(src, "account_id", "default") or "default",
+                str(message_id),
+            )
+        ):
+            return
         text = getattr(event, "text", "") or ""
         who = src.user_name or src.user_id or "?"
-        channel = f"{src.platform}:{src.chat_id}"  # thread-agnostic channel address
+        account_chat = (
+            f"{src.account_id}/{src.chat_id}"
+            if getattr(src, "account_id", "default") != "default"
+            else src.chat_id
+        )
+        channel = f"{src.platform}:{account_chat}"
         self._note_person(src.platform, src.user_id, src.user_name)
         # Structured sidecar (display-only) built from the resolved identities on the event — the
         # framed text below stays the model-facing `content`; `ms.text` carries the RAW message.
@@ -3828,6 +4149,7 @@ class SessionManager:
             sender_name=src.user_name or src.user_id or "?",
             ts=_inbound_epoch(getattr(event, "message_id", None)),
             text=text,
+            target=src.target,
         )
         if src.chat_type in ("channel", "group"):
             self.channel_buffer.record(
@@ -3858,17 +4180,25 @@ class SessionManager:
                     ):
                         continue
                     try:
-                        await self.deliver_to_session(
-                            sub.session_id, msg, source=ms.to_dict()
+                        await self.deliver_channel_to_session(
+                            sub.session_id, msg, event=event, source=ms.to_dict()
                         )
                     except Exception:
                         pass
                 return
             return  # channel with no subscribers — nobody is listening
-        # DM (or any non-channel): route to the designated session, else park it for visibility.
+        # New multi-platform Channels own one durable session per account+conversation.
+        # This keeps different employees and different platform accounts isolated; the
+        # legacy Slack/Telegram designated-DM behavior remains unchanged.
+        if src.platform in {"wecom", "feishu", "dingtalk", "weixin"}:
+            await self._route_direct_channel(event, ms)
+            return
+        # Legacy DM: route to the designated session, else park it for visibility.
         dm = self.dm_session()
         if dm and self._inbound_connector_allowed(dm, src.platform):
-            await self.deliver_to_session(dm, event.tagged_text(), source=ms.to_dict())
+            await self.deliver_channel_to_session(
+                dm, event.tagged_text(), event=event, source=ms.to_dict()
+            )
         elif dm:
             # Designated, but this session has muted the connector → park rather than deliver.
             self.unrouted.record(
@@ -3879,6 +4209,66 @@ class SessionManager:
                 src.target, who, text, reason="no DM session designated"
             )
 
+    async def _route_direct_channel(self, event, ms: MessageSource) -> None:
+        """Route a private IM conversation to its own durable ChemClaw session."""
+        import uuid
+
+        src = event.source
+        target = src.target
+        who = src.user_name or src.user_id or "?"
+        sid = self.mention_sessions.get(target)
+        if sid and self.session_store.load(sid) is not None:
+            await self.deliver_channel_to_session(
+                sid,
+                event.tagged_text(),
+                event=event,
+                source=ms.to_dict(),
+                target=target,
+            )
+            return
+
+        sid = uuid.uuid4().hex
+        engine = self.get_engine(sid, agent=self.personas.default_id())
+        if engine is None:
+            self.unrouted.record(
+                target, who, event.text, reason="could not spawn channel session"
+            )
+            return
+        account_chat = (
+            f"{src.account_id}/{src.chat_id}"
+            if getattr(src, "account_id", "default") != "default"
+            else src.chat_id
+        )
+        self.mention_sessions.set(
+            target, sid, channel=f"{src.platform}:{account_chat}"
+        )
+        engine.permissions.task_rules.setdefault("send_message", set()).add(target)
+        self.save(sid, engine)
+        platform_label = {
+            "wecom": "企业微信",
+            "feishu": "飞书",
+            "dingtalk": "钉钉",
+            "weixin": "个人微信",
+        }.get(src.platform, src.platform)
+        self.session_store.rename(sid, f"{who} — {platform_label}私聊")
+        self.session_store.set_origin(sid, src.platform, f"{platform_label} · {who}")
+        opening = (
+            f"{event.tagged_text()}\n\n"
+            f"这是独立的{platform_label}私聊会话。请用 send_message 回复 target "
+            f'"{target}"；该会话内的文本回复已预授权。发送文件仍必须由用户明确要求，'
+            "并继续走 send_file 的权限审批。"
+        )
+        try:
+            await self.deliver_channel_to_session(
+                sid,
+                opening,
+                event=event,
+                source=ms.to_dict(),
+                target=target,
+            )
+        except Exception:
+            logger.exception("channel DM session %s opening turn failed", sid)
+
     # -- mention router (§31) ----------------------------------------------------
     async def _route_mention(self, event, ms: MessageSource, subs) -> None:
         """@OpenWorker tagged in a channel. A subscribed (user-connected) coworker owns the channel
@@ -3887,12 +4277,26 @@ class SessionManager:
         from ..connectors.base import format_target
 
         src = event.source
-        # Slack semantics: replying to a top-level message threads on THAT message's ts, so a
-        # top-level tag (no thread_ts) keys — and is answered — on its own ts.
-        thread_key = src.thread_id or getattr(event, "message_id", None)
-        thread_target = format_target(src.platform, src.chat_id, thread_key)
+        # Slack top-level replies create a message thread. Other IM platforms in this
+        # module reply to the group itself, so their session key must remain stable across
+        # separate @ messages unless the adapter supplied a real thread id.
+        thread_key = (
+            src.thread_id or getattr(event, "message_id", None)
+            if src.platform == "slack"
+            else src.thread_id
+        )
+        thread_chat = (
+            f"{src.account_id}/{src.chat_id}"
+            if getattr(src, "account_id", "default") != "default"
+            else src.chat_id
+        )
+        thread_target = format_target(src.platform, thread_chat, thread_key)
         who = src.user_name or src.user_id or "?"
-        chan = f"#{src.chat_name}" if src.chat_name else src.chat_id
+        chan = (
+            f"#{src.chat_name}"
+            if src.platform == "slack" and src.chat_name
+            else src.chat_name or src.chat_id
+        )
         if subs:
             # The user connected a coworker to this channel — it answers tags; no spawn.
             msg = (
@@ -3900,13 +4304,22 @@ class SessionManager:
                 f"(You are subscribed to this channel and were mentioned directly — you must "
                 f"respond. Reply in the thread with the send_message tool, target "
                 f'"{thread_target}".)'
+                if src.platform == "slack"
+                else (
+                    f"🔔 {who} 在{chan}中 @了你：{event.text}\n"
+                    f'你必须使用 send_message 回复 target "{thread_target}"。'
+                )
             )
             for sub in subs:
                 if not self._inbound_connector_allowed(sub.session_id, src.platform):
                     continue
                 try:
-                    await self.deliver_to_session(
-                        sub.session_id, msg, source=ms.to_dict()
+                    await self.deliver_channel_to_session(
+                        sub.session_id,
+                        msg,
+                        event=event,
+                        source=ms.to_dict(),
+                        target=thread_target,
                     )
                 except Exception:
                     pass
@@ -3918,8 +4331,19 @@ class SessionManager:
                 f"💬 Follow-up in your Slack thread ({chan}) from {who}: {event.text}\n"
                 f'(Reply in the thread with the send_message tool, target "{thread_target}" '
                 f"— replies there are pre-approved.)"
+                if src.platform == "slack"
+                else (
+                    f"💬 {chan}中的后续 @ 消息，来自 {who}：{event.text}\n"
+                    f'请用 send_message 回复 target "{thread_target}"；该群文本回复已预授权。'
+                )
             )
-            await self.deliver_to_session(sid, msg, source=ms.to_dict())
+            await self.deliver_channel_to_session(
+                sid,
+                msg,
+                event=event,
+                source=ms.to_dict(),
+                target=thread_target,
+            )
             return
         await self._spawn_mention_session(event, ms, thread_target)
 
@@ -3934,7 +4358,11 @@ class SessionManager:
 
         src = event.source
         who = src.user_name or src.user_id or "?"
-        chan = f"#{src.chat_name}" if src.chat_name else src.chat_id
+        chan = (
+            f"#{src.chat_name}"
+            if src.platform == "slack" and src.chat_name
+            else src.chat_name or src.chat_id
+        )
         sid = uuid.uuid4().hex
         engine = self.get_engine(sid, agent=self.personas.default_id())
         if engine is None:
@@ -3944,8 +4372,13 @@ class SessionManager:
             return
         # Durable mapping FIRST (a fast follow-up tag mid-turn dedupes into steering),
         # then the live grant; get_engine re-derives it from the store on any rebuild.
+        account_chat = (
+            f"{src.account_id}/{src.chat_id}"
+            if getattr(src, "account_id", "default") != "default"
+            else src.chat_id
+        )
         self.mention_sessions.set(
-            thread_target, sid, channel=f"{src.platform}:{src.chat_id}"
+            thread_target, sid, channel=f"{src.platform}:{account_chat}"
         )
         engine.permissions.task_rules.setdefault("send_message", set()).add(
             thread_target
@@ -3960,19 +4393,36 @@ class SessionManager:
         label = chan + (f" · {src.team_id}" if src.team_id else "")
         self.session_store.set_origin(sid, src.platform, label)
         # Up to 6 lines of channel context, minus the tag itself (it's the opening line).
-        recent = self.channel_buffer.recent(f"{src.platform}:{src.chat_id}", 7)[:-1]
+        recent = self.channel_buffer.recent(
+            f"{src.platform}:{account_chat}", 7
+        )[:-1]
         context = "\n".join(f"- {m['from']}: {m['text']}" for m in recent)
         opening = (
-            f"🔔 You were mentioned on Slack in {chan} by {who}: {event.text}\n\n"
-            f"You own this Slack thread. Reply in the thread using the send_message tool "
-            f'with target "{thread_target}" — replies to this thread are pre-approved and '
-            f"never prompt the user. Anything else (other channels, files, external "
-            f"actions) asks for approval as usual. Keep replies concise and "
-            f"Slack-appropriate."
-            + (f"\n\nRecent channel context:\n{context}" if context else "")
+            (
+                f"🔔 You were mentioned on Slack in {chan} by {who}: {event.text}\n\n"
+                f"You own this Slack thread. Reply in the thread using the send_message tool "
+                f'with target "{thread_target}" — replies to this thread are pre-approved and '
+                f"never prompt the user. Anything else (other channels, files, external "
+                f"actions) asks for approval as usual. Keep replies concise and "
+                f"Slack-appropriate."
+                + (f"\n\nRecent channel context:\n{context}" if context else "")
+            )
+            if src.platform == "slack"
+            else (
+                f"🔔 {who} 在{chan}中 @了你：{event.text}\n\n"
+                f'请使用 send_message 回复 target "{thread_target}"；该群内文本回复已预授权，'
+                "文件和其他外部动作仍按原权限审批。请保持回复简洁。"
+                + (f"\n\n最近群聊上下文：\n{context}" if context else "")
+            )
         )
         try:
-            await self.deliver_to_session(sid, opening, source=ms.to_dict())
+            await self.deliver_channel_to_session(
+                sid,
+                opening,
+                event=event,
+                source=ms.to_dict(),
+                target=thread_target,
+            )
         except Exception:
             logger.exception("mention session %s opening turn failed", sid)
 

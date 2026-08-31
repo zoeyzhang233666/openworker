@@ -62,6 +62,14 @@ describe("ConnectorIcon", () => {
     expect(el.querySelector("svg")).not.toBeNull();
     expect(el.style.getPropertyValue("--brand")).toBe("#2b7bd6");
   });
+
+  it.each(["feishu", "dingtalk", "weixin"])("renders the %s Channel logo", (logo) => {
+    const { container } = render(
+      <ConnectorIcon connector={{ logo, brand_color: "#1677ff" }} />,
+    );
+    expect(container.querySelector("[data-logo]")?.getAttribute("data-logo")).toBe(logo);
+    expect(container.querySelector("svg")).not.toBeNull();
+  });
 });
 
 describe("ConnectorBadge", () => {

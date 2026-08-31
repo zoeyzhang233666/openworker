@@ -10,6 +10,7 @@ import {
 import { ConnectorBadge } from "../../connectors/ConnectorIcon";
 import { ConnectSetup } from "../ManageTabs";
 import { CloudSignInInline, CloudStatusPending } from "./CloudSignIn";
+import { WeixinQrImage } from "./WeixinQrImage";
 import { PILL_ACCENT, PILL_LINE, TAG_ACCENT } from "./ui";
 import { useI18n } from "../../i18n";
 
@@ -114,6 +115,8 @@ export function AddConnectionModal({
         ) : mcpBacked ? (
           /* MCP-backed with no manual fields (monday): one-click IS the flow. */
           <McpOneClick c={c} onConnected={() => { onChanged(); onClose(); }} />
+        ) : c.name === "weixin" ? (
+          <WeixinOneClick onConnected={() => { onChanged(); onClose(); }} />
         ) : (
           <div className="px-1.5 pb-2">
             {/* Existing combined setup (managed button + manual fields) for everything else. */}
@@ -331,6 +334,95 @@ function HubSpotOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null
       <p className="text-[12px] text-faint text-center">
         {t("Works for any number of portals · tokens stay on this computer")}
       </p>
+    </div>
+  );
+}
+
+function WeixinOneClick({ onConnected }: { onConnected: () => void }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [qrUrl, setQrUrl] = useState("");
+
+  useEffect(() => {
+    if (!qrUrl) return;
+    const timer = setInterval(async () => {
+      try {
+        const list = await getConnectors();
+        const weixin = list.find((x) => x.name === "weixin");
+        const status = weixin?.channel_status;
+        const nested = status?.details?.accounts?.[0];
+        const next =
+          nested?.details?.qr_url ||
+          status?.details?.qr_url ||
+          "";
+        if (next) setQrUrl(next);
+        if (status?.authenticated) onConnected();
+      } catch {
+        /* keep polling */
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [qrUrl, onConnected]);
+
+  const start = async () => {
+    setBusy(true);
+    setError(null);
+    const res = await connectConnector("weixin", {});
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error || t("无法开始微信扫码"));
+      return;
+    }
+    try {
+      const list = await getConnectors();
+      const status = list.find((x) => x.name === "weixin")?.channel_status;
+      const nested = status?.details?.accounts?.[0];
+      const next =
+        nested?.details?.qr_url ||
+        status?.details?.qr_url ||
+        "";
+      if (next) setQrUrl(next);
+      else setQrUrl("pending");
+    } catch {
+      setQrUrl("pending");
+    }
+  };
+
+  return (
+    <div className="px-5 py-4 space-y-3" data-testid="modal-weixin-qr">
+      <p className="text-[13px] text-muted">
+        {t("点击下方按钮后将显示微信登录二维码，用手机微信扫码即可，无需填写 Token。")}
+      </p>
+      {qrUrl && qrUrl !== "pending" ? (
+        <div className="flex flex-col items-center gap-2">
+          <WeixinQrImage
+            payload={qrUrl}
+            alt={t("WeChat sign-in QR code")}
+            className="w-52 h-52 bg-white rounded-xl p-3 border border-line"
+            testId="modal-weixin-qr-image"
+            size={208}
+          />
+          <div className="text-[12.5px] text-ink text-center">
+            {t("打开手机微信 → 扫一扫 → 确认登录")}
+          </div>
+        </div>
+      ) : qrUrl === "pending" ? (
+        <div className="text-[13px] text-muted text-center py-4">
+          {t("正在获取二维码…")}
+        </div>
+      ) : null}
+      {!qrUrl && (
+        <button
+          className={PILL_ACCENT + " w-full !py-2"}
+          data-testid="modal-weixin-start-qr"
+          onClick={() => void start()}
+          disabled={busy}
+        >
+          {t(busy ? "正在获取二维码…" : "扫码连接个人微信")}
+        </button>
+      )}
+      {error && <div className="text-[12.5px] text-danger">{error}</div>}
     </div>
   );
 }

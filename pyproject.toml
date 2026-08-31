@@ -44,16 +44,20 @@ dev = ["pytest>=8", "pytest-asyncio", "httpx"]
 # Inbound messaging listeners (outbound send_message needs only httpx, already a core dep).
 # aiohttp is slack-bolt's Socket Mode transport at runtime (and the FakeSlack test harness
 # drives the real handler) — declare it so CI installs it, not just transitively.
-# Inbound messaging: Slack/Telegram + WeCom AI Bot WS (D-188). ChemClaw setup_dev_env
-# and Windows sidecar builds install this extra so connect-page validate can import the SDK.
+# Inbound messaging Channels (D-193). Platform SDKs added for the multi-channel layer are
+# exact-pinned; uv.lock records the artifact hashes used by release and development builds.
 messaging = [
     "python-telegram-bot>=21",
     "slack-bolt>=1.18",
     "aiohttp>=3.9",
-    "wecom-aibot-sdk>=1.0.8",
+    "wecom-aibot-sdk==1.0.8",
+    "lark-oapi==1.7.3",
+    "dingtalk-stream==0.24.4b1",
+    "pycryptodome==3.23.0",
+    "cos-python-sdk-v5==1.9.38",
 ]
 # Alias kept for older docs (`pip install 'coworker[wecom]'`); same package as messaging.
-wecom = ["wecom-aibot-sdk>=1.0.8"]
+wecom = ["wecom-aibot-sdk==1.0.8"]
 # Interactive Cowork browser automation.
 browser = ["playwright>=1.44"]
 # AWS Bedrock provider (lazy-imported; desktop builds bundle it, pip users opt in).

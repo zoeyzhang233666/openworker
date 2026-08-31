@@ -495,6 +495,43 @@ export interface Connector {
   portals?: HubSpotPortal[]; // HubSpot only: connected portals (multi-portal)
   hidden_fields?: string[]; // HubSpot only: properties stripped from agent reads
   installations?: GithubInstallation[]; // GitHub only: App installations (managed relay)
+  capabilities?: ChannelCapabilities;
+  channel_status?: ChannelStatus;
+}
+
+export interface ChannelCapabilities {
+  direct_messages?: boolean;
+  group_chat?: boolean;
+  group_mentions?: boolean;
+  proactive_messages?: boolean;
+  streaming?: boolean;
+  receive_images?: boolean;
+  send_images?: boolean;
+  receive_files?: boolean;
+  send_files?: boolean;
+  max_inbound_bytes?: number | null;
+  max_outbound_bytes?: number | null;
+}
+
+export interface ChannelStatus {
+  state?: "disconnected" | "connecting" | "connected" | "auth_required" | "degraded" | string;
+  authenticated?: boolean;
+  last_received_at?: number | null;
+  last_sent_at?: number | null;
+  queue_length?: number;
+  reconnect_count?: number;
+  last_error?: string;
+  details?: {
+    qr_url?: string;
+    accounts?: Array<{
+      account_id?: string;
+      state?: string;
+      authenticated?: boolean;
+      last_error?: string;
+      details?: { qr_url?: string; [key: string]: unknown };
+    }>;
+    [key: string]: unknown;
+  };
 }
 
 // --- OpenWorker Cloud (optional sign-in; manual token paste always works) ---
@@ -669,6 +706,21 @@ export async function disconnectConnector(name: string): Promise<{ ok: boolean }
   const res = await fetch(`${httpBase()}/v1/connectors/${encodeURIComponent(name)}/disconnect`, {
     method: "POST",
   });
+  return res.json();
+}
+
+export async function submitWeixinVerifyCode(
+  accountId: string,
+  verifyCode: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(
+    `${httpBase()}/v1/connectors/weixin/accounts/${encodeURIComponent(accountId || "default")}/verify-code`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verify_code: verifyCode }),
+    },
+  );
   return res.json();
 }
 
@@ -1009,6 +1061,15 @@ export interface ModelSettings {
   compaction_model?: string;
   compaction_timeout_seconds?: number; // default 90, 15–300
   compaction_summary_input_tokens?: number; // 0 → automatic, advanced API setting
+  // D-194: Tencent COS for Channel send_file (local artifacts stay local).
+  filestore_enabled?: boolean;
+  filestore_configured?: boolean;
+  filestore_has_secrets?: boolean;
+  filestore_bucket?: string;
+  filestore_region?: string;
+  filestore_pub_url?: string;
+  filestore_folder?: string;
+  filestore_blurb?: string;
   /** Local account-row display name (independent of cloud sign-in). Empty → UI default. */
   local_display_name?: string;
   /** Whether a local avatar image is stored on disk. */
@@ -1158,6 +1219,36 @@ export async function setCompactionSettings(
   patch: Partial<CompactionSettings>,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`${httpBase()}/v1/settings/compaction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return res.json();
+}
+
+export interface FilestoreSettingsPatch {
+  enabled?: boolean;
+  bucket?: string;
+  region?: string;
+  pub_url?: string;
+  folder?: string;
+  secret_id?: string;
+  secret_key?: string;
+  clear_secrets?: boolean;
+}
+
+/** D-194: Tencent COS settings for Channel file links (secrets never echoed back). */
+export async function setFilestoreSettings(
+  patch: FilestoreSettingsPatch,
+): Promise<
+  {
+    ok: boolean;
+    error?: string;
+    filestore_configured?: boolean;
+    filestore_has_secrets?: boolean;
+  } & Partial<ModelSettings>
+> {
+  const res = await fetch(`${httpBase()}/v1/settings/filestore`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),

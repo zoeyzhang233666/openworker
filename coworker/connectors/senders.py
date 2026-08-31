@@ -153,10 +153,49 @@ def _send_wecom(
     return adapter.send_sync(chat_id, text, thread_id=thread_id)
 
 
+def _send_feishu(
+    token: str, chat_id: str, text: str, thread_id: Optional[str] = None
+) -> SendResult:
+    from .feishu_bot import live_adapter
+
+    adapter = live_adapter(token)
+    if adapter is None:
+        return SendResult(False, error="飞书未连接 — 请检查 App ID/Secret 与长连接状态")
+    return adapter.send_sync(chat_id, text, thread_id=thread_id)
+
+
+def _send_dingtalk(
+    token: str, chat_id: str, text: str, thread_id: Optional[str] = None
+) -> SendResult:
+    from .dingtalk_bot import live_adapter
+
+    adapter = live_adapter(token)
+    if adapter is None:
+        return SendResult(False, error="钉钉未连接 — 请检查 Client ID/Secret 与 Stream 状态")
+    return adapter.send_sync(chat_id, text, thread_id=thread_id)
+
+
+def _send_weixin(
+    token: str, chat_id: str, text: str, thread_id: Optional[str] = None
+) -> SendResult:
+    from .weixin_ilink import live_adapter
+
+    adapter = live_adapter(token)
+    if adapter is None:
+        return SendResult(False, error="个人微信 iLink 未连接或等待扫码")
+    prefix = f"{token}/"
+    if chat_id.startswith(prefix):
+        chat_id = chat_id[len(prefix) :]
+    return adapter.send_sync(chat_id, text, thread_id=thread_id)
+
+
 DEFAULT_SENDERS: dict[str, Sender] = {
     "telegram": _send_telegram,
     "slack": _send_slack,
     "wecom": _send_wecom,
+    "feishu": _send_feishu,
+    "dingtalk": _send_dingtalk,
+    "weixin": _send_weixin,
 }
 
 
@@ -227,6 +266,58 @@ def _send_slack_file(
     return SendResult(False, error=data_out.get("error") or "slack file send failed")
 
 
+def _send_live_channel_file(
+    platform: str,
+    token: str,
+    chat_id: str,
+    thread_id: Optional[str],
+    filename: str,
+    data: bytes,
+    title: Optional[str] = None,
+    comment: Optional[str] = None,
+) -> SendResult:
+    _ = thread_id
+    if platform == "wecom":
+        from .wecom_bot import live_adapter
+    elif platform == "feishu":
+        from .feishu_bot import live_adapter
+    elif platform == "dingtalk":
+        from .dingtalk_bot import live_adapter
+    elif platform == "weixin":
+        from .weixin_ilink import live_adapter
+    else:
+        return SendResult(False, error=f"{platform} 不支持文件发送")
+    adapter = live_adapter(token)
+    if adapter is None:
+        return SendResult(False, error=f"{platform} 未连接")
+    prefix = f"{token}/"
+    if chat_id.startswith(prefix):
+        chat_id = chat_id[len(prefix) :]
+    return adapter.send_file_sync(
+        chat_id, filename, data, title=title, comment=comment
+    )
+
+
+def _send_wecom_file(token, chat_id, thread_id, filename, data, title=None, comment=None):
+    return _send_live_channel_file("wecom", token, chat_id, thread_id, filename, data, title, comment)
+
+
+def _send_feishu_file(token, chat_id, thread_id, filename, data, title=None, comment=None):
+    return _send_live_channel_file("feishu", token, chat_id, thread_id, filename, data, title, comment)
+
+
+def _send_dingtalk_file(token, chat_id, thread_id, filename, data, title=None, comment=None):
+    return _send_live_channel_file("dingtalk", token, chat_id, thread_id, filename, data, title, comment)
+
+
+def _send_weixin_file(token, chat_id, thread_id, filename, data, title=None, comment=None):
+    return _send_live_channel_file("weixin", token, chat_id, thread_id, filename, data, title, comment)
+
+
 DEFAULT_FILE_SENDERS: dict[str, FileSender] = {
     "slack": _send_slack_file,
+    "wecom": _send_wecom_file,
+    "feishu": _send_feishu_file,
+    "dingtalk": _send_dingtalk_file,
+    "weixin": _send_weixin_file,
 }

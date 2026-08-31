@@ -15,6 +15,7 @@ import aisuite as ai
 
 from ..secrets import SecretStore
 from .base import parse_target
+from .context import current_channel_target
 from .senders import DEFAULT_FILE_SENDERS, DEFAULT_SENDERS, FileSender, Sender
 
 _SCHEMA = {
@@ -22,7 +23,7 @@ _SCHEMA = {
     "function": {
         "name": "send_message",
         "description": (
-            "Send a message to a connected chat (Slack or Telegram). `target` is the "
+            "Send a message to a connected chat (Slack, Telegram, 企业微信、飞书、钉钉或微信). `target` is the "
             "reply handle from an inbound message (e.g. 'telegram:12345' or 'slack:C0123', "
             "optionally with a ':<thread>' suffix) — or, for Slack, just the channel NAME "
             "('#general' or 'general'; resolved against the connected workspaces). Use this to "
@@ -127,10 +128,30 @@ def _resolve_token(secrets: SecretStore, platform: str, chat_id: str) -> Optiona
         if team:
             per_team = secrets.get(f"slack:team:{team}") or {}
             return per_team.get("bot_token")
+    if platform == "weixin" and "/" in chat_id:
+        from . import accounts
+
+        account_id, _conversation_id = chat_id.split("/", 1)
+        resolved_id, _key, profile = accounts.resolve(secrets, platform, account_id)
+        if profile:
+            # The live registry is always keyed by the stable local account id,
+            # including while that account is still waiting for a QR scan.
+            return resolved_id
     creds = secrets.get(f"{platform}:default") or {}
     if platform == "wecom":
         # Live WS adapter is keyed by bot_id (see wecom_bot._LIVE / senders._send_wecom).
         return creds.get("bot_id")
+    if platform == "feishu":
+        return creds.get("app_id")
+    if platform == "dingtalk":
+        return creds.get("client_id")
+    if platform == "weixin":
+        from . import accounts
+
+        account_id, _key, profile = accounts.resolve(secrets, platform)
+        if profile:
+            return account_id
+        return creds.get("bot_id") or creds.get("account_id") or None
     return creds.get("bot_token")
 
 
@@ -189,8 +210,9 @@ _FILE_SCHEMA = {
     "function": {
         "name": "send_file",
         "description": (
-            "Upload a file from the session's workspace into a connected chat (Slack). "
-            "`target` is the same handle send_message uses. Slack shows its own previews "
+            "Upload a file from the session's workspace into the current connected chat. "
+            "`target` defaults to the Channel conversation that started this turn; set it "
+            "only to send to an explicit destination. Platforms show their own previews "
             "for pdf/csv/images — send the actual file, not a screenshot of it. For .html "
             "artifacts (which Slack can't preview) set as_screenshot=true to send a "
             "rendered PNG instead. This is a DISTINCT permission from send_message: it "
@@ -201,7 +223,7 @@ _FILE_SCHEMA = {
             "properties": {
                 "target": {
                     "type": "string",
-                    "description": "Destination handle 'platform:chat_id[:thread]', e.g. 'slack:C0123:171234.5678'.",
+                    "description": "Optional destination handle 'platform:chat_id[:thread]'. Defaults to the current Channel conversation.",
                 },
                 "path": {
                     "type": "string",
@@ -220,12 +242,34 @@ _FILE_SCHEMA = {
                     "description": "HTML only: render the page headless and send a PNG preview instead of the raw file.",
                 },
             },
-            "required": ["target", "path"],
+            "required": ["path"],
         },
     },
 }
 
 _MAX_FILE_BYTES = 50 * 1024 * 1024  # sanity cap well under Slack's limit
+_ALLOWED_FILE_EXTENSIONS = {
+    ".csv",
+    ".doc",
+    ".docx",
+    ".gif",
+    ".htm",
+    ".html",
+    ".jpeg",
+    ".jpg",
+    ".json",
+    ".md",
+    ".pdf",
+    ".png",
+    ".ppt",
+    ".pptx",
+    ".svg",
+    ".txt",
+    ".webp",
+    ".xls",
+    ".xlsx",
+    ".zip",
+}
 
 
 def _resolve_within(path: str, bases: list[Path]) -> Optional[Path]:
@@ -240,6 +284,13 @@ def _resolve_within(path: str, bases: list[Path]) -> Optional[Path]:
     for cand in candidates:
         try:
             resolved = cand.resolve(strict=True)
+        except OSError:
+            continue
+        # Even a link that resolves back inside the workspace is rejected: outbound
+        # authorization applies to the named regular file, never an indirect alias.
+        try:
+            if cand.is_symlink():
+                continue
         except OSError:
             continue
         for base in bases:
@@ -273,30 +324,48 @@ def make_send_file_tool(
     workspace: Optional[Path] = None,
     roots: Optional[list] = None,
     file_senders: Optional[dict[str, FileSender]] = None,
+    text_senders: Optional[dict[str, Sender]] = None,
+    file_storage: Optional[Any] = None,
     render_html: Optional[Callable[[Path], bytes]] = None,
 ) -> Callable[..., Any]:
     """Build the `send_file` tool. Same target grammar and token resolution as
     send_message, but a DIFFERENT tool name — standing send_message grants (e.g. a
-    mention-thread's pre-approval) never cover file uploads."""
+    mention-thread's pre-approval) never cover file uploads.
+
+    D-194: optional ``file_storage`` enables COS upload + URL delivery for platforms
+    without reliable native file APIs (Telegram / WeCom fallback). Local GUI artifacts
+    are never uploaded unless this tool runs.
+    """
+    from .file_delivery import URL_PRIMARY_PLATFORMS, deliver_file
+
     file_senders = file_senders if file_senders is not None else DEFAULT_FILE_SENDERS
+    text_senders = text_senders if text_senders is not None else DEFAULT_SENDERS
     render_html = render_html or _render_html_png
     bases = [Path(r.path) for r in (roots or []) if getattr(r, "path", None)]
     if workspace is not None:
         bases.append(Path(workspace))
 
     def send_file(
-        target: str,
-        path: str,
+        target: Optional[str] = None,
+        path: str = "",
         title: Optional[str] = None,
         comment: Optional[str] = None,
         as_screenshot: bool = False,
     ) -> dict[str, Any]:
+        destination = (target or current_channel_target()).strip()
+        if not destination:
+            return {
+                "error": "当前任务不是由 Channel 会话发起，请明确提供 target 后再发送文件"
+            }
         try:
-            platform, chat_id, thread_id = _parse_or_coerce(target)
+            platform, chat_id, thread_id = _parse_or_coerce(destination)
         except ValueError as exc:
             return {"error": str(exc)}
-        sender = file_senders.get(platform)
-        if sender is None:
+        can_native = platform in file_senders
+        can_url = platform in text_senders and (
+            platform in URL_PRIMARY_PLATFORMS or can_native or platform == "telegram"
+        )
+        if not can_native and not can_url:
             return {"error": f"file sending is not supported on {platform} yet"}
         # §36: channel names resolve here too — same rule as send_message.
         if platform == "slack" and _slack_channel_name_like(chat_id):
@@ -310,6 +379,8 @@ def make_send_file_tool(
             return {
                 "error": "path is outside the folders this session can access (or missing)"
             }
+        if resolved.suffix.lower() not in _ALLOWED_FILE_EXTENSIONS:
+            return {"error": f"不允许发送此文件类型：{resolved.suffix or '无扩展名'}"}
         token = _resolve_token(secrets, platform, chat_id)
         if not token:
             return {"error": f"no bot token for {platform} — connect it first"}
@@ -330,15 +401,39 @@ def make_send_file_tool(
             from .attribution import sender_prefix
 
             comment = sender_prefix(secrets, chat_id) + comment
-        result = sender(token, chat_id, thread_id, filename, data, title, comment)
-        if result.ok:
-            return {
+        delivered = deliver_file(
+            platform=platform,
+            chat_id=chat_id,
+            thread_id=thread_id,
+            token=token,
+            filename=filename,
+            data=data,
+            title=title,
+            comment=comment,
+            file_storage=file_storage,
+            file_senders=file_senders,
+            text_senders=text_senders,
+        )
+        if delivered.ok:
+            out: dict[str, Any] = {
                 "ok": True,
-                "file_id": result.message_id,
-                "target": target,
+                "file_id": delivered.message_id,
+                "target": destination,
                 "filename": filename,
+                "delivery": delivered.delivery,
             }
-        return {"error": result.error or "file send failed"}
+            if delivered.file_ref is not None:
+                out["file_ref"] = {
+                    "url": delivered.file_ref.url,
+                    "key": delivered.file_ref.key,
+                    "filename": delivered.file_ref.filename,
+                    "sha256": delivered.file_ref.sha256,
+                    "size": delivered.file_ref.size,
+                }
+            if delivered.warning:
+                out["warning"] = delivered.warning
+            return out
+        return {"error": delivered.error or "file send failed"}
 
     send_file.__name__ = "send_file"
     send_file.__doc__ = _FILE_SCHEMA["function"]["description"]

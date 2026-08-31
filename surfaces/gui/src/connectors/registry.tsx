@@ -189,6 +189,26 @@ const WecomLogo = strokeLogo(
   </>,
 );
 
+const FeishuLogo = strokeLogo(
+  <>
+    <path d="M5 5.5h8.5a5.5 5.5 0 0 1 0 11H9" />
+    <path d="M5 5.5v13M5 12h8" />
+  </>,
+);
+
+const DingTalkLogo = strokeLogo(
+  <>
+    <path d="M5 5h14l-5 5h4l-8 9 2-6H6l4-4H5z" />
+  </>,
+);
+
+const WeixinLogo = strokeLogo(
+  <>
+    <path d="M3.5 9c0-3 3-5.5 6.8-5.5S17 6 17 9s-3 5.5-6.7 5.5c-.8 0-1.5-.1-2.2-.3L5 16l.7-3C4.3 12 3.5 10.6 3.5 9z" />
+    <path d="M11 14.5c.5 3.3 4.3 5.5 8 4.2l2 1-.5-2.2c1-.8 1.7-2 1.7-3.3 0-2.5-2.3-4.6-5.4-4.9" />
+  </>,
+);
+
 const PlugLogo = strokeLogo(
   <>
     <path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v5" />
@@ -241,6 +261,9 @@ export const CONNECTORS: Record<string, ConnectorRegistryEntry> = {
   apollo: { label: "Apollo.io", logo: ApolloLogo },
   hunter: { label: "Hunter", logo: HunterLogo },
   wecom: { label: "企业微信", logo: WecomLogo },
+  feishu: { label: "飞书", logo: FeishuLogo },
+  dingtalk: { label: "钉钉", logo: DingTalkLogo },
+  weixin: { label: "个人微信", logo: WeixinLogo },
   // Non-brand utilities.
   email: { label: "Email", logo: EmailLogo },
   browser: { label: "Browser", logo: BrowserLogo },

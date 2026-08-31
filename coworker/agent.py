@@ -388,6 +388,8 @@ def build_engine(
     disallowed_tool_names: Optional[set[str] | tuple[str, ...]] = None,
     system_prompt_override: Optional[str] = None,
     background_task_manager: Optional[Any] = None,
+    # D-194: optional COS FileStorage for Channel send_file delivery (None = Null).
+    file_storage: Optional[Any] = None,
 ) -> TurnEngine:
     ws = Path(workspace).expanduser().resolve() if workspace else None
     if agent.needs_workspace and ws is None:
@@ -443,7 +445,12 @@ def build_engine(
         # send_file (§34): hand deliverables into the chat — same targets, but its OWN
         # approval surface (a thread's standing send_message grant never covers uploads).
         registry.register(
-            make_send_file_tool(secrets, workspace=ws, roots=root_list or None)
+            make_send_file_tool(
+                secrets,
+                workspace=ws,
+                roots=root_list or None,
+                file_storage=file_storage,
+            )
         )
         # Channel subscriptions (inbound): listen to a channel, catch up, (un)subscribe. The agent
         # obtains a channel via ask_user or from a channel message it's reacting to.

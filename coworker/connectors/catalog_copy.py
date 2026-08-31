@@ -17,7 +17,13 @@ ABOUT: dict[str, str] = {
     "reach the agent and replies come back to the same chat — only senders on "
     "your allow-list get through.",
     "wecom": "通过企业微信智能机器人（长连接）与 ChemClaw 对话：私聊或群聊 @，"
-    "回复回到同一会话。桌面端主动连出，无需公网回调；仅允许名单内用户可触发。",
+    "回复与文件回到同一会话。桌面端主动连出，无需公网回调；仅允许名单内用户可触发。",
+    "feishu": "通过飞书自建应用机器人与 ChemClaw 私聊，或在群聊中 @ 它。"
+    "消息和文件经官方长连接与 OpenAPI 传输，仅允许名单内用户可触发。",
+    "dingtalk": "通过钉钉企业内部机器人与 ChemClaw 单聊，或在群聊中 @ 它。"
+    "消息接收使用官方 Stream 模式，文件经钉钉 OpenAPI 传输。",
+    "weixin": "通过腾讯官方 iLink 在个人微信中私聊 ChemClaw，并双向传输图片和文件。"
+    "该官方通道不支持群聊，ChemClaw 不会模拟或展示群聊能力。",
     "slack": "Bring your coworker into Slack: mention it in a channel or DM it, "
     "and replies land in-thread. Any number of workspaces can be connected, "
     "each with its own allow-list of who may talk to the agent.",
@@ -68,8 +74,23 @@ ACCESS: dict[str, list[str]] = {
     ],
     "wecom": [
         "读取发往本智能机器人的私聊，以及群聊中 @ 本机器人的消息。",
-        "以智能机器人身份回复文本（WebSocket 主动推送 / 流式回复）。",
+        "以智能机器人身份回复文本、图片和文件（WebSocket 主动推送 / 流式回复）。",
         "仅允许名单内的企业微信用户 ID 会被应答；凭据只保存在本机。",
+    ],
+    "feishu": [
+        "读取机器人私聊，以及群聊中 @ 机器人的消息与附件。",
+        "以应用机器人身份发送文本、图片和文件；不读取未授权会话。",
+        "App Secret、访问令牌和附件临时副本只保存在本机。",
+    ],
+    "dingtalk": [
+        "读取机器人单聊，以及群聊中 @ 机器人的消息与附件。",
+        "以企业内部机器人身份发送文本、图片和文件。",
+        "Client Secret、访问令牌和附件临时副本只保存在本机。",
+    ],
+    "weixin": [
+        "只读取通过官方 iLink 发给该账号的私聊消息与附件。",
+        "在原私聊中回复文本、图片和文件；不支持群聊或任意联系人主动推送。",
+        "扫码凭据、上下文令牌与附件临时副本只保存在本机。",
     ],
     "slack": [
         "Reads channels the bot is invited to, and its DMs.",

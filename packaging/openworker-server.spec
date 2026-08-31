@@ -9,7 +9,7 @@ actual Python import is ~0.5s). The wrinkles handled here:
     aisuite submodules from the venv.
   - uvicorn loads its protocol/lifespan impls dynamically → collect_all.
   - certifi's CA bundle must ship for TLS (OpenAI, web search, Telegram/Slack).
-  - messaging extras (slack_bolt, telegram, wecom_aibot_sdk) are optional; collected if importable.
+  - messaging extras are optional; every enabled Channel SDK is collected if importable.
 
 Cross-platform: paths are derived from this spec's own location (SPECPATH), never hardcoded,
 so the same spec builds native binaries on macOS, Windows, and Linux. On Windows PyInstaller
@@ -81,7 +81,14 @@ for pkg in ("boto3", "botocore"):
     except Exception:
         pass
 
-for pkg in ("slack_bolt", "telegram", "wecom_aibot_sdk"):  # [messaging] extra — optional
+for pkg in (
+    "slack_bolt",
+    "telegram",
+    "wecom_aibot_sdk",
+    "lark_oapi",
+    "dingtalk_stream",
+    "Crypto",
+):  # [messaging] extra — optional
     try:
         hiddenimports += collect_submodules(pkg)
     except Exception:

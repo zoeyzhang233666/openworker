@@ -3,7 +3,7 @@ import { type CloudStatus, type Connector } from "../../api";
 import { ConnectorBadge } from "../../connectors/ConnectorIcon";
 import { AddConnectionModal } from "./AddConnectionModal";
 import { FOOT, GRP, GRP_H, PILL_ACCENT, ROW, TAG_QUIET } from "./ui";
-import { useI18n } from "../../i18n";
+import { useI18n, type MessageKey } from "../../i18n";
 
 // Pre-connect detail page (UX-DECISIONS §38): what a connector is for and what
 // access it gets, BEFORE any credentials exist. About paragraph, honest Access
@@ -43,6 +43,14 @@ export function AvailableDetail({
       </div>
 
       {c.about && <p className="text-[13px] text-ink/90 leading-relaxed mb-1 px-0.5">{c.about}</p>}
+
+      {c.capabilities && (
+        <div className="flex flex-wrap gap-1.5 mt-3" data-testid="channel-capabilities">
+          {capabilityLabels(c).map((label) => (
+            <span key={label} className={TAG_QUIET}>{t(label)}</span>
+          ))}
+        </div>
+      )}
 
       {(c.access?.length ?? 0) > 0 && (
         <>
@@ -98,4 +106,17 @@ export function AvailableDetail({
       )}
     </div>
   );
+}
+
+function capabilityLabels(c: Connector): MessageKey[] {
+  const caps = c.capabilities || {};
+  const labels: MessageKey[] = [];
+  if (caps.direct_messages) labels.push("Private chat");
+  if (caps.group_chat) labels.push("Group chat");
+  if (caps.group_mentions) labels.push("Group @");
+  if (caps.receive_files && caps.send_files) labels.push("Files both ways");
+  if (caps.receive_images && caps.send_images) labels.push("Images both ways");
+  if (caps.streaming) labels.push("Streaming replies");
+  if (caps.proactive_messages) labels.push("Proactive send");
+  return labels;
 }

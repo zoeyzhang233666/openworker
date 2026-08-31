@@ -74,6 +74,9 @@ _BRAND_COLORS = {
     "gmail": "#ea4335",
     "google_calendar": "#4285f4",
     "wecom": "#2b7bd6",
+    "feishu": "#3370ff",
+    "dingtalk": "#1677ff",
+    "weixin": "#07c160",
 }
 
 
@@ -99,7 +102,7 @@ def _browser_page(
     return (
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        f"<title>{_html.escape(title)} — OpenWorker</title><style>"
+        f"<title>{_html.escape(title)} — ChemClaw</title><style>"
         ":root{--paper:#f6f5f2;--panel:#fff;--line:#e4e2dc;--ink:#2c2c2a;--muted:#6f6e68;"
         "--faint:#a3a19a;--accent:#3670b2;--ok:#2e7d4f;--ok-soft:#e3f2e9;--bad:#b3423a;"
         "--bad-soft:#f8e7e5}"
@@ -1104,6 +1107,12 @@ def create_app(manager: SessionManager) -> FastAPI:
         await _refresh_listeners_if_two_way(name)
         return result
 
+    @app.post("/v1/connectors/weixin/accounts/{account_id}/verify-code")
+    def connector_weixin_verify_code(account_id: str, body: dict) -> dict[str, Any]:
+        return manager.submit_weixin_verify_code(
+            account_id, str((body or {}).get("verify_code") or "")
+        )
+
     @app.post("/v1/connectors/slack/workspaces/{team_id}/disconnect")
     async def slack_workspace_disconnect(team_id: str) -> dict[str, Any]:
         """Stop relaying one workspace (managed relay). Cloud routing row deleted
@@ -1785,6 +1794,21 @@ def create_app(manager: SessionManager) -> FastAPI:
             model=b.get("compaction_model"),
             timeout_seconds=b.get("compaction_timeout_seconds"),
             summary_input_tokens=b.get("compaction_summary_input_tokens"),
+        )
+
+    @app.post("/v1/settings/filestore")
+    def settings_set_filestore(body: dict) -> dict[str, Any]:
+        # D-194: Tencent COS for Channel file delivery (not used for local GUI artifacts).
+        b = body or {}
+        return manager.set_filestore_settings(
+            enabled=b.get("enabled"),
+            bucket=b.get("bucket"),
+            region=b.get("region"),
+            pub_url=b.get("pub_url"),
+            folder=b.get("folder"),
+            secret_id=b.get("secret_id"),
+            secret_key=b.get("secret_key"),
+            clear_secrets=bool(b.get("clear_secrets")),
         )
 
     @app.post("/v1/attachments/inspect-pdf")

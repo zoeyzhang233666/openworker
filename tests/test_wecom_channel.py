@@ -22,7 +22,7 @@ from coworker.connectors import (
 )
 from coworker.connectors.adapters import make_adapter
 from coworker.connectors.base import SendResult
-from coworker.connectors.config import load_settings
+from coworker.connectors.config import ConnectorSettings, load_settings
 from coworker.connectors.descriptors import get_descriptor
 from coworker.connectors.setup import connect_connector, connector_list, disconnect_connector
 from coworker.secrets import SecretStore
@@ -316,12 +316,15 @@ async def test_wecom_adapter_inbound_and_send():
     adapter._client = client
     adapter._loop = asyncio.get_running_loop()
     adapter._ack_enabled = False
+    adapter._channel_authenticated = True
     _LIVE["botZ"] = adapter
     try:
         await adapter._on_frame(_dm_frame("ping", msgid="uniq-1"))
+        await adapter.drain_inbound()
         assert len(received) == 1
         assert received[0].text == "ping"
         await adapter._on_frame(_dm_frame("ping", msgid="uniq-1"))
+        await adapter.drain_inbound()
         assert len(received) == 1
         result = await adapter.send("user_alice", "pong")
         assert result.ok
@@ -337,10 +340,10 @@ async def test_wecom_adapter_progress_ack():
 
     class FakeClient:
         def __init__(self):
-            self.sent = []
+            self.streamed = []
 
-        async def send_message(self, chatid, body):
-            self.sent.append((chatid, body))
+        async def reply_stream(self, frame, stream_id, text, finish=False):
+            self.streamed.append((frame, stream_id, text, finish))
             return {}
 
         async def disconnect(self):
@@ -359,12 +362,119 @@ async def test_wecom_adapter_progress_ack():
     _LIVE["botAck"] = adapter
     try:
         await adapter._on_frame(_dm_frame("task", msgid="ack-1"))
-        # progress ack is fire-and-forget task
-        await asyncio.sleep(0.05)
-        assert any("ChemClaw" in str(s[1]) for s in adapter._client.sent)
+        await adapter.drain_inbound()
+        # Gateway calls this only after authorization; the transport callback itself
+        # must not leak bot activity to an unapproved sender.
+        assert adapter._client.streamed == []
+        await adapter.acknowledge(received[0])
+        assert any("ChemClaw" in item[2] for item in adapter._client.streamed)
         assert len(received) == 1
     finally:
         _LIVE.pop("botAck", None)
+        await adapter.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_wecom_start_waits_for_authenticated_event(monkeypatch):
+    import sys
+    import types
+
+    from coworker.connectors.wecom_bot import WecomBotAdapter
+
+    clients = []
+
+    class FakeWSClient:
+        def __init__(self, **_kwargs):
+            self.handlers = {}
+            clients.append(self)
+
+        def on(self, event, handler):
+            self.handlers[event] = handler
+            return self
+
+        async def connect(self):
+            return self
+
+        async def disconnect(self):
+            return None
+
+    module = types.ModuleType("wecom_aibot_sdk")
+    module.WSClient = FakeWSClient
+    monkeypatch.setitem(sys.modules, "wecom_aibot_sdk", module)
+    adapter = WecomBotAdapter("bot-life", "secret-life")
+    try:
+        assert await adapter.start()
+        assert adapter.channel_status().state == "connecting"
+        assert not adapter.channel_status().authenticated
+        clients[0].handlers["authenticated"]()
+        assert adapter.channel_status().state == "connected"
+        assert adapter.channel_status().authenticated
+    finally:
+        await adapter.stop()
+
+
+@pytest.mark.asyncio
+async def test_gateway_never_acknowledges_unauthorized_wecom():
+    from coworker.connectors.wecom_bot import WecomBotAdapter
+
+    class FakeClient:
+        def __init__(self):
+            self.streamed = []
+
+        async def reply_stream(self, *args, **kwargs):
+            self.streamed.append((args, kwargs))
+
+        async def disconnect(self):
+            return None
+
+    adapter = WecomBotAdapter("bot-deny", "secret-deny")
+    adapter._client = FakeClient()
+    adapter._loop = asyncio.get_running_loop()
+    gateway = Gateway(
+        settings={"wecom": ConnectorSettings("wecom", enabled=True)},
+        handler=AsyncMock(),
+    )
+    gateway.register(adapter)
+    try:
+        await adapter._on_frame(_dm_frame("private", msgid="deny-1"))
+        await adapter.drain_inbound()
+        assert adapter._client.streamed == []
+    finally:
+        await adapter.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_wecom_final_prefers_original_reply_frame():
+    from coworker.connectors.wecom_bot import WecomBotAdapter
+
+    class FakeClient:
+        def __init__(self):
+            self.replies = []
+            self.proactive = []
+
+        async def reply(self, frame, body):
+            self.replies.append((frame, body))
+
+        async def send_message(self, chat_id, body):
+            self.proactive.append((chat_id, body))
+
+        async def disconnect(self):
+            return None
+
+    adapter = WecomBotAdapter("bot-reply", "secret-reply")
+    adapter._client = FakeClient()
+    adapter._loop = asyncio.get_running_loop()
+    adapter._ack_enabled = False
+    adapter._channel_authenticated = True
+    event = wecom_frame_to_message_event(_dm_frame("hello", msgid="reply-1"))
+    assert event is not None
+    await adapter.acknowledge(event)
+    try:
+        result = await adapter.send("user_alice", "world")
+        assert result.ok
+        assert len(adapter._client.replies) == 1
+        assert adapter._client.proactive == []
+    finally:
         await adapter.disconnect()
 
 

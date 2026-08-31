@@ -127,6 +127,17 @@ def wecom_attachments(body: dict[str, Any], msgtype: str) -> list[ChannelAttachm
                 size=int(size) if isinstance(size, (int, float)) else None,
             )
         )
+    elif msgtype == "mixed":
+        mixed = body.get("mixed") if isinstance(body.get("mixed"), dict) else body
+        items = mixed.get("msg_item") or mixed.get("items") or []
+        if isinstance(items, list):
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                item_type = _str(item.get("msgtype") or item.get("msg_type"))
+                if item_type in {"image", "file"}:
+                    # Reuse the same normalization by presenting the item as a body.
+                    out.extend(wecom_attachments(item, item_type))
     return out
 
 
@@ -172,6 +183,7 @@ def frame_to_inbound(frame: dict[str, Any]) -> Optional[InboundMessage]:
     message_id = _str(
         body.get("msgid")
         or body.get("msg_id")
+        or (frame.get("headers") or {}).get("req_id")
         or frame.get("req_id")
         or frame.get("id")
     )
@@ -182,6 +194,7 @@ def frame_to_inbound(frame: dict[str, Any]) -> Optional[InboundMessage]:
 
     return InboundMessage(
         channel="wecom",
+        account_id=_str(frame.get("account_id")) or "default",
         conversation_id=conversation_id,
         user_id=user_id or "?",
         message_id=message_id,
@@ -201,6 +214,7 @@ def inbound_to_message_event(
     source = SessionSource(
         platform=inbound.channel,
         chat_id=inbound.conversation_id,
+        account_id=inbound.account_id,
         user_id=inbound.user_id if inbound.user_id != "?" else None,
         user_name=inbound.user_name or None,
         chat_name=inbound.conversation_name or None,
@@ -216,6 +230,10 @@ def inbound_to_message_event(
         message_type=mtype,
         raw=raw,
         mentions_me=inbound.mentions_bot,
+        attachments=list(inbound.attachments),
+        context_token=inbound.context_token,
+        reply_to_message_id=inbound.reply_to,
+        reply_context={"route_key": inbound.route_key},
     )
 
 

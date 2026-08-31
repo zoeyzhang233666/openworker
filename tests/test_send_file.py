@@ -50,12 +50,11 @@ def test_send_file_success_within_workspace(tmp_path):
     )
 
     out = tool("slack:C9:1700.1", "report.pdf", comment="here you go")
-    assert out == {
-        "ok": True,
-        "file_id": "F123",
-        "target": "slack:C9:1700.1",
-        "filename": "report.pdf",
-    }
+    assert out["ok"] is True
+    assert out["file_id"] == "F123"
+    assert out["target"] == "slack:C9:1700.1"
+    assert out["filename"] == "report.pdf"
+    assert out.get("delivery") == "native"
     sent = record[0]
     assert sent["chat_id"] == "C9" and sent["thread_id"] == "1700.1"
     assert sent["data"] == b"%PDF-fake" and sent["comment"] == "here you go"
@@ -99,7 +98,9 @@ def test_send_file_unsupported_platform_and_missing_token(tmp_path):
     tool = make_send_file_tool(
         _secrets(tmp_path), workspace=ws, file_senders=_fake_sender([])
     )
-    assert "not supported" in tool("telegram:123", "a.txt")["error"]
+    # D-194: Telegram is URL-primary via COS; without COS/token the error is actionable.
+    tg_err = tool("telegram:123", "a.txt")["error"]
+    assert "COS" in tg_err or "云" in tg_err or "token" in tg_err or "not supported" in tg_err
 
     no_token = make_send_file_tool(
         _secrets(tmp_path / "nt", token=None),
@@ -107,6 +108,9 @@ def test_send_file_unsupported_platform_and_missing_token(tmp_path):
         file_senders=_fake_sender([]),
     )
     assert "no bot token" in no_token("slack:C9", "a.txt")["error"]
+
+    # Truly unsupported platform (no file sender and no text sender path).
+    assert "not supported" in tool("irc:chan", "a.txt")["error"]
 
 
 def test_send_file_screenshot_is_html_only_and_renames_to_png(tmp_path):

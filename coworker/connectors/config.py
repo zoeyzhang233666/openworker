@@ -14,7 +14,15 @@ from typing import Optional
 from ..secrets import SecretStore
 from .base import SessionSource
 
-PLATFORMS = ("telegram", "slack", "github", "wecom")
+PLATFORMS = (
+    "telegram",
+    "slack",
+    "github",
+    "wecom",
+    "feishu",
+    "dingtalk",
+    "weixin",
+)
 
 
 @dataclass
@@ -38,9 +46,21 @@ class ConnectorSettings:
     # Per-workspace auth, keyed by team_id (populated from `slack:team:*` profiles).
     # Only relay-mode Slack fills this; manual Socket Mode uses the flat fields above.
     teams: dict[str, TeamAuth] = field(default_factory=dict)
+    # Channel accounts use the same deny-by-default semantics without pretending an
+    # account is a Slack workspace.  Today official Weixin iLink is the first consumer.
+    accounts: dict[str, TeamAuth] = field(default_factory=dict)
 
 
 def is_authorized(settings: ConnectorSettings, source: SessionSource) -> bool:
+    account_id = str(getattr(source, "account_id", "") or "default")
+    if account_id != "default" and settings.accounts:
+        account = settings.accounts.get(account_id)
+        if account is None:
+            return False
+        if account.allow_all:
+            return True
+        uid = source.user_id
+        return bool(uid) and uid in account.allowed_users
     team_id = getattr(source, "team_id", None)
     if team_id:
         # Relay events carry their workspace; authorization is that team's list
@@ -95,6 +115,23 @@ def load_settings(
                 bool(profile.get("bot_id") and profile.get("secret"))
                 and profile.get("enabled", True)
             )
+        elif platform == "feishu":
+            enabled = (
+                bool(profile.get("app_id") and profile.get("app_secret"))
+                and profile.get("enabled", True)
+            )
+        elif platform == "dingtalk":
+            enabled = (
+                bool(profile.get("client_id") and profile.get("client_secret"))
+                and profile.get("enabled", True)
+            )
+        elif platform == "weixin":
+            # iLink is account-patterned.  `list_accounts` also migrates an older
+            # credential-bearing weixin:default profile without losing it.
+            from . import accounts as _accounts
+
+            channel_accounts = _accounts.list_accounts(secrets, platform)
+            enabled = bool(channel_accounts) and profile.get("enabled", True)
         else:
             enabled = bool(token) and profile.get("enabled", True)
         teams: dict[str, TeamAuth] = {}
@@ -112,12 +149,22 @@ def load_settings(
                     allowed_users=set(install_profile.get("allowed_users") or []),
                     allow_all=bool(install_profile.get("allow_all")),
                 )
+        account_auth: dict[str, TeamAuth] = {}
+        if platform == "weixin":
+            for account_id, account_profile in channel_accounts:
+                account_auth[account_id] = TeamAuth(
+                    allowed_users=(
+                        set(account_profile.get("allowed_users") or []) | allowed
+                    ),
+                    allow_all=bool(account_profile.get("allow_all")) or allow_all,
+                )
         out[platform] = ConnectorSettings(
             platform=platform,
             enabled=enabled,
             allowed_users=allowed,
             allow_all=allow_all,
             teams=teams,
+            accounts=account_auth,
         )
     return out
 

@@ -127,6 +127,10 @@ export function ConnectorsList({
 }
 
 function statusLine(c: Connector, t: I18nValue["t"]): string {
+  const status = c.channel_status;
+  if (status?.state === "auth_required") return t("Scan QR code to finish connecting");
+  if (status?.queue_length) return t("{count} messages queued", { count: status.queue_length });
+  if (status?.last_error) return status.last_error;
   if (c.name === "slack" && c.mode === "relay") {
     const n = c.workspaces?.length ?? 0;
     return t("{count} workspaces · relay", { count: n });
@@ -149,6 +153,22 @@ function healthChip(c: Connector, slack: SlackStatus | null, t: I18nValue["t"]) 
     if (Object.values(slack.teams).some((t) => !t.token_ok))
       return <span className={CHIP_WARN}>{t("⚠ Token")}</span>;
     return <span className={CHIP_OK}>{t("● Live")}</span>;
+  }
+  if (c.channel_status) {
+    if (c.channel_status.state === "auth_required")
+      return <span className={CHIP_WARN}>{t("● Scan needed")}</span>;
+    if (
+      c.name === "weixin" &&
+      c.connected &&
+      c.channel_status.authenticated === false
+    )
+      return <span className={CHIP_WARN}>{t("● Scan needed")}</span>;
+    if (c.channel_status.state === "connecting")
+      return <span className={CHIP_WARN}>{t("● Connecting")}</span>;
+    if (c.channel_status.state === "degraded" || c.channel_status.last_error)
+      return <span className={CHIP_WARN}>{t("⚠ Check")}</span>;
+    if (c.channel_status.state === "disconnected")
+      return <span className={CHIP_OFF}>{t("● Offline")}</span>;
   }
   if (c.two_way && c.connected) return <span className={CHIP_OK}>{t("● Live")}</span>;
   return <span className={CHIP_OK}>{t("● Ready")}</span>;

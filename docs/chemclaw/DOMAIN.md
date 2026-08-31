@@ -92,6 +92,14 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 
 ## OpenWorker 能力
 
+### Channel（多平台消息通道）
+
+平台无关的入站/出站消息边界（D-188 / D-193）。`coworker/channels` 提供 Envelope、Capabilities、媒体安全与按会话 FIFO；适配器覆盖企业微信、飞书、钉钉、官方个人微信 iLink（仅私聊）以及既有 Slack/Telegram。Channel 用户不提升本机权限；普通消息排队为独立轮次，仅明确补充/停止命令可 steering。
+
+### 云文件存储（FileStorage）
+
+平台无关的跨终端文件对象层（D-194）。本机 GUI 对话产物默认只保存在会话 workspace；向 IM Channel 发送文件时按需上传腾讯云 COS 得到 `FileRef`，再按平台矩阵投递（原生附件或公开 URL）。密钥存 SecretStore，不进入模型上下文。
+
 ### MCP 连接
 
 公司内部或外部工具/数据服务的标准连接。ChemClaw 保留 OpenWorker 的 MCP 能力，并为用户提供中文可视化配置、测试和审批。

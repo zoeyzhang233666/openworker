@@ -48,11 +48,14 @@ def derive_account_id(d: ConnectorDescriptor, profile: dict[str, Any]) -> str:
     validator identity (stored as `account` at connect time). "default" only
     when neither exists — never fails, so migration can't strand a profile."""
     if d.account_field and d.account_field != IDENTITY:
-        return (
-            _norm(profile.get(d.account_field))
-            or _norm(profile.get("account"))
-            or "default"
-        )
+        explicit = _norm(profile.get(d.account_field))
+        if explicit:
+            return explicit
+        # QR-login connectors store a human status string in ``account`` (e.g.
+        # "个人微信 iLink / 等待扫码"). That must not become the stable account id.
+        if getattr(d, "auth", None) == "qr":
+            return "default"
+        return _norm(profile.get("account")) or "default"
     return _norm(profile.get("account")) or "default"
 
 
@@ -85,13 +88,45 @@ def list_accounts(
 ) -> list[tuple[str, dict[str, Any]]]:
     """(account_id, profile) for every connected account, migration included."""
     migrate_legacy_default(secrets, connector)
+    if connector == "weixin":
+        _migrate_weixin_identity_account_ids(secrets)
     pre = prefix(connector)
     out = []
     for meta in secrets.status():
         key = meta.get("profile", "")
         if key.startswith(pre):
             out.append((key[len(pre) :], secrets.get(key) or {}))
-    return sorted(out, key=lambda t: t[0])
+    return sorted(out, key=lambda t: t[0]    )
+
+
+def _migrate_weixin_identity_account_ids(secrets: SecretStore) -> None:
+    """Older builds stored the QR status string as the account id. Normalize to ``default``."""
+    pre = prefix("weixin")
+    for account_id, profile in [
+        (key[len(pre) :], secrets.get(key) or {})
+        for meta in secrets.status()
+        if (key := str(meta.get("profile") or "")).startswith(pre)
+    ]:
+        if account_id == "default":
+            continue
+        haystack = f"{account_id} {profile.get('account') or ''}".lower()
+        if not any(
+            marker in haystack
+            for marker in ("ilink", "等待扫码", "已有凭据", "个人微信")
+        ):
+            continue
+        target = "default"
+        if account_id == target:
+            continue
+        target_key = pre + target
+        if secrets.get(target_key):
+            secrets.delete(pre + account_id)
+        else:
+            secrets.put(target_key, profile)
+            secrets.delete(pre + account_id)
+        pointer = secrets.get(default_key("weixin")) or {}
+        pointer["default_account"] = target
+        secrets.put(default_key("weixin"), pointer)
 
 
 def default_account(secrets: SecretStore, connector: str) -> str:

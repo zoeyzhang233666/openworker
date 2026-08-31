@@ -79,6 +79,7 @@ def connector_list(secrets: SecretStore) -> list[dict[str, Any]]:
             "auth": d.auth,
             "two_way": d.two_way,
             "channels": d.channels,
+            "capabilities": dict(d.capabilities or {}),
             "available": d.available,
             "brand_color": d.brand_color,
             "logo": d.logo,
@@ -164,6 +165,17 @@ def connector_list(secrets: SecretStore) -> list[dict[str, Any]]:
             default_row = next((r for r in rows if r["account_id"] == default_id), None)
             entry["account"] = (default_row or {}).get("name") or None
             entry["managed_profile"] = bool((default_row or {}).get("managed"))
+            if d.name == "weixin":
+                # Authorization is stored with each iLink account.  Surface the union in
+                # the existing connector UI while the Gateway enforces each account's own set.
+                account_profiles = _accounts.list_accounts(secrets, d.name)
+                entry["allowed_users"] = sorted(
+                    {
+                        str(user_id)
+                        for _account_id, account_profile in account_profiles
+                        for user_id in (account_profile.get("allowed_users") or [])
+                    }
+                )
         if d.name == "hubspot":
             # Multi-portal: each `hubspot:portal:*` profile is one portal; the
             # :default profile is the default pointer + hidden-fields policy.
@@ -329,6 +341,23 @@ def connect_connector(
     # mask-equal — submission means "keep what's stored", not "overwrite with the mask". (This is
     # the bug that reset a real token down to its 6-char placeholder.)
     existing = secrets.get(f"{name}:default") or {}
+    # QR connectors are account-backed.  Their ``<name>:default`` profile is only a
+    # pointer, so resolving blank/masked fields against it used to replace the real
+    # account profile with an empty one every time the user pressed "refresh QR".
+    # Resolve the account first and merge against that profile instead.
+    if name == "weixin" and d.account_field:
+        from . import accounts as _qr_accounts
+
+        requested_account = str(fields.get(d.account_field) or "").strip().lower()
+        requested_account = (
+            requested_account
+            or _qr_accounts.default_account(secrets, name)
+            or "default"
+        )
+        fields = {**fields, d.account_field: requested_account}
+        existing = (
+            secrets.get(_qr_accounts.prefix(name) + requested_account) or {}
+        )
 
     def _resolved(f) -> str:
         v = str(fields.get(f.key) or "").strip()
@@ -362,7 +391,12 @@ def connect_connector(
     profile_type = (
         "oauth" if d.auth == "oauth" else "none" if d.auth == "none" else "token"
     )
-    profile: dict[str, Any] = {"type": profile_type, "enabled": True, **token_creds}
+    profile: dict[str, Any] = {
+        **(existing if name == "weixin" else {}),
+        "type": profile_type,
+        "enabled": True,
+        **token_creds,
+    }
     if any(f.key == "allowed_users" for f in d.fields):
         profile["allowed_users"] = allowed
     if name == "slack" and existing.get("approval_owner_ids"):

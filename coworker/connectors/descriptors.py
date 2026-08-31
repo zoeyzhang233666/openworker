@@ -91,6 +91,8 @@ class ConnectorDescriptor:
     # string. Non-empty → profiles live at `<name>:account:<id>` and the
     # `:default` profile is pointer-only. Empty → single-profile connector.
     account_field: str = ""
+    # D-193: explicit Channel capability truth; absent for non-chat connectors.
+    capabilities: dict = field(default_factory=dict)
 
 
 # -- validators (sync httpx, one-shot) -----------------------------------------
@@ -152,12 +154,74 @@ def _validate_wecom(creds: dict) -> ValidationResult:
             False,
             error=(
                 "未安装企业微信 SDK。请在 ChemClaw 运行环境（开发态多为 worktree 的 .venv）"
-                "执行：python -m pip install 'wecom-aibot-sdk>=1.0.8'（或 pip install -e '.[messaging]'），"
+                "执行：python -m pip install 'wecom-aibot-sdk==1.0.8'（或 pip install -e '.[messaging]'），"
                 "然后重启 ChemClaw / sidecar 再试"
             ),
         )
     short = bot_id if len(bot_id) <= 12 else f"{bot_id[:8]}…"
     return ValidationResult(True, identity=f"企业微信智能机器人 / {short}")
+
+
+def _validate_feishu(creds: dict) -> ValidationResult:
+    app_id = str(creds.get("app_id") or "").strip()
+    app_secret = str(creds.get("app_secret") or "").strip()
+    if not app_id or not app_secret:
+        return ValidationResult(False, error="请填写飞书 App ID 与 App Secret")
+    try:
+        import lark_oapi  # noqa: F401
+    except ImportError:
+        return ValidationResult(False, error="未安装 lark-oapi，请安装 messaging 依赖后重启")
+    import httpx
+
+    try:
+        response = httpx.post(
+            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+            json={"app_id": app_id, "app_secret": app_secret},
+            timeout=15,
+        )
+        data = response.json()
+    except Exception as exc:
+        return ValidationResult(False, error=str(exc))
+    if response.status_code >= 400 or data.get("code") not in (None, 0):
+        return ValidationResult(False, error=str(data.get("msg") or f"HTTP {response.status_code}"))
+    return ValidationResult(True, identity=f"飞书应用 / {app_id[:10]}")
+
+
+def _validate_dingtalk(creds: dict) -> ValidationResult:
+    client_id = str(creds.get("client_id") or "").strip()
+    client_secret = str(creds.get("client_secret") or "").strip()
+    if not client_id or not client_secret:
+        return ValidationResult(False, error="请填写钉钉 Client ID 与 Client Secret")
+    try:
+        import dingtalk_stream  # noqa: F401
+    except ImportError:
+        return ValidationResult(False, error="未安装 dingtalk-stream，请安装 messaging 依赖后重启")
+    import httpx
+
+    try:
+        response = httpx.post(
+            "https://api.dingtalk.com/v1.0/oauth2/accessToken",
+            json={"appKey": client_id, "appSecret": client_secret},
+            timeout=15,
+        )
+        data = response.json()
+    except Exception as exc:
+        return ValidationResult(False, error=str(exc))
+    if response.status_code >= 400 or not data.get("accessToken"):
+        return ValidationResult(False, error=str(data.get("message") or f"HTTP {response.status_code}"))
+    return ValidationResult(True, identity=f"钉钉机器人 / {client_id[:10]}")
+
+
+def _validate_weixin(creds: dict) -> ValidationResult:
+    try:
+        from Crypto.Cipher import AES  # noqa: F401
+    except ImportError:
+        return ValidationResult(False, error="未安装 pycryptodome，无法使用微信文件加解密")
+    token = str(creds.get("token") or "").strip()
+    return ValidationResult(
+        True,
+        identity="个人微信 iLink / 已有凭据" if token else "个人微信 iLink / 等待扫码",
+    )
 
 
 def _validate_whoami(
@@ -501,9 +565,139 @@ DESCRIPTORS: list[ConnectorDescriptor] = [
             "开启「API 模式」，连接方式选择「长连接」（不是 Webhook 短连接）。",
             "复制 Bot ID 与 Secret，粘贴到下方。ChemClaw 桌面端主动连出，无需公网 IP 或备案域名。",
             "连接成功后，在私聊中发消息，或在群聊中 @机器人；再用 Capture 把你的用户 ID 加入允许名单。",
-            "若提示未安装 SDK：在 ChemClaw 运行环境执行 python -m pip install 'wecom-aibot-sdk>=1.0.8'（或 pip install -e '.[messaging]'），然后重启。",
+            "若提示未安装 SDK：在 ChemClaw 运行环境执行 python -m pip install 'wecom-aibot-sdk==1.0.8'（或 pip install -e '.[messaging]'），然后重启。",
         ],
         validate=_validate_wecom,
+        capabilities={
+            "direct_messages": True,
+            "group_chat": True,
+            "group_mentions": True,
+            "proactive_messages": True,
+            "streaming": True,
+            "receive_images": True,
+            "send_images": True,
+            "receive_files": True,
+            "send_files": True,
+            "max_outbound_bytes": 52428800,
+        },
+    ),
+    ConnectorDescriptor(
+        name="feishu",
+        title="飞书",
+        icon="飞",
+        blurb="飞书自建应用机器人（WebSocket 长连接），支持私聊、群聊 @ 与文件双向传输。",
+        auth="socket_app",
+        two_way=True,
+        channels=True,
+        brand_color="#3370ff",
+        logo="feishu",
+        aliases=("飞书", "feishu", "lark"),
+        fields=[
+            Field("app_id", "App ID", help="飞书开放平台自建应用的 App ID。", placeholder="cli_…"),
+            Field("app_secret", "App Secret", secret=True, help="仅保存在本机 SecretStore。", placeholder="…"),
+            _ALLOWED_FIELD,
+        ],
+        instructions=[
+            "在飞书开放平台创建企业自建应用并启用机器人。",
+            "在事件订阅中选择「使用长连接接收事件」，订阅 im.message.receive_v1。",
+            "为应用开通消息与消息资源读写权限，发布应用后填写 App ID / App Secret。",
+            "私聊机器人，或在群聊中 @机器人；再用 Capture 将成员 ID 加入允许名单。",
+        ],
+        validate=_validate_feishu,
+        capabilities={
+            "direct_messages": True,
+            "group_chat": True,
+            "group_mentions": True,
+            "proactive_messages": True,
+            "streaming": False,
+            "receive_images": True,
+            "send_images": True,
+            "receive_files": True,
+            "send_files": True,
+            "max_outbound_bytes": 31457280,
+        },
+    ),
+    ConnectorDescriptor(
+        name="dingtalk",
+        title="钉钉",
+        icon="钉",
+        blurb="钉钉企业内部机器人（Stream 模式），支持单聊、群聊 @ 与文件双向传输。",
+        auth="socket_app",
+        two_way=True,
+        channels=True,
+        brand_color="#1677ff",
+        logo="dingtalk",
+        aliases=("钉钉", "dingtalk", "ding talk"),
+        fields=[
+            Field("client_id", "Client ID", help="钉钉应用 AppKey / Client ID。", placeholder="ding…"),
+            Field("client_secret", "Client Secret", secret=True, help="仅保存在本机 SecretStore。", placeholder="…"),
+            Field("robot_code", "Robot Code", required=False, help="通常与 Client ID 相同；主动推送需要。"),
+            _ALLOWED_FIELD,
+        ],
+        instructions=[
+            "在钉钉开放平台创建企业内部应用并添加机器人能力。",
+            "消息接收模式选择 Stream 模式，并授权机器人消息与媒体权限。",
+            "填写 Client ID、Client Secret；Robot Code 留空时使用 Client ID。",
+            "单聊机器人，或在群聊中 @机器人；再用 Capture 将成员 ID 加入允许名单。",
+        ],
+        validate=_validate_dingtalk,
+        capabilities={
+            "direct_messages": True,
+            "group_chat": True,
+            "group_mentions": True,
+            "proactive_messages": True,
+            "streaming": False,
+            "receive_images": True,
+            "send_images": True,
+            "receive_files": True,
+            "send_files": True,
+            "max_outbound_bytes": 20971520,
+        },
+    ),
+    ConnectorDescriptor(
+        name="weixin",
+        title="个人微信",
+        icon="微",
+        blurb="腾讯官方 iLink 私聊通道，支持扫码登录与文件双向传输；不支持群聊。",
+        auth="qr",
+        two_way=True,
+        channels=False,
+        brand_color="#07c160",
+        logo="weixin",
+        aliases=("个人微信", "微信", "weixin", "wechat", "ilink"),
+        fields=[
+            Field(
+                "account_id",
+                "账号标识",
+                required=False,
+                help="多微信账号时填写唯一名称，例如 personal-1；首个账号可留空。",
+                placeholder="personal-1",
+            ),
+            Field("token", "iLink Token（可选）", secret=True, required=False, help="通常留空，连接后按状态页二维码扫码。"),
+            Field("base_url", "iLink API（可选）", required=False, placeholder="https://ilinkai.weixin.qq.com"),
+            Field("cdn_base_url", "iLink CDN（可选）", required=False, placeholder="https://novac2c.cdn.weixin.qq.com/c2c"),
+            _ALLOWED_FIELD,
+        ],
+        instructions=[
+            "点击「扫码连接个人微信」即可，无需填写 Token。",
+            "用手机微信扫描页面上的二维码并确认登录。",
+            "扫码后凭据只保存在本机 SecretStore；官方 iLink 仅支持私聊。",
+            "高级选项里可为多账号填写不同的账号标识（一般不用）。",
+        ],
+        validate=_validate_weixin,
+        account_field="account_id",
+        capabilities={
+            "direct_messages": True,
+            "group_chat": False,
+            "group_mentions": False,
+            "proactive_messages": False,
+            "streaming": False,
+            "receive_images": True,
+            "send_images": True,
+            "receive_files": True,
+            "send_files": True,
+            "max_outbound_bytes": 52428800,
+        },
     ),
     ConnectorDescriptor(
         name="slack",

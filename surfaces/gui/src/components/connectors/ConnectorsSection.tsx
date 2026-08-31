@@ -18,7 +18,9 @@ import { GithubDetail } from "./GithubDetail";
 import { GmailDetail } from "./GmailDetail";
 import { HubSpotDetail } from "./HubSpotDetail";
 import { SlackDetail } from "./SlackDetail";
-import { GRP } from "./ui";
+import { WeixinAvailable, WeixinDetail } from "./WeixinDetail";
+import { WeixinQrImage } from "./WeixinQrImage";
+import { GRP, GRP_H, ROW, TAG_QUIET } from "./ui";
 import { useI18n } from "../../i18n";
 
 // Connectors surface = LIST ⇄ per-connector DETAIL SUBPAGE (UX-DECISIONS §21). The
@@ -48,6 +50,7 @@ const DETAIL_PAGES: Record<string, (p: DetailProps) => JSX.Element> = {
   amplitude: (p) => <AccountsDetail {...p} />,
   apollo: (p) => <AccountsDetail {...p} />,
   hunter: (p) => <AccountsDetail {...p} />,
+  weixin: (p) => <WeixinDetail {...p} />,
 };
 
 export function ConnectorsSection() {
@@ -87,7 +90,11 @@ export function ConnectorsSection() {
         ) : !c.connected ? (
           /* Pre-connect page (§38). When a connect completes, the poll flips
              c.connected and this same route re-renders as the connected page. */
-          <AvailableDetail c={c} cloud={cloud} onChanged={refresh} />
+          detail === "weixin" ? (
+            <WeixinAvailable c={c} onChanged={refresh} />
+          ) : (
+            <AvailableDetail c={c} cloud={cloud} onChanged={refresh} />
+          )
         ) : Page ? (
           <Page c={c} cloud={cloud} slack={slack} onChanged={refresh} />
         ) : (
@@ -125,6 +132,12 @@ function GenericDetail({
   onGone,
 }: DetailProps & { onGone: () => void }) {
   const { t } = useI18n();
+  const status = c.channel_status;
+  const statusText = status?.state === "auth_required"
+    ? t("Scan QR code to finish connecting")
+    : status?.state === "degraded"
+      ? t("Connection needs attention")
+      : c.account || t(c.auth === "none" ? "Built in" : "Connected");
   return (
     <div>
       <div className="flex items-center gap-3.5 mb-5">
@@ -132,8 +145,8 @@ function GenericDetail({
         <div className="min-w-0 flex-1">
           <h2 className="text-[20px] font-semibold tracking-tight leading-tight">{c.title}</h2>
           <div className="text-[12.5px] text-muted flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-ok" />
-            {c.account || t(c.auth === "none" ? "Built in" : "Connected")}
+            <span className={`w-2 h-2 rounded-full ${status?.state === "degraded" ? "bg-warnInk" : status?.state === "auth_required" ? "bg-warnInk" : "bg-ok"}`} />
+            {statusText}
           </div>
         </div>
         {c.auth !== "none" && (
@@ -149,6 +162,35 @@ function GenericDetail({
           </button>
         )}
       </div>
+
+      {status && (
+        <>
+          <div className={GRP_H}>{t("Channel status")}</div>
+          <div className={GRP} data-testid="channel-status">
+            {status.details?.qr_url && status.state === "auth_required" && (
+              <div className={ROW + " flex-col items-start"}>
+                <span className="text-[12.5px] text-muted">{t("Use WeChat on your phone to scan")}</span>
+                <WeixinQrImage
+                  payload={status.details.qr_url}
+                  alt={t("WeChat sign-in QR code")}
+                  className="w-48 h-48 bg-white rounded-lg p-2"
+                  testId="generic-weixin-qr-image"
+                  size={192}
+                />
+              </div>
+            )}
+            <div className={ROW + " text-[13px]"}>
+              <span className="flex-1">{t("Queued messages")}</span>
+              <span className={TAG_QUIET}>{status.queue_length || 0}</span>
+            </div>
+            <div className={ROW + " text-[13px]"}>
+              <span className="flex-1">{t("Reconnects")}</span>
+              <span className={TAG_QUIET}>{status.reconnect_count || 0}</span>
+            </div>
+            {status.last_error && <div className={ROW + " text-[12.5px] text-danger"}>{status.last_error}</div>}
+          </div>
+        </>
+      )}
 
       <div className={GRP}>
         <ConnectorTools c={c} onChanged={onChanged} />

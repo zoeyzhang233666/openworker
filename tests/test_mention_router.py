@@ -213,7 +213,13 @@ def test_deleted_session_releases_thread_and_respawns(tmp_path, monkeypatch):
     mgr.delete_session(sid)
     assert mgr.mention_sessions.all() == []
 
-    asyncio.run(mgr._dispatch_inbound(_mention_event(thread_ts="1700000010.000100")))
+    asyncio.run(
+        mgr._dispatch_inbound(
+            _mention_event(
+                ts="1700000015.000500", thread_ts="1700000010.000100"
+            )
+        )
+    )
     fresh = mgr.list_sessions()
     assert len(fresh) == 1 and fresh[0]["session_id"] != sid
 

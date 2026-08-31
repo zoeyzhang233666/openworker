@@ -4,6 +4,7 @@ import {
   getTrustedWorkspaces,
   setCompactionSettings,
   setContextBar,
+  setFilestoreSettings,
   setOnboarded,
   setPdfSettings,
   setScratchBase,
@@ -143,6 +144,7 @@ export function SettingsView({
               <div className="mt-6">
                 <TokenSavingsCard />
                 <CompactionCard />
+                <FilestoreCard />
               </div>
             </section>
           ) : tab === "skills" ? (
@@ -1040,6 +1042,198 @@ function CompactionCard() {
           "The summary is written by this model. For better reliability, choose a stable non-reasoning model that returns normal text. A provider-prefixed model uses that provider's endpoint; the default follows the session model.",
         )}
       </div>
+    </div>
+  );
+}
+
+// -- Cloud file storage (D-194 Tencent COS) ------------------------------------
+// Only used when send_file delivers to IM Channels. Local GUI artifacts stay local.
+function FilestoreCard() {
+  const { t } = useI18n();
+  const [cfg, setCfg] = useState<{
+    enabled: boolean;
+    configured: boolean;
+    has_secrets: boolean;
+    bucket: string;
+    region: string;
+    pub_url: string;
+    folder: string;
+    blurb: string;
+  } | null>(null);
+  const [secretId, setSecretId] = useState("");
+  const [secretKey, setSecretKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const reload = () =>
+    getSettings()
+      .then((s) =>
+        setCfg({
+          enabled: s.filestore_enabled === true,
+          configured: s.filestore_configured === true,
+          has_secrets: s.filestore_has_secrets === true,
+          bucket: s.filestore_bucket || "chemcloud-1304660855",
+          region: s.filestore_region || "ap-shanghai",
+          pub_url:
+            s.filestore_pub_url ||
+            "https://chemcloud-1304660855.cos.ap-shanghai.myqcloud.com/",
+          folder: s.filestore_folder || "chemclaw",
+          blurb:
+            s.filestore_blurb ||
+            "仅在向 Channel 发送文件时上传；本机对话产物默认只保存在本地。",
+        }),
+      )
+      .catch(() =>
+        setCfg({
+          enabled: false,
+          configured: false,
+          has_secrets: false,
+          bucket: "chemcloud-1304660855",
+          region: "ap-shanghai",
+          pub_url: "https://chemcloud-1304660855.cos.ap-shanghai.myqcloud.com/",
+          folder: "chemclaw",
+          blurb: "仅在向 Channel 发送文件时上传；本机对话产物默认只保存在本地。",
+        }),
+      );
+
+  useEffect(() => {
+    reload();
+  }, []);
+
+  if (!cfg) return null;
+
+  const savePublic = async (patch: Record<string, unknown>) => {
+    setError(null);
+    setSaved(false);
+    const out = await setFilestoreSettings(patch);
+    if (!out.ok) {
+      setError(out.error || t("Could not save"));
+      return;
+    }
+    setSaved(true);
+    await reload();
+  };
+
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="filestore-card">
+      <div className={FIELD_LABEL}>{t("Cloud file storage (Tencent COS)")}</div>
+      <div className={FIELD_HELP}>{cfg.blurb}</div>
+      <div className="mt-2 text-[12px] text-muted">
+        {cfg.configured
+          ? t("Configured for Channel file-link delivery")
+          : cfg.has_secrets
+            ? t("Credentials saved; check the bucket and public URL")
+            : t("Not configured — Channel file-link delivery needs COS")}
+      </div>
+      <label className="mt-3 flex items-center gap-2 text-[13px] text-ink">
+        <input
+          type="checkbox"
+          checked={cfg.enabled}
+          data-testid="filestore-enabled"
+          onChange={(e) => savePublic({ enabled: e.target.checked })}
+        />
+        {t("Enable cloud file storage")}
+      </label>
+      <div className="mt-3 grid gap-2">
+        <input
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          value={cfg.bucket}
+          data-testid="filestore-bucket"
+          placeholder="bucket"
+          onChange={(e) => setCfg({ ...cfg, bucket: e.target.value })}
+          onBlur={() => savePublic({ bucket: cfg.bucket })}
+        />
+        <input
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          value={cfg.region}
+          data-testid="filestore-region"
+          placeholder="region"
+          onChange={(e) => setCfg({ ...cfg, region: e.target.value })}
+          onBlur={() => savePublic({ region: cfg.region })}
+        />
+        <input
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          value={cfg.pub_url}
+          data-testid="filestore-pub-url"
+          placeholder="pub_url"
+          onChange={(e) => setCfg({ ...cfg, pub_url: e.target.value })}
+          onBlur={() => savePublic({ pub_url: cfg.pub_url })}
+        />
+        <input
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          value={cfg.folder}
+          data-testid="filestore-folder"
+          placeholder="folder"
+          onChange={(e) => setCfg({ ...cfg, folder: e.target.value })}
+          onBlur={() => savePublic({ folder: cfg.folder })}
+        />
+      </div>
+      <div className="mt-3 grid gap-2">
+        <input
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          type="password"
+          autoComplete="off"
+          value={secretId}
+          data-testid="filestore-secret-id"
+          placeholder={
+            cfg.has_secrets ? t("SecretId (saved; leave blank to keep it)") : "SecretId"
+          }
+          onChange={(e) => setSecretId(e.target.value)}
+        />
+        <input
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          type="password"
+          autoComplete="off"
+          value={secretKey}
+          data-testid="filestore-secret-key"
+          placeholder={
+            cfg.has_secrets ? t("SecretKey (saved; leave blank to keep it)") : "SecretKey"
+          }
+          onChange={(e) => setSecretKey(e.target.value)}
+        />
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-primary text-[13px]"
+            data-testid="filestore-save-secrets"
+            onClick={async () => {
+              if (!secretId.trim() || !secretKey.trim()) {
+                setError(t("Enter both SecretId and SecretKey"));
+                return;
+              }
+              await savePublic({
+                secret_id: secretId.trim(),
+                secret_key: secretKey.trim(),
+                enabled: true,
+              });
+              setSecretId("");
+              setSecretKey("");
+            }}
+          >
+            {t("Save credentials")}
+          </button>
+          {cfg.has_secrets && (
+            <button
+              type="button"
+              className="btn text-[13px]"
+              data-testid="filestore-clear-secrets"
+              onClick={async () => {
+                await savePublic({ clear_secrets: true });
+              }}
+            >
+              {t("Clear credentials")}
+            </button>
+          )}
+        </div>
+      </div>
+      {error && (
+        <div className="mt-2 text-[12px] text-danger" data-testid="filestore-error">
+          {error}
+        </div>
+      )}
+      {saved && !error && (
+        <div className="mt-2 text-[12px] text-muted">{t("Saved")}</div>
+      )}
     </div>
   );
 }

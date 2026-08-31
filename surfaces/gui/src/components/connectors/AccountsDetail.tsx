@@ -9,7 +9,8 @@ import { ConnectorBadge } from "../../connectors/ConnectorIcon";
 import { ConnectSetup } from "../ManageTabs";
 import type { DetailProps } from "./ConnectorsSection";
 import { ToolsDisclosure } from "./ToolsDisclosure";
-import { FOOT, GRP, GRP_H, PILL_ACCENT, ROW, TAG_ACCENT, XBTN } from "./ui";
+import { FOOT, GRP, GRP_H, PILL_ACCENT, ROW, TAG_ACCENT, TAG_QUIET, XBTN } from "./ui";
+import { WeixinQrImage } from "./WeixinQrImage";
 import { useI18n } from "../../i18n";
 import { CLOUD_SIGNIN_ENABLED } from "../../product";
 
@@ -25,6 +26,28 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
   const [busy, setBusy] = useState(false);
   const [showManual, setShowManual] = useState(false);
   const accounts = (c.accounts ?? []) as AccountRow[];
+  // Gateway always prefers details.accounts; fall back to a synthetic single-account
+  // row when only top-level details.qr_url is present (older status payloads).
+  const nestedAccounts = c.channel_status?.details?.accounts ?? [];
+  const channelAccounts =
+    nestedAccounts.length > 0
+      ? nestedAccounts
+      : c.channel_status &&
+          (c.channel_status.state === "auth_required" ||
+            c.channel_status.details?.qr_url ||
+            c.channel_status.last_error)
+        ? [
+            {
+              account_id: "default",
+              state: c.channel_status.state,
+              authenticated: c.channel_status.authenticated,
+              last_error: c.channel_status.last_error,
+              details: {
+                qr_url: c.channel_status.details?.qr_url,
+              },
+            },
+          ]
+        : [];
   const canOneClick = CLOUD_SIGNIN_ENABLED && c.managed && !!cloud?.signed_in;
 
   const addManaged = async () => {
@@ -70,6 +93,51 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
           {t(busy ? "Check your browser…" : "＋ Add account")}
         </button>
       </div>
+
+      {channelAccounts.length > 0 && (
+        <>
+          <div className={GRP_H + " !mt-0"}>{t("Channel status")}</div>
+          <div className={GRP} data-testid="channel-account-status">
+            {channelAccounts.map((status, index) => (
+              <div
+                key={status.account_id || index}
+                className={ROW + " flex-wrap text-[13px]"}
+              >
+                <span className="flex-1 min-w-28">
+                  {status.account_id || t("Default")}
+                </span>
+                <span className={TAG_QUIET}>
+                  {status.state === "connected"
+                    ? t("● Live")
+                    : status.state === "auth_required"
+                      ? t("● Scan needed")
+                      : t("⚠ Check")}
+                </span>
+                {status.details?.qr_url &&
+                  (status.state === "auth_required" || Boolean(status.details.qr_url)) && (
+                  <div className="basis-full pt-2 flex flex-col items-start gap-2">
+                    <span className="text-[12px] text-muted">
+                      {t("Use WeChat on your phone to scan")}
+                    </span>
+                    <WeixinQrImage
+                      payload={status.details.qr_url}
+                      alt={t("WeChat sign-in QR code")}
+                      className="w-48 h-48 bg-white rounded-lg p-2"
+                      testId="accounts-weixin-qr-image"
+                      size={192}
+                    />
+                  </div>
+                )}
+                {status.last_error && (
+                  <div className="basis-full text-[12px] text-danger pt-1">
+                    {status.last_error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {accounts.length > 0 && (
         <>

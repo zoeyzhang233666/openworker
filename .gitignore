@@ -7,6 +7,10 @@ build/
 dist/
 .coverage
 
+# Local scratch (donor clones, pytest basetemp) — never committed
+.tmp-*/
+.tmp-pytest-*/
+
 # Local secrets (live-smoke BYO keys) — never committed
 .env
 packaging/builtin_mcp.secrets.json

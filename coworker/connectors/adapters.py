@@ -425,6 +425,7 @@ def make_adapter(
     relay_url: Optional[str] = None,
     relay_hub=None,
     github_token_client=None,
+    media_manager=None,
 ) -> Optional[BasePlatformAdapter]:
     """Build the adapter for a connected platform from its SecretStore profile.
 
@@ -444,7 +445,52 @@ def make_adapter(
     if platform == "wecom" and profile.get("bot_id") and profile.get("secret"):
         from .wecom_bot import WecomBotAdapter
 
-        return WecomBotAdapter(str(profile["bot_id"]), str(profile["secret"]))
+        return WecomBotAdapter(
+            str(profile["bot_id"]),
+            str(profile["secret"]),
+            account_id=str(profile.get("account_id") or "default"),
+            media_manager=media_manager,
+        )
+    if platform == "feishu" and profile.get("app_id") and profile.get("app_secret"):
+        from .feishu_bot import FeishuAdapter
+
+        return FeishuAdapter(
+            str(profile["app_id"]),
+            str(profile["app_secret"]),
+            account_id=str(profile.get("account_id") or "default"),
+            media_manager=media_manager,
+            api_base=str(profile.get("api_base") or "https://open.feishu.cn/open-apis"),
+        )
+    if platform == "dingtalk" and profile.get("client_id") and profile.get("client_secret"):
+        from .dingtalk_bot import DingTalkAdapter
+
+        return DingTalkAdapter(
+            str(profile["client_id"]),
+            str(profile["client_secret"]),
+            robot_code=str(profile.get("robot_code") or ""),
+            account_id=str(profile.get("account_id") or "default"),
+            media_manager=media_manager,
+        )
+    if platform == "weixin" and profile:
+        from .weixin_ilink import WeixinIlinkAdapter
+
+        return WeixinIlinkAdapter(
+            str(profile.get("token") or ""),
+            bot_id=str(profile.get("bot_id") or ""),
+            account_id=str(profile.get("account_id") or "default"),
+            base_url=str(profile.get("base_url") or "https://ilinkai.weixin.qq.com"),
+            cdn_base_url=str(
+                profile.get("cdn_base_url") or "https://novac2c.cdn.weixin.qq.com/c2c"
+            ),
+            context_tokens=(
+                profile.get("context_tokens")
+                if isinstance(profile.get("context_tokens"), dict)
+                else None
+            ),
+            get_updates_buf=str(profile.get("get_updates_buf") or ""),
+            media_manager=media_manager,
+            secrets=secrets,
+        )
     if platform == "slack":
         if profile.get("mode") == "relay":
             if not (relay_url and token_provider):
