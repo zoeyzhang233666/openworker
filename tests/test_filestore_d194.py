@@ -86,8 +86,39 @@ def test_tencent_cos_fake_client_upload_download_and_integrity():
     assert fake.last_put["EnableMD5"] is True
     assert fake.last_put["Metadata"]["sha256"] == ref.sha256
     assert "filename*=UTF-8''" in fake.last_put["ContentDisposition"]
+    assert fake.last_put["ContentDisposition"].startswith("attachment")
     assert store.exists(ref)
     assert store.download(ref) == b"a,b\n1,2"
+
+
+def test_tencent_cos_html_upload_uses_inline_disposition():
+    """D-195: report HTML must open in browser, not force download."""
+    config = CosConfig(
+        secret_id="AKID-test",
+        secret_key="secret-test",
+        bucket="bucket-123",
+        region="ap-shanghai",
+        pub_url="https://bucket-123.cos.ap-shanghai.myqcloud.com/",
+        folder="chemclaw-test",
+    )
+
+    class FakeClient:
+        def __init__(self):
+            self.last_put = None
+
+        def put_object(self, **kwargs):
+            self.last_put = kwargs
+
+    store = TencentCosStorage(config)
+    fake = FakeClient()
+    store._client = fake
+    store.upload(
+        b"<!DOCTYPE html><html></html>",
+        filename="报告.html",
+        content_type="text/html; charset=utf-8",
+    )
+    assert fake.last_put["ContentDisposition"].startswith("inline")
+    assert fake.last_put["ContentType"].startswith("text/html")
 
 
 def test_validate_rejects_bad_extension_and_empty():

@@ -441,7 +441,13 @@ def build_engine(
     # the reply path for inbound Telegram/Slack super-agent sessions.
     secrets = secrets or SecretStore()
     if agent.messaging and any(s.enabled for s in load_settings(secrets).values()):
-        registry.register(make_send_message_tool(secrets))
+        registry.register(
+            make_send_message_tool(
+                secrets,
+                workspace=ws,
+                file_storage=file_storage,
+            )
+        )
         # send_file (§34): hand deliverables into the chat — same targets, but its OWN
         # approval surface (a thread's standing send_message grant never covers uploads).
         registry.register(

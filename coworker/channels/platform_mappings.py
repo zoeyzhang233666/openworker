@@ -48,8 +48,8 @@ def feishu_event_to_inbound(
     mentions_bot = chat_type == "dm" or bool(mentions)
     if bot_open_id and chat_type == "group":
         mentions_bot = bot_open_id in mention_ids
-    if chat_type == "group" and not mentions_bot:
-        return None
+    # Gateway may consume an unmentioned reply to a pending ask_user prompt.
+    # Ordinary group traffic remains ignored by SessionManager.
 
     attachments: list[ChannelAttachment] = []
     text = ""
@@ -198,8 +198,8 @@ def dingtalk_callback_to_inbound(
         text = "\n".join(line for line in lines if line) or "[图文消息]"
     at_users = payload.get("atUsers") if isinstance(payload.get("atUsers"), list) else []
     mentions_bot = chat_type == "dm" or bool(payload.get("isInAtList") or at_users)
-    if chat_type == "group" and not mentions_bot:
-        return None
+    # Gateway may consume an unmentioned reply to a pending ask_user prompt.
+    # Ordinary group traffic remains ignored by SessionManager.
     return InboundEnvelope(
         platform="dingtalk",
         account_id=account_id or "default",

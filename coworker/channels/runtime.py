@@ -42,10 +42,12 @@ class ChannelDeliveryCoordinator:
         *,
         max_concurrency: int = 10,
         turn_timeout: float = 300.0,
+        is_waiting_for_human: Optional[Callable[[str], bool]] = None,
     ) -> None:
         self._runner = runner
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
-        self.turn_timeout = max(1.0, turn_timeout)
+        self.turn_timeout = max(0.01, turn_timeout)
+        self._is_waiting_for_human = is_waiting_for_human or (lambda _sid: False)
         self._queues: dict[str, asyncio.Queue[_Queued]] = {}
         self._workers: dict[str, asyncio.Task] = {}
         self._route_depths: dict[Hashable, int] = defaultdict(int)
@@ -89,9 +91,7 @@ class ChannelDeliveryCoordinator:
                 route_key, payload = queued.payload
                 try:
                     async with self._semaphore:
-                        await asyncio.wait_for(
-                            self._runner(session_id, payload), timeout=self.turn_timeout
-                        )
+                        await self._run_with_human_wait(session_id, payload)
                 except asyncio.TimeoutError:
                     self.last_error[route_key] = (
                         f"Agent 处理超过 {int(self.turn_timeout)} 秒，已继续下一条消息"
@@ -119,6 +119,33 @@ class ChannelDeliveryCoordinator:
             self._workers.pop(session_id, None)
             if queue.empty():
                 self._queues.pop(session_id, None)
+
+    async def _run_with_human_wait(self, session_id: str, payload: Any) -> None:
+        """Apply the ordinary turn timeout without cancelling a human wait.
+
+        ``asyncio.wait_for`` cancels its awaitable on timeout.  Shield the runner
+        so a pending ask_user/approval can extend the deadline and later resume the
+        same turn; once no Inbox item is pending, the usual timeout remains strict.
+        """
+        task = asyncio.create_task(self._runner(session_id, payload))
+        try:
+            while True:
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(task), timeout=self.turn_timeout
+                    )
+                    return
+                except asyncio.TimeoutError:
+                    if self._is_waiting_for_human(session_id):
+                        continue
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    raise
+        except BaseException:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            raise
 
     def queue_length(self, route_key: Optional[Hashable] = None) -> int:
         if route_key is not None:

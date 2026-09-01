@@ -159,3 +159,39 @@ def test_thread_send_message_grant_never_covers_send_file(tmp_path):
         "send_file", {"target": target, "path": "report.pdf"}, file_meta
     )
     assert not asked.allowed and asked.needs_user
+
+
+def test_wecom_send_file_md_converts_to_html(tmp_path):
+    """D-195c: WeCom must not receive raw Markdown files — cook HTML instead."""
+    from coworker.filestore.memory import MemoryFileStorage
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "企业调研.md").write_text("# 调研\n\n| a | b |\n|---|---|\n| 1 | 2 |\n", encoding="utf-8")
+    secrets = SecretStore(tmp_path / "secrets.json")
+    secrets.put("wecom:default", {"bot_id": "bot1", "secret": "sec", "allowed_users": ["*"]})
+    texts: list[str] = []
+    files: list[str] = []
+
+    def failing_native(*_a, **_k):
+        return SendResult(False, error="prefer url")
+
+    def text_sender(token, chat_id, text, thread_id=None):
+        texts.append(text)
+        return SendResult(True, message_id="t1")
+
+    store = MemoryFileStorage(pub_url="https://cos.example/")
+    tool = make_send_file_tool(
+        secrets,
+        workspace=ws,
+        file_senders={"wecom": failing_native},
+        text_senders={"wecom": text_sender},
+        file_storage=store,
+    )
+    out = tool(target="wecom:user_alice", path="企业调研.md")
+    assert out.get("ok") is True
+    assert out.get("converted_from") == "markdown"
+    assert str(out.get("filename", "")).endswith(".html")
+    assert any(".html" in k or "html" in k for k in store.objects)
+    assert texts  # COS URL fallback message
+    assert ".md" not in (texts[0] if texts else "")

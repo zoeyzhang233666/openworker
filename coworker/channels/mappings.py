@@ -189,8 +189,9 @@ def frame_to_inbound(frame: dict[str, Any]) -> Optional[InboundMessage]:
     )
     text = wecom_text_content(body, msgtype)
     mentions_bot = wecom_mentions_bot(body, chat_type=chat_type)
-    if chat_type == "group" and not mentions_bot:
-        return None  # explicit is_mentioned=false
+    # Keep explicitly unmentioned group frames long enough for Gateway to match
+    # a pending ask_user answer.  The normal router still ignores unmentioned
+    # group traffic, so this does not make the bot chatty.
 
     return InboundMessage(
         channel="wecom",

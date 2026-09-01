@@ -53,7 +53,7 @@ class ConnectorSettings:
 
 def is_authorized(settings: ConnectorSettings, source: SessionSource) -> bool:
     account_id = str(getattr(source, "account_id", "") or "default")
-    if account_id != "default" and settings.accounts:
+    if settings.accounts:
         account = settings.accounts.get(account_id)
         if account is None:
             return False

@@ -628,7 +628,7 @@ def test_turn_plan_allowlist_guard_blocks_undeclared_capability_tool(tmp_path):
     assert "Scenario/Capability" in denied[0].data["reason"]
 
 
-def test_market_guard_rejects_price_tool_before_clarification(tmp_path):
+def test_market_execution_no_longer_denies_price_tool_before_clarification(tmp_path):
     engine, calls = _market_engine(
         tmp_path,
         [
@@ -637,18 +637,17 @@ def test_market_guard_rejects_price_tool_before_clarification(tmp_path):
         ],
     )
     events = _collect(engine, "查甲醇价格")
-    denied = [
+    finished = [
         event
         for event in events
         if event.type is EventType.TOOL_FINISHED
         and event.data.get("name") == "lookup_cn_futures_ohlc"
     ]
-    assert denied and denied[0].data["status"] == "denied"
-    assert calls.get("lookup_cn_futures_ohlc", 0) == 0
-    assert "市场口径尚未确认" in denied[0].data["reason"]
+    assert finished and finished[0].data["status"] == "ok"
+    assert calls.get("lookup_cn_futures_ohlc", 0) == 1
 
 
-def test_market_guard_allows_selected_spot_after_ask_user(tmp_path):
+def test_market_execution_allows_selected_spot_after_ask_user(tmp_path):
     engine, calls = _market_engine(
         tmp_path,
         [
@@ -675,7 +674,7 @@ def test_market_guard_allows_selected_spot_after_ask_user(tmp_path):
     assert spot_finished and spot_finished[0].data["status"] == "ok"
 
 
-def test_market_guard_rejects_futures_after_spot_was_selected(tmp_path):
+def test_market_execution_no_longer_denies_futures_after_spot_was_selected(tmp_path):
     engine, calls = _market_engine(
         tmp_path,
         [
@@ -689,18 +688,17 @@ def test_market_guard_rejects_futures_after_spot_was_selected(tmp_path):
         ],
     )
     events = _collect(engine, "查甲醇价格")
-    assert calls.get("lookup_cn_futures_quote", 0) == 0
-    rejected = [
+    assert calls.get("lookup_cn_futures_quote", 0) == 1
+    finished = [
         event
         for event in events
         if event.type is EventType.TOOL_FINISHED
         and event.data.get("name") == "lookup_cn_futures_quote"
     ]
-    assert rejected and rejected[0].data["status"] == "denied"
-    assert "市场口径不一致" in rejected[0].data["reason"]
+    assert finished and finished[0].data["status"] == "ok"
 
 
-def test_market_guard_allows_spot_and_futures_for_basis_arb(tmp_path):
+def test_market_execution_allows_spot_and_futures_for_basis_arb(tmp_path):
     engine, calls = _market_engine(
         tmp_path,
         [
@@ -733,7 +731,7 @@ def test_market_guard_allows_spot_and_futures_for_basis_arb(tmp_path):
     assert finished["lookup_cn_futures_ohlc"] == "ok"
 
 
-def test_market_guard_survives_durable_resume_of_pending_clarification(tmp_path):
+def test_market_execution_remains_unblocked_after_durable_resume(tmp_path):
     engine, calls = _market_engine(
         tmp_path,
         [
@@ -765,11 +763,11 @@ def test_market_guard_survives_durable_resume_of_pending_clarification(tmp_path)
         return [event async for event in engine.resume()]
 
     events = asyncio.run(resume())
-    assert calls.get("lookup_cn_futures_quote", 0) == 0
-    rejected = [
+    assert calls.get("lookup_cn_futures_quote", 0) == 1
+    finished = [
         event
         for event in events
         if event.type is EventType.TOOL_FINISHED
         and event.data.get("name") == "lookup_cn_futures_quote"
     ]
-    assert rejected and rejected[0].data["status"] == "denied"
+    assert finished and finished[0].data["status"] == "ok"

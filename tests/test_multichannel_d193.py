@@ -96,13 +96,11 @@ def test_feishu_private_group_mention_file_and_untagged():
         _feishu_payload(chat_type="group"), bot_open_id="bot-open"
     )
     assert group and group.chat_type == "group" and group.mentions_bot
-    assert (
-        feishu_event_to_inbound(
-            _feishu_payload(chat_type="group", mentioned=False),
-            bot_open_id="bot-open",
-        )
-        is None
+    untagged = feishu_event_to_inbound(
+        _feishu_payload(chat_type="group", mentioned=False),
+        bot_open_id="bot-open",
     )
+    assert untagged is not None and untagged.mentions_bot is False
     file_message = feishu_event_to_inbound(
         _feishu_payload(message_type="file")
     )
@@ -134,7 +132,8 @@ def test_dingtalk_private_group_mention_file_and_untagged():
     assert mapped and mapped.chat_type == "group"
     assert mapped.attachments[0].name == "合同.pdf"
     group["isInAtList"] = False
-    assert dingtalk_callback_to_inbound(group) is None
+    untagged = dingtalk_callback_to_inbound(group)
+    assert untagged is not None and untagged.mentions_bot is False
 
     rich = dingtalk_callback_to_inbound(
         {
@@ -686,7 +685,7 @@ async def test_plain_agent_answer_is_delivered_as_channel_final(tmp_path):
         },
     )
     assert gateway.sent[0][0] == "wecom:alice"
-    assert gateway.sent[0][1].text == "这是可靠的通道回复"
+    assert gateway.sent[0][1].text.startswith("这是可靠的通道回复")
 
 
 def test_gateway_status_exposes_single_account_qr_in_accounts_array():

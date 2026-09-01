@@ -338,6 +338,33 @@ class WecomBotAdapter(BasePlatformAdapter):
             self._last_error = f"企业微信进度回复失败（{type(exc).__name__}）"
             logger.debug("wecom progress ack failed", exc_info=True)
 
+    async def update_stream(self, chat_id: str, text: str) -> SendResult:
+        """Refresh an open reply stream without finishing it (D-195).
+
+        Does not pop ``_reply_streams``; final ``send`` / ``finish_stream`` closes it.
+        """
+        client = self._client
+        if client is None or not self._channel_authenticated:
+            return SendResult(False, error="企业微信尚未完成连接认证，请稍后重试")
+        pending = self._reply_streams.get(str(chat_id))
+        if pending is None:
+            # No open stream (ack disabled or failed) — keep frame for final reply.
+            return SendResult(False, error="无进行中的企微流式回复")
+        frame, stream_id = pending
+        try:
+            await self.throttle_outbound()
+            await client.reply_stream(frame, stream_id, text or "", finish=False)
+            self._last_sent_at = time()
+            return SendResult(True)
+        except Exception as exc:
+            self._last_error = f"企业微信流式更新失败（{type(exc).__name__}）"
+            logger.debug("wecom update_stream failed", exc_info=True)
+            return SendResult(False, error=self._last_error)
+
+    async def finish_stream(self, chat_id: str, text: str) -> SendResult:
+        """Close a pending stream with finish=True (alias path used by manager)."""
+        return await self.send(str(chat_id), text)
+
     def send_sync(
         self, chat_id: str, text: str, *, thread_id: Optional[str] = None
     ) -> SendResult:

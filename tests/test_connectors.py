@@ -805,7 +805,7 @@ def test_new_tools_error_when_not_connected(tmp_path):
     assert "not connected" in tools["discord_send_message"]("1", "hi")["error"]
     assert "not connected" in tools["stripe_search_customers"]("e:'a'")["error"]
     assert "not connected" in tools["asana_get_task"]("1")["error"]
-    assert "not connected" in tools["hubspot_search"]("acme")["error"]
+    assert "未连接" in tools["hubspot_search"]("acme")["error"]
     assert "not connected" in tools["posthog_query"]("SELECT 1")["error"]
     assert "not connected" in tools["mixpanel_top_events"]()["error"]
     assert (

@@ -223,10 +223,16 @@ def _mcp_parts(name: str) -> tuple[str, str] | None:
 
 
 def _is_dynamic_market_mcp(name: str) -> bool:
+    """Return whether a dynamic MCP can itself supply a price-bearing value.
+
+    ``market`` alone is deliberately not a signal: tools such as
+    ``list_market_news_live`` provide supporting evidence, not a spot/futures
+    quote, and must not be rejected by the price-scope guard.
+    """
     parts = _mcp_parts(name)
     return bool(
         parts
-        and re.search(r"(price|quote|trend|ohlc|market)", parts[1], re.I)
+        and re.search(r"(?:price|prices|quote|quotes|trend|ohlc)", parts[1], re.I)
     )
 
 

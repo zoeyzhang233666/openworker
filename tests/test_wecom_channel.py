@@ -100,8 +100,9 @@ def test_frame_to_inbound_group_default_mention():
     assert inbound.mentions_bot is True
 
 
-def test_frame_to_inbound_group_explicit_not_mentioned_dropped():
-    assert frame_to_inbound(_group_frame(mentioned=False)) is None
+def test_frame_to_inbound_group_explicit_not_mentioned_is_retained_for_pending_reply():
+    inbound = frame_to_inbound(_group_frame(mentioned=False))
+    assert inbound is not None and inbound.mentions_bot is False
 
 
 def test_wecom_frame_to_message_event():

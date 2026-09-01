@@ -1940,7 +1940,9 @@ def create_app(manager: SessionManager) -> FastAPI:
                 visibility=_visibility(),
                 # Automation-run context (manual "Run now" rides this socket): lets the
                 # card offer the task-persistent "Allow every time" (§25). {} elsewhere.
-                data=manager.approval_prompt_data(session_id, _request),
+                data=manager._channel_prompt_data(
+                    manager.approval_prompt_data(session_id, _request)
+                ),
                 tool_call_id=getattr(_request, "tool_call_id", None),
             )
             if (
@@ -1949,48 +1951,38 @@ def create_app(manager: SessionManager) -> FastAPI:
                 manager.persist_session(
                     session_id
                 )  # the pending tool call is now on disk
-                if item.visibility == VIS_INBOX:
+                if item.visibility == VIS_INBOX or (item.data or {}).get(
+                    "channel_target"
+                ):
                     await _mirror(item)
             resolution = await manager.inbox.wait(item.id)
             # Accept every vocabulary: the live card sends once/always_tool/always_command/
             # always_task/deny; the Inbox / a channel send allow/always/deny.
             return manager.approval_outcome(resolution, _request, session_id)
 
-        async def question_asker(args: dict, tool_call_id=None) -> dict:
-            # ask_user (engine does NOT emit the event — we do, only when attended).
-            from ..tools.ask import answer_result, question_item_fields
+        async def _notify_inline_question(item) -> None:
+            # The manager owns question creation/binding.  This notifier is presentation-only,
+            # which prevents an open desktop socket from swallowing Channel-originated prompts.
+            await ws.send_json(
+                {
+                    "type": "question_requested",
+                    "data": {
+                        "question": item.title,
+                        "options": item.options,
+                        "allow_text": item.allow_text,
+                        "multi": item.multi,
+                        "header": item.header,
+                        "questions": item.questions,
+                    },
+                }
+            )
 
-            fields = question_item_fields(args)
-            if fields is None:
-                return {"answer": "", "error": "no question"}
-            item = manager.inbox.add_question(
-                session_id,
-                inbox=_route(),
-                visibility=_visibility(),
-                tool_call_id=tool_call_id,
-                **fields,
-            )
-            if item.state == "pending":
-                manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
-                    await _mirror(item)
-                else:
-                    await ws.send_json(
-                        {
-                            "type": "question_requested",
-                            "data": {
-                                "question": item.title,
-                                "options": item.options,
-                                "allow_text": item.allow_text,
-                                "multi": item.multi,
-                                "header": item.header,
-                                "questions": item.questions,
-                            },
-                        }
-                    )
-            return answer_result(
-                item.questions, await manager.inbox.wait(item.id)
-            )
+        question_asker = manager.inbox_question_asker(
+            session_id,
+            agent,
+            visibility=_visibility,
+            inline_notifier=_notify_inline_question,
+        )
 
         async def directory_requester(args: dict, tool_call_id=None) -> dict:
             # The engine has already emitted DIRECTORY_REQUESTED. Park, await, then apply the grant.
@@ -2000,15 +1992,19 @@ def create_app(manager: SessionManager) -> FastAPI:
                 body=str(args.get("reason", "")),
                 inbox=_route(),
                 visibility=_visibility(),
-                data={
-                    "path": str(args.get("path", "")),
-                    "writable": bool(args.get("writable", False)),
-                },
+                data=manager._channel_prompt_data(
+                    {
+                        "path": str(args.get("path", "")),
+                        "writable": bool(args.get("writable", False)),
+                    }
+                ),
                 tool_call_id=tool_call_id,
             )
             if item.state == "pending":
                 manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
+                if item.visibility == VIS_INBOX or (item.data or {}).get(
+                    "channel_target"
+                ):
                     await _mirror(item)
             resp = _parse_json(
                 await manager.inbox.wait(item.id)
@@ -2049,11 +2045,14 @@ def create_app(manager: SessionManager) -> FastAPI:
                 body=str(_args.get("plan", "")),
                 inbox=_route(),
                 visibility=_visibility(),
+                data=manager._channel_prompt_data(),
                 tool_call_id=tool_call_id,
             )
             if item.state == "pending":
                 manager.persist_session(session_id)
-                if item.visibility == VIS_INBOX:
+                if item.visibility == VIS_INBOX or (item.data or {}).get(
+                    "channel_target"
+                ):
                     await _mirror(item)
             resp = _parse_json(
                 await manager.inbox.wait(item.id)

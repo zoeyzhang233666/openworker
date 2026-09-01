@@ -154,7 +154,17 @@ class Gateway:
     async def _on_inbound(self, event: MessageEvent) -> None:
         self._record_recent(event)  # capture identity even from unauthorized senders
         settings = self.settings.get(event.source.platform)
-        if settings is None or not is_authorized(settings, event.source):
+        authorized = settings is not None and is_authorized(settings, event.source)
+        if not authorized and event.source.platform == "weixin":
+            # QR confirmation persists the owner allowlist after Gateway settings
+            # were constructed. Refresh once from SecretStore so the first real
+            # message works without restarting the listener.
+            refreshed = load_settings(self.secrets).get("weixin")
+            if refreshed is not None:
+                self.settings["weixin"] = refreshed
+                settings = refreshed
+                authorized = is_authorized(refreshed, event.source)
+        if not authorized:
             logger.info("parking unauthorized inbound from %s", event.source.label())
             if self._on_unauthorized is not None:
                 try:
@@ -174,6 +184,11 @@ class Gateway:
             event.source.platform, account_chat
         )
         acknowledge = getattr(adapter, "acknowledge", None)
+        if event.source.chat_type in {"group", "channel"} and not event.mentions_me:
+            # Unmentioned group frames are retained only so a pending ask_user
+            # answer can be matched; do not emit a generic processing ack for
+            # ordinary group chatter that SessionManager will ignore.
+            acknowledge = None
         if callable(acknowledge):
             try:
                 await acknowledge(event)
@@ -283,6 +298,17 @@ class Gateway:
         envelope.conversation_id = bare_chat_id
         envelope.reply_to = envelope.reply_to or thread_id
         return await adapter.send(envelope)
+
+    async def update_stream(self, target: str, text: str) -> SendResult:
+        """Refresh an open WeCom (or similar) reply stream without finishing it (D-195)."""
+        platform, chat_id, _thread_id = parse_target(target)
+        adapter, bare_chat_id = self._adapter_for_target(platform, chat_id)
+        if adapter is None:
+            return SendResult(False, error=f"no adapter for {platform}")
+        fn = getattr(adapter, "update_stream", None)
+        if not callable(fn):
+            return SendResult(False, error=f"{platform} 不支持流式更新")
+        return await fn(bare_chat_id, text)
 
     async def deliver_interactive(self, target: str, text: str, buttons) -> SendResult:
         """Send a prompt with choice buttons (adapters without interactive support show text only)."""

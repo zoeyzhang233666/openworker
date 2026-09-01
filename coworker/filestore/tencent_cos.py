@@ -79,13 +79,21 @@ class TencentCosStorage:
             unique=digest[:24],
         )
         client = self._get_client()
+        ctype = content_type or "application/octet-stream"
+        # D-195: HTML reports must open inline in WeCom/browser, not force download.
+        if ctype.startswith("text/html") or name.lower().endswith((".html", ".htm")):
+            disposition = f"inline; filename*=UTF-8''{quote(name)}"
+            if not ctype.startswith("text/html"):
+                ctype = "text/html; charset=utf-8"
+        else:
+            disposition = f"attachment; filename*=UTF-8''{quote(name)}"
         try:
             client.put_object(
                 Bucket=self.config.bucket,
                 Body=data,
                 Key=key,
-                ContentType=content_type or "application/octet-stream",
-                ContentDisposition=f"attachment; filename*=UTF-8''{quote(name)}",
+                ContentType=ctype,
+                ContentDisposition=disposition,
                 Metadata={"sha256": digest},
                 EnableMD5=True,
             )
@@ -102,7 +110,7 @@ class TencentCosStorage:
             key=key,
             filename=name,
             url=url,
-            content_type=content_type or "application/octet-stream",
+            content_type=ctype,
             size=len(data),
             sha256=digest,
         )

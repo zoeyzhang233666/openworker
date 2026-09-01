@@ -22,6 +22,7 @@ from ..agent import build_engine
 from ..agents import get_agent
 from ..chemclaw_paths import stable_session_workspace, workspace_relpath_or_none
 from ..channels import (
+    ChannelAttachment,
     ChannelDeliveryCoordinator,
     ChannelMediaManager,
     MessageDeduplicator,
@@ -214,6 +215,7 @@ class SessionManager:
             self._run_channel_delivery,
             max_concurrency=int(os.environ.get("CHEMCLAW_CHANNEL_CONCURRENCY", "10")),
             turn_timeout=float(os.environ.get("CHEMCLAW_CHANNEL_TURN_TIMEOUT", "300")),
+            is_waiting_for_human=lambda sid: bool(self.inbox.pending(sid)),
         )
         # Desktop/UI prefs (default model, onboarding state) — not secrets; a plain JSON file.
         self._prefs = self._load_prefs()
@@ -1050,11 +1052,25 @@ class SessionManager:
             "attention": sum(1 for r in recommended if not r["connected"]),
         }
 
-    def inbox_question_asker(self, session_id: str, agent: str):
+    def inbox_question_asker(
+        self,
+        session_id: str,
+        agent: str,
+        *,
+        visibility: Any = None,
+        inline_notifier: Any = None,
+    ):
         """The Unattended `ask_user` handler: turn the agent's question into an Inbox item and
         suspend until a human answers it (from the Inbox, or inline when they open the session).
         Also the default for background/self-wake runs (no live socket). Mirrors to a bound channel
-        like the approver does."""
+        like the approver does.
+
+        ``TurnEngine`` instances are shared by desktop and Channel turns.  A desktop WebSocket
+        therefore configures this same handler with an inline notifier instead of replacing it
+        with a desktop-only implementation.  The active Channel ContextVar remains authoritative:
+        when present, the same Inbox item is mirrored to that exact conversation even if the
+        desktop session is currently attended.
+        """
 
         async def ask(
             args: dict[str, Any], tool_call_id: Optional[str] = None
@@ -1065,10 +1081,22 @@ class SessionManager:
             if fields is None:
                 return {"answer": "", "error": "no question"}
             inbox_name = self.inbox_routing.route_for(session_id, agent)
+            channel_target = current_channel_target()
+            item_visibility = visibility() if callable(visibility) else visibility
             item = self.inbox.add_question(
                 session_id,
                 inbox=inbox_name,
+                visibility=item_visibility or "inbox",
                 tool_call_id=tool_call_id,
+                data=(
+                    {
+                        "channel_target": channel_target,
+                        "channel_step": 0,
+                        "channel_answers": {},
+                    }
+                    if channel_target
+                    else None
+                ),
                 **fields,
             )
             if (
@@ -1076,11 +1104,30 @@ class SessionManager:
             ):  # durable resume re-raised an already-answered prompt
                 return answer_result(item.questions, item.resolution)
             self.persist_session(session_id)  # the pending tool call is now on disk
-            await self.mirror_inbox_item(item)
+            # A Channel-originated turn must always get the prompt back in the exact
+            # conversation.  An attended desktop may display the same source-of-truth item too.
+            if channel_target or item.visibility == "inbox":
+                await self.mirror_inbox_item(item)
+            if item.visibility == "inline" and callable(inline_notifier):
+                try:
+                    await inline_notifier(item)
+                except Exception:
+                    # The socket may have closed after installing this shared callback.  Channel
+                    # delivery above remains valid and must not be cancelled by a stale UI socket.
+                    logger.debug("inline question notification failed", exc_info=True)
             answer = await self.inbox.wait(item.id)
             return answer_result(item.questions, answer)
 
         return ask
+
+    @staticmethod
+    def _channel_prompt_data(data: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+        """Attach the active Channel conversation to a human-attention item."""
+        out = dict(data or {})
+        target = current_channel_target()
+        if target:
+            out["channel_target"] = target
+        return out
 
     def inbox_approver(self, session_id: str, agent: str):
         """Inbox-based approver — the default for no-socket runs (background, self-wake, durable
@@ -1094,7 +1141,9 @@ class SessionManager:
                 body=_approval_body(request),
                 inbox=self.inbox_routing.route_for(session_id, agent),
                 tool_call_id=getattr(request, "tool_call_id", None),
-                data=self.approval_prompt_data(session_id, request),
+                data=self._channel_prompt_data(
+                    self.approval_prompt_data(session_id, request)
+                ),
             )
             if item.state == "pending":
                 self.persist_session(session_id)
@@ -1111,10 +1160,12 @@ class SessionManager:
                 "Grant access to a folder?",
                 body=str(args.get("reason", "")),
                 inbox=self.inbox_routing.route_for(session_id, agent),
-                data={
-                    "path": str(args.get("path", "")),
-                    "writable": bool(args.get("writable", False)),
-                },
+                data=self._channel_prompt_data(
+                    {
+                        "path": str(args.get("path", "")),
+                        "writable": bool(args.get("writable", False)),
+                    }
+                ),
                 tool_call_id=tool_call_id,
             )
             if item.state == "pending":
@@ -1144,6 +1195,7 @@ class SessionManager:
                 "Approve the plan?",
                 body=str(args.get("plan", "")),
                 inbox=self.inbox_routing.route_for(session_id, agent),
+                data=self._channel_prompt_data(),
                 tool_call_id=tool_call_id,
             )
             if item.state == "pending":
@@ -3701,7 +3753,9 @@ class SessionManager:
                 body=_approval_body(request),
                 inbox=self.inbox_routing.route_for(session_id, task.agent),
                 tool_call_id=getattr(request, "tool_call_id", None),
-                data=self.approval_prompt_data(session_id, request),
+                data=self._channel_prompt_data(
+                    self.approval_prompt_data(session_id, request)
+                ),
             )
             if item.state == "pending":
                 self.persist_session(session_id)
@@ -3763,11 +3817,51 @@ class SessionManager:
 
     # -- mirroring inbox items to a bound channel -------------------------------
     async def mirror_inbox_item(self, item) -> None:
-        """Mirror an Inbox item to its bound channel. Discrete choices (approve/deny, ask_user
-        options) render as BUTTONS — the item id rides in each, so a click resolves it
-        unambiguously. Free-text answers aren't offered over messaging (open the app).
+        """Mirror one Inbox item to its exact Channel conversation.
+
+        Channel questions are plain text because the four managed platforms accept numbered or
+        textual replies.  A transport call merely being *attempted* is not delivery: inspect the
+        ``SendResult`` and retry a small bounded number of times while the item remains pending.
+        Security prompts stay desktop-only and are mirrored only as an explanatory notice.
         """
+        from ..channels.questions import CHANNEL_TARGET_KEY, format_channel_question
         from ..interactions import buttons_for
+
+        channel_target = str(
+            (getattr(item, "data", None) or {}).get(CHANNEL_TARGET_KEY) or ""
+        )
+        if channel_target and self.gateway is not None:
+            if item.kind == "question":
+                channel_text = format_channel_question(item)
+            elif item.kind in {"approval", "directory", "plan"}:
+                channel_text = (
+                    "ChemClaw 正在等待安全审批。此操作涉及本机目录、计划或外部写入，"
+                    "不能通过普通聊天消息放行；请在 ChemClaw 电脑桌面端完成审批。"
+                )
+            else:
+                channel_text = ""
+            if channel_text:
+                last_error = ""
+                for delay in (0.0, 0.25, 0.75):
+                    if getattr(item, "state", "pending") != "pending":
+                        return
+                    if delay:
+                        await asyncio.sleep(delay)
+                    try:
+                        result = await self.gateway.deliver(channel_target, channel_text)
+                        if getattr(result, "ok", False):
+                            return
+                        last_error = str(getattr(result, "error", "") or "发送失败")
+                    except Exception as exc:
+                        last_error = type(exc).__name__
+                        logger.debug("channel inbox mirror attempt failed", exc_info=True)
+                logger.warning(
+                    "channel inbox mirror exhausted for %s (%s)",
+                    channel_target,
+                    last_error or "unknown error",
+                )
+            # A target-bound item must never fall through to a different legacy Inbox binding.
+            return
 
         binding = self.inbox_routing.binding_for(item.inbox)
         if not (binding.channel and self.gateway is not None):
@@ -3841,16 +3935,101 @@ class SessionManager:
 
     # -- inbox replies over messaging connectors --------------------------------
     def _resolve_inbox_reply(self, event) -> bool:
-        """Try to handle an inbound Slack/Telegram message as an Inbox reply. Returns True if the
-        message carried an `[ow:<id>]` token (so it's consumed here, not routed as a new turn) —
-        resolving the item also releases any agent suspended on it."""
+        """Resolve a bound Channel question or a legacy token-correlated Inbox reply."""
+        from ..channels.questions import (
+            CHANNEL_TARGET_KEY,
+            format_channel_question,
+            is_explicit_answer,
+            next_group_state,
+            parse_channel_answer,
+        )
         from ..inbox_routing import resolve_from_reply
 
         text = getattr(event, "text", "") or ""
+        lowered = self._normalized_channel_command(text)
+        # Control commands always belong to the router, never to ask_user.
+        if self._is_channel_reset_command(text) or lowered in {
+            "/stop",
+            "停止当前任务",
+            "停止",
+        }:
+            return False
+
+        target = str(getattr(getattr(event, "source", None), "target", "") or "")
+
+        def _send_feedback(body: str) -> None:
+            if not body or not target or self.gateway is None:
+                return
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            task = loop.create_task(self.gateway.deliver(target, body))
+            task.add_done_callback(
+                lambda done: None if done.cancelled() else done.exception()
+            )
+
+        pending = [
+            item
+            for item in self.inbox.pending()
+            if item.kind == "question"
+            and str((item.data or {}).get(CHANNEL_TARGET_KEY) or "") == target
+        ]
+        if len(pending) > 1:
+            _send_feedback(
+                "当前会话存在多个待回答问题，ChemClaw 无法安全猜测对应项。"
+                "请到电脑桌面端处理，或先发送 /reset 开始新对话。"
+            )
+            return True
+        if pending:
+            item = pending[0]
+            parsed = parse_channel_answer(item, text)
+            if not parsed.valid:
+                _send_feedback(
+                    format_channel_question(item, correction=parsed.error)
+                )
+                return True
+            if item.questions:
+                complete, answers, next_step = next_group_state(item, parsed.answer)
+                if not complete:
+                    advanced = self.inbox.advance_question(
+                        item.id, step=next_step, answers=answers
+                    )
+                    if advanced is None:
+                        _send_feedback("该问题已在其他终端处理，请继续发送新的问题。")
+                    else:
+                        _send_feedback(format_channel_question(advanced))
+                    return True
+                resolution = json.dumps(answers, ensure_ascii=False)
+            else:
+                resolution = parsed.answer
+            if not self.inbox.resolve(item.id, resolution):
+                _send_feedback("该问题已在其他终端处理，请继续发送新的问题。")
+            return True
+        if is_explicit_answer(text):
+            _send_feedback("当前会话没有等待回答的问题；请直接发送你的新问题。")
+            return True
 
         def _resolve(item_id: str, resolution: str) -> bool:
             item = self.inbox.get(item_id)
             if item is None:
+                return False
+            bound_target = str(
+                (getattr(item, "data", None) or {}).get(CHANNEL_TARGET_KEY) or ""
+            )
+            if bound_target and bound_target != target:
+                _send_feedback(
+                    "该待答项属于另一个账号或会话，不能在当前会话中处理。"
+                )
+                return False
+            if (
+                item.kind in {"approval", "directory", "plan"}
+                and getattr(event.source, "platform", "")
+                in {"wecom", "weixin", "feishu", "dingtalk"}
+            ):
+                _send_feedback(
+                    "该操作涉及本机目录、计划或外部写入，必须在 ChemClaw 电脑桌面端审批。"
+                )
                 return False
             if (
                 getattr(event.source, "platform", "") == "slack"
@@ -3905,6 +4084,14 @@ class SessionManager:
     def is_running(self, session_id: str) -> bool:
         return session_id in self._running_sessions
 
+    def _channel_mapping_allows_delivery(self, session_id: str, target: str) -> bool:
+        """Suppress output from a managed Channel session after /reset remaps it."""
+        if not target:
+            return True
+        mapped = self.mention_sessions.get(target)
+        # Subscribed desktop sessions intentionally have no mention-session mapping.
+        return mapped is None or mapped == session_id
+
     async def _resume_wake(self, wake) -> None:
         await self.deliver_to_session(wake.session_id, self._wake_message(wake))
 
@@ -3949,7 +4136,148 @@ class SessionManager:
         )
         final_text = ""
         channel_reply_sent = False
+        connector = str((source or {}).get("connector") or "")
+        channel_target = str((source or {}).get("target") or "")
+        wecom_stream = connector == "wecom" and bool(channel_target)
+        weixin_stream = connector == "weixin" and bool(channel_target)
+        draft_text = ""
+        last_progress = ""
+        last_stream_at = 0.0
+        last_stream_len = 0
+        weixin_sent_prefix = ""
+        weixin_last_stream_at = 0.0
+        weixin_chunk_index = 0
+        stream_message_key = str(
+            (source or {}).get("message_id") or len(engine.messages)
+        )
+        chart_tool_results: list[dict[str, Any]] = []
+        STREAM_MIN_INTERVAL = 0.55
+        STREAM_MIN_CHARS = 80
+        WEIXIN_STREAM_MIN_INTERVAL = 1.0
+        WEIXIN_STREAM_MIN_CHARS = 240
+        WEIXIN_STREAM_HARD_CHARS = 720
+
+        async def _wecom_push(text: str, *, force: bool = False) -> None:
+            nonlocal last_stream_at, last_stream_len, last_progress
+            if (
+                not wecom_stream
+                or self.gateway is None
+                or not self._channel_mapping_allows_delivery(
+                    session_id, channel_target
+                )
+            ):
+                return
+            from ..channels.rich_output import channel_visible_text
+
+            body = channel_visible_text(text or "", final=force)
+            if not body:
+                return
+            now = time.monotonic()
+            if (
+                not force
+                and (now - last_stream_at) < STREAM_MIN_INTERVAL
+                and (len(body) - last_stream_len) < STREAM_MIN_CHARS
+            ):
+                return
+            if body == last_progress and not force:
+                return
+            try:
+                await self.gateway.update_stream(channel_target, body)
+                last_stream_at = now
+                last_stream_len = len(body)
+                last_progress = body
+            except Exception:
+                logger.debug("wecom stream update failed", exc_info=True)
+
+        def _weixin_chunk_boundary(text: str, start: int) -> int:
+            """Choose a readable, bounded prefix for iLink's discrete-message stream."""
+            remaining = len(text) - start
+            if remaining < WEIXIN_STREAM_MIN_CHARS:
+                return start
+            cap = min(len(text), start + 1200)
+            window = text[start:cap]
+            candidates: list[int] = []
+            for marker in ("\n\n", "\n", "。", "！", "？", "；", ". ", "! ", "? "):
+                pos = window.rfind(marker)
+                if pos >= 0:
+                    candidates.append(start + pos + len(marker))
+            readable = max(candidates, default=start)
+            if readable - start >= 160:
+                return readable
+            if remaining >= WEIXIN_STREAM_HARD_CHARS:
+                return min(len(text), start + WEIXIN_STREAM_HARD_CHARS)
+            return start
+
+        async def _weixin_push(text: str) -> None:
+            """Send only the newly stable suffix; iLink cannot edit one message in place."""
+            nonlocal weixin_sent_prefix, weixin_last_stream_at, weixin_chunk_index
+            if (
+                not weixin_stream
+                or self.gateway is None
+                or not self._channel_mapping_allows_delivery(
+                    session_id, channel_target
+                )
+            ):
+                return
+            from ..channels.rich_output import channel_visible_text
+
+            body = channel_visible_text(text or "", final=False)
+            if not body.startswith(weixin_sent_prefix):
+                # Provider revisions are rare; wait for the authoritative terminal message rather
+                # than streaming a conflicting continuation.
+                return
+            now = time.monotonic()
+            if (now - weixin_last_stream_at) < WEIXIN_STREAM_MIN_INTERVAL:
+                return
+            boundary = _weixin_chunk_boundary(body, len(weixin_sent_prefix))
+            if boundary <= len(weixin_sent_prefix):
+                return
+            chunk = body[len(weixin_sent_prefix) : boundary].strip()
+            if not chunk:
+                weixin_sent_prefix = body[:boundary]
+                return
+            result = await self.gateway.deliver_envelope(
+                channel_target,
+                OutboundEnvelope(
+                    platform="weixin",
+                    account_id="default",
+                    conversation_id="",
+                    kind="stream_chunk",
+                    text=chunk,
+                    idempotency_key=(
+                        f"channel-stream:{session_id}:{stream_message_key}:"
+                        f"{weixin_chunk_index}"
+                    ),
+                ),
+            )
+            if getattr(result, "ok", False):
+                weixin_sent_prefix = body[:boundary]
+                weixin_last_stream_at = now
+                weixin_chunk_index += 1
+            else:
+                logger.warning("weixin incremental delivery failed for %s", session_id)
+
         try:
+            if (
+                weixin_stream
+                and self.gateway is not None
+                and self._channel_mapping_allows_delivery(session_id, channel_target)
+            ):
+                progress = await self.gateway.deliver_envelope(
+                    channel_target,
+                    OutboundEnvelope(
+                        platform="weixin",
+                        account_id="default",
+                        conversation_id="",
+                        kind="progress",
+                        text="ChemClaw 正在处理…",
+                        idempotency_key=(
+                            f"channel-progress:{session_id}:{stream_message_key}"
+                        ),
+                    ),
+                )
+                if not getattr(progress, "ok", False):
+                    logger.warning("weixin progress delivery failed for %s", session_id)
             async for event in engine.run(
                 message,
                 source=source,
@@ -3964,31 +4292,59 @@ class SessionManager:
                 await self.broadcast_session(
                     session_id, {"type": event.type.value, "data": event.data}
                 )
-                if event.type.value == "assistant_message":
-                    candidate = str((event.data or {}).get("text") or "").strip()
+                etype = event.type.value
+                data = event.data or {}
+                if etype == "assistant_delta":
+                    delta = str(data.get("delta") or data.get("text") or "")
+                    if delta:
+                        draft_text += delta
+                        if wecom_stream:
+                            await _wecom_push(draft_text)
+                        elif weixin_stream:
+                            await _weixin_push(draft_text)
+                elif etype == "assistant_message":
+                    candidate = str(data.get("text") or "").strip()
                     if candidate:
                         final_text = candidate
-                elif event.type.value == "tool_finished" and (
-                    (event.data or {}).get("name") == "send_message"
-                ):
-                    outcome = (event.data or {}).get("outcome") or {}
-                    if (event.data or {}).get("status") == "ok" and outcome.get(
-                        "status"
-                    ) == "success":
-                        channel_reply_sent = True
+                        draft_text = candidate
+                        if wecom_stream:
+                            await _wecom_push(candidate, force=True)
+                elif etype == "tool_started" and wecom_stream:
+                    tool_name = str(data.get("name") or "工具")
+                    if not draft_text.strip():
+                        await _wecom_push(f"ChemClaw 正在调用 {tool_name}…")
+                elif etype == "tool_finished":
+                    if data.get("name") == "send_message":
+                        outcome = data.get("outcome") or {}
+                        if data.get("status") == "ok" and outcome.get("status") == "success":
+                            channel_reply_sent = True
+                    chart_spec = data.get("chart_spec")
+                    if isinstance(chart_spec, dict):
+                        chart_tool_results.append(
+                            {
+                                "name": str(data.get("name") or ""),
+                                "chart_spec": chart_spec,
+                                "args": data.get("args")
+                                if isinstance(data.get("args"), dict)
+                                else {},
+                                "preview": data.get("preview"),
+                            }
+                        )
                 # A background turn has no user watching to read an inline error: a dead model or
                 # tool failure would otherwise vanish. Log it and park it in the dead-letter store.
-                if event.type.value == "error":
-                    reason = (event.data or {}).get("error", "unknown error")
+                if etype == "error":
+                    reason = data.get("error", "unknown error")
                     logger.warning(
                         "background turn failed for %s: %s", session_id, reason
                     )
                     self.unrouted.record(
                         session_id, "-", _delivery_text(message), reason=reason
                     )
+                    if wecom_stream and not channel_reply_sent:
+                        await _wecom_push(
+                            f"ChemClaw 本轮出错：{reason}", force=True
+                        )
             self.save(session_id, engine)
-            channel_target = str((source or {}).get("target") or "")
-            connector = str((source or {}).get("connector") or "")
             # A Channel surface owns delivery of its final answer.  Tool-aware models may
             # explicitly call send_message; plain-answer models still get a reliable reply.
             # This applies only to the new Channel adapters, preserving legacy Slack/
@@ -3999,25 +4355,75 @@ class SessionManager:
                 and channel_target
                 and connector in {"wecom", "feishu", "dingtalk", "weixin"}
                 and self.gateway is not None
+                and self._channel_mapping_allows_delivery(session_id, channel_target)
             ):
-                message_key = str((source or {}).get("message_id") or len(engine.messages))
-                result = await self.gateway.deliver_envelope(
+                message_key = stream_message_key
+                outbound_text = final_text
+                outbound_attachments: list[ChannelAttachment] = []
+                from ..channels.rich_output import (
+                    compose_channel_rich_reply,
+                    rich_reply_attachments,
+                )
+                from ..channels.wecom_reply import extract_user_text_from_source
+
+                workspace = self.engine_workspace(session_id)
+                rich = compose_channel_rich_reply(
+                    assistant_text=final_text,
+                    workspace=workspace,
+                    file_storage=self.file_storage(),
+                    chart_tool_results=chart_tool_results,
+                    user_text=extract_user_text_from_source(source),
+                )
+                outbound_text = rich.text
+                outbound_attachments = rich_reply_attachments(rich)
+                if connector == "weixin" and weixin_sent_prefix:
+                    outbound_text = (
+                        outbound_text[len(weixin_sent_prefix) :]
+                        if outbound_text.startswith(weixin_sent_prefix)
+                        else outbound_text
+                    )
+                    # Every terminal byte was already delivered as ordered chunks.
+                    if not outbound_text.strip() and not outbound_attachments:
+                        channel_reply_sent = True
+                        outbound_text = ""
+                if outbound_text or outbound_attachments:
+                    result = await self.gateway.deliver_envelope(
+                        channel_target,
+                        OutboundEnvelope(
+                            platform=connector,
+                            account_id="default",
+                            conversation_id="",
+                            kind="final",
+                            text=outbound_text,
+                            attachments=outbound_attachments,
+                            idempotency_key=f"channel-final:{session_id}:{message_key}",
+                        ),
+                    )
+                    if not result.ok:
+                        logger.warning(
+                            "channel final delivery failed for %s (%s)",
+                            session_id,
+                            connector,
+                        )
+            elif (
+                (wecom_stream or weixin_stream)
+                and not channel_reply_sent
+                and self.gateway is not None
+                and not final_text
+                and self._channel_mapping_allows_delivery(session_id, channel_target)
+            ):
+                # Ensure stream closes even when the model produced no assistant_message.
+                await self.gateway.deliver_envelope(
                     channel_target,
                     OutboundEnvelope(
                         platform=connector,
                         account_id="default",
                         conversation_id="",
                         kind="final",
-                        text=final_text,
-                        idempotency_key=f"channel-final:{session_id}:{message_key}",
+                        text="本轮未产生可发送的正文。",
+                        idempotency_key=f"channel-final-empty:{session_id}",
                     ),
                 )
-                if not result.ok:
-                    logger.warning(
-                        "channel final delivery failed for %s (%s)",
-                        session_id,
-                        connector,
-                    )
         except (
             Exception
         ) as exc:  # an unexpected raise out of the turn must not be swallowed
@@ -4028,6 +4434,26 @@ class SessionManager:
             await self.broadcast_session(
                 session_id, {"type": "error", "data": {"error": str(exc)}}
             )
+            if (
+                (wecom_stream or weixin_stream)
+                and not channel_reply_sent
+                and self.gateway is not None
+                and self._channel_mapping_allows_delivery(session_id, channel_target)
+            ):
+                try:
+                    await self.gateway.deliver_envelope(
+                        channel_target,
+                        OutboundEnvelope(
+                            platform=connector,
+                            account_id="default",
+                            conversation_id="",
+                            kind="final",
+                            text=f"ChemClaw 本轮异常结束（{type(exc).__name__}）",
+                            idempotency_key=f"channel-final-err:{session_id}",
+                        ),
+                    )
+                except Exception:
+                    logger.debug("wecom error finish failed", exc_info=True)
         finally:
             reset_current_channel_target(channel_target_token)
             self.mark_idle(session_id)
@@ -4048,11 +4474,15 @@ class SessionManager:
         Channel turn and are never injected into its tool loop.
         """
         text = (getattr(event, "text", "") or "").strip()
-        lowered = text.lower()
+        lowered = self._normalized_channel_command(text)
         engine = self._engines.get(session_id)
         if lowered in {"/stop", "停止当前任务", "停止"}:
             if engine is not None and self.is_running(session_id):
                 engine.request_interrupt()
+            # A Channel ask_user call is suspended on the Inbox future rather than
+            # actively sampling the model. Resolve it as part of stop so the old
+            # turn can observe the interrupt and release the per-session FIFO.
+            self.inbox.resolve_session(session_id, "channel stop")
             return
         steering_prefixes = ("/steer ", "/补充 ", "补充当前任务：", "补充当前任务:")
         source = dict(source or {})
@@ -4083,7 +4513,7 @@ class SessionManager:
                 "event": event,
                 "target": target or event.source.target,
             },
-            wait=True,
+            wait=False,
         )
 
     async def _run_channel_delivery(self, session_id: str, payload: dict[str, Any]) -> None:
@@ -4100,6 +4530,24 @@ class SessionManager:
                 str(message), attachments, workspace
             )
             message = build_user_content(framed, prompt_attachments)
+        source = dict(payload.get("source") or {})
+        # D-195: WeCom-only delivery guidance (summary + HTML link default).
+        if source.get("connector") == "wecom":
+            from ..channels.wecom_reply import wecom_turn_guidance_suffix
+
+            suffix = wecom_turn_guidance_suffix()
+            if isinstance(message, str):
+                message = message + suffix
+            elif isinstance(message, list):
+                # Prefer appending to the last text part.
+                appended = False
+                for part in reversed(message):
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        part["text"] = str(part.get("text") or "") + suffix
+                        appended = True
+                        break
+                if not appended:
+                    message = list(message) + [{"type": "text", "text": suffix}]
         event_target = str(getattr(event.source, "target", "") or "")
         channel_token = set_current_channel_target(
             str(payload.get("target") or event_target)
@@ -4108,7 +4556,7 @@ class SessionManager:
             await self.deliver_to_session(
                 session_id,
                 message,
-                source=payload.get("source"),
+                source=source,
             )
         finally:
             reset_current_channel_target(channel_token)
@@ -4209,6 +4657,103 @@ class SessionManager:
                 src.target, who, text, reason="no DM session designated"
             )
 
+    @staticmethod
+    def _normalized_channel_command(text: str) -> str:
+        """Return an exact Channel command after removing transport mention tokens."""
+        value = str(text or "").strip()
+        # Feishu and Slack-style payloads can retain a structured leading mention.
+        value = re.sub(r"^<at\b[^>]*>.*?</at>\s*", "", value, flags=re.IGNORECASE)
+        value = re.sub(r"^<@[A-Za-z0-9_\-]+(?:\|[^>]*)?>\s*", "", value)
+        value = re.sub(r"^@_user_\d+\s*", "", value, flags=re.IGNORECASE)
+        # DingTalk/WeCom SDKs may retain the visible robot name instead.
+        value = re.sub(r"^@(?:ChemClaw|芯化小龙虾|芯化和云)\s*", "", value, flags=re.IGNORECASE)
+        return value.strip().lower()
+
+    @classmethod
+    def _is_channel_reset_command(cls, text: str) -> bool:
+        # Exact whole-message phrases only.  This keeps a sentence such as
+        # “开新的对话然后查甲醇” as an ordinary user request instead of silently discarding it.
+        value = cls._normalized_channel_command(text).rstrip("。.!！?？").strip()
+        return value in {
+            "/new",
+            "/reset",
+            "/新对话",
+            "/新的对话",
+            "新对话",
+            "新的对话",
+            "开新对话",
+            "开新的对话",
+            "开始新对话",
+            "开始新的对话",
+            "开启新对话",
+            "开启新的对话",
+            "新建对话",
+            "重新开始对话",
+            "重新开一个对话",
+            "另开一个新对话",
+        }
+
+    async def _reset_managed_channel_session(
+        self, event: Any, *, target: str
+    ) -> Optional[str]:
+        """Create a fresh durable session and atomically give it the Channel target."""
+        import uuid
+
+        src = event.source
+        old_sid = self.mention_sessions.get(target)
+        new_sid = uuid.uuid4().hex
+        engine = self.get_engine(new_sid, agent=self.personas.default_id())
+        if engine is None:
+            if self.gateway is not None:
+                await self.gateway.deliver(
+                    target, "无法创建新的 ChemClaw 对话，请稍后重试。"
+                )
+            return None
+
+        account_chat = (
+            f"{src.account_id}/{src.chat_id}"
+            if getattr(src, "account_id", "default") != "default"
+            else src.chat_id
+        )
+        channel = f"{src.platform}:{account_chat}"
+        engine.permissions.task_rules.setdefault("send_message", set()).add(target)
+        self.save(new_sid, engine)
+        # One locked MentionSessionStore.set() is the ownership cut-over. Old
+        # output is suppressed from this point; the old conversation itself stays.
+        self.mention_sessions.set(target, new_sid, channel=channel)
+
+        platform_label = {
+            "wecom": "企业微信",
+            "feishu": "飞书",
+            "dingtalk": "钉钉",
+            "weixin": "个人微信",
+        }.get(src.platform, src.platform)
+        who = src.user_name or src.user_id or "用户"
+        if src.chat_type in {"group", "channel"}:
+            where = src.chat_name or src.chat_id
+            self.session_store.rename(new_sid, f"{where} — {platform_label}新对话")
+            self.session_store.set_origin(new_sid, src.platform, f"{platform_label} · {where}")
+        else:
+            self.session_store.rename(new_sid, f"{who} — {platform_label}私聊")
+            self.session_store.set_origin(new_sid, src.platform, f"{platform_label} · {who}")
+
+        if old_sid and old_sid != new_sid:
+            old_engine = self._engines.get(old_sid)
+            if old_engine is not None:
+                grants = old_engine.permissions.task_rules.get("send_message")
+                if grants is not None:
+                    grants.discard(target)
+                if self.is_running(old_sid):
+                    old_engine.request_interrupt()
+            self.inbox.resolve_session(old_sid, "channel session reset")
+
+        if self.gateway is not None:
+            await self.gateway.deliver(
+                target,
+                "已开始新对话。旧对话仍保留在 ChemClaw 电脑端；下一条消息将使用全新上下文。",
+            )
+        return new_sid
+
     async def _route_direct_channel(self, event, ms: MessageSource) -> None:
         """Route a private IM conversation to its own durable ChemClaw session."""
         import uuid
@@ -4216,6 +4761,9 @@ class SessionManager:
         src = event.source
         target = src.target
         who = src.user_name or src.user_id or "?"
+        if self._is_channel_reset_command(event.text):
+            await self._reset_managed_channel_session(event, target=target)
+            return
         sid = self.mention_sessions.get(target)
         if sid and self.session_store.load(sid) is not None:
             await self.deliver_channel_to_session(
@@ -4255,8 +4803,15 @@ class SessionManager:
         opening = (
             f"{event.tagged_text()}\n\n"
             f"这是独立的{platform_label}私聊会话。请用 send_message 回复 target "
-            f'"{target}"；该会话内的文本回复已预授权。发送文件仍必须由用户明确要求，'
-            "并继续走 send_file 的权限审批。"
+            f'"{target}"；该会话内的文本回复已预授权。'
+            + (
+                " 企业微信不要发送 Markdown（.md）附件——完整报告由系统生成精装 HTML 链接；"
+                "普通问答只回文字、不要 send_file。发送其它文件仍须用户明确要求并走 send_file 审批。"
+                if src.platform == "wecom"
+                else (
+                    "发送文件仍必须由用户明确要求，并继续走 send_file 的权限审批。"
+                )
+            )
         )
         try:
             await self.deliver_channel_to_session(
@@ -4297,6 +4852,19 @@ class SessionManager:
             if src.platform == "slack" and src.chat_name
             else src.chat_name or src.chat_id
         )
+        if self._is_channel_reset_command(event.text):
+            if subs:
+                if self.gateway is not None:
+                    await self.gateway.deliver(
+                        thread_target,
+                        "该群已显式绑定到电脑端对话，群成员不能重置桌面对话。"
+                        "请在 ChemClaw 电脑端新建或调整绑定。",
+                    )
+                return
+            await self._reset_managed_channel_session(
+                event, target=thread_target
+            )
+            return
         if subs:
             # The user connected a coworker to this channel — it answers tags; no spawn.
             msg = (
@@ -4505,7 +5073,11 @@ class SessionManager:
         return run
 
     async def _notify_task_done(self, task, run: TaskRun) -> None:
-        summary = (run.result_text or "").strip()[:280]
+        from ..channels.rich_output import channel_visible_text
+
+        # Scheduled notifications are also plain Channel bubbles. They only carry a short
+        # notice, never desktop-only ChartSpec/Mermaid renderer source.
+        summary = channel_visible_text(run.result_text or "", final=True)[:280]
         # Notify any socket viewing this scheduled run's session (it's a durable session of its own).
         await self.broadcast_session(
             run.session_id,

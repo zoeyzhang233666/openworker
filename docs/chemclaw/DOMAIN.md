@@ -94,7 +94,23 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 
 ### Channel（多平台消息通道）
 
-平台无关的入站/出站消息边界（D-188 / D-193）。`coworker/channels` 提供 Envelope、Capabilities、媒体安全与按会话 FIFO；适配器覆盖企业微信、飞书、钉钉、官方个人微信 iLink（仅私聊）以及既有 Slack/Telegram。Channel 用户不提升本机权限；普通消息排队为独立轮次，仅明确补充/停止命令可 steering。
+平台无关的入站/出站消息边界（D-188 / D-193 / D-196）。`coworker/channels` 提供 Envelope、Capabilities、媒体安全与按会话 FIFO；适配器覆盖企业微信、飞书、钉钉、官方个人微信 iLink（仅私聊）以及既有 Slack/Telegram。Channel 用户不提升本机权限；普通消息排队为独立轮次，明确补充/停止命令优先处理，`ask_user` 回答不入普通队列而直接释放对应挂起轮次。
+
+### Channel 待答交互
+
+一个以 Inbox item 为唯一状态源的跨终端 `ask_user` 等待状态。它绑定精确 `platform/account/conversation`，携带当前分组步骤与已收集答案；只接受同一授权私聊，或同一自动管理群中的已授权成员回答。桌面正在显示同一会话时，桌面卡片和 Channel 文本问题引用同一个 item，任一端回答均只释放一次。镜像以真实 `SendResult` 为准，短暂失败在 pending 期间有限重试。无效答案保持等待，多个待答冲突时拒绝猜测。本机目录、计划与外部写入审批不属于该交互，仍须电脑端处理。
+
+### Channel 托管会话
+
+由 ChemClaw 为一个 Channel target 自动创建并持久化的对话。`/new`、`/reset` 以及“开新的对话”“新的对话”“新建对话”等有限整句同义命令，原子把 target 映射到新会话，不删除旧会话；包含其它请求的长句不触发重置。旧轮次在所有权切换后不得再向该 target 发送 stream、终态或工具文本。显式订阅到桌面对话的群不是托管会话，群成员不能用命令重置它。
+
+### 个人微信增量流
+
+官方 iLink 私聊通道上的渐进式回答合同。iLink 没有企微 `reply_stream` 的单气泡原位刷新接口，因此 ChemClaw 先发一次处理提示，再按标点、长度和时间阈值发送有序正文段，终态只补未发送尾段；诊断值为 `streaming_mode=incremental_messages`。每段复用同一入站会话的 `context_token`，并在发送前校验 Channel 会话所有权。
+
+### Channel 富内容交付
+
+无前端渲染能力的 IM Channel 对 assistant 正文的出站策略（D-199 / D-199b）。`chart`/`mermaid`/`mmd` 围栏及其 JSON 源码不得进入聊天气泡；`channel_visible_text` 在流式阶段隐藏未闭合围栏，终态/`send_message` 经 `compose_channel_rich_reply` 把完整正文或 workspace `report.md` cook 为精装 HTML，再按 D-194 FileStorage 发 COS 链接或原生 `.html` 附件。有 chart 时 best-effort 另发与 HTML **同源**的 PNG 预览图。`report.md` 优先于正文 inline chart；只发一条链接。交付失败时只保留可读结论与中文降级说明，不回退原始 ChartSpec。桌面 GUI 仍保存并渲染完整 assistant message；普通代码围栏不受影响。
 
 ### 云文件存储（FileStorage）
 
@@ -459,7 +475,7 @@ ChemClaw 对话框与 2D 图谱并列联动的工作界面。对话检索可定�
 
 ### 市场口径
 
-一次行情请求所指的交易与报价体系，例如化工现货、国内期货或全球期货。市场口径由用户明确说出的“现货/期货”、交易所或合约代码决定，品种名本身不等于市场口径；甲醇、原油等裸品种问价存在多种合理口径时必须先澄清。**默认一次只选一个口径**；当用户明确要求期现对照、基差或期货套利并结合现货时，允许同一轮同时读取化工现货与国内期货（D-177），但仍须标注来源，禁止把期货价冒充现货或反之。
+一次行情请求所指的交易与报价体系，例如化工现货、国内期货或全球期货。市场口径由用户明确说出的“现货/期货”、交易所或合约代码决定，品种名本身不等于市场口径；甲醇、原油等裸品种问价存在多种合理口径时应先澄清。**默认一次只选一个口径**；当用户明确要求期现对照、基差或期货套利并结合现货时，允许同一轮同时读取化工现货与国内期货（D-177），但仍须标注来源，禁止把期货价冒充现货或反之。D-197 后，这些口径规则是 Planner/投影/prompt 的来源选择引导与回答质量合同，不再在 Tool 执行前产生 `market-scope denied` 硬拒绝。
 
 ### 化工现货价格
 

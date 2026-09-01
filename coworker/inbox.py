@@ -204,6 +204,7 @@ class InboxStore:
         multi=False,
         header="",
         questions=None,
+        data=None,
         tool_call_id=None,
     ) -> InboxItem:
         return self.add(
@@ -218,6 +219,7 @@ class InboxStore:
             multi=multi,
             header=header,
             questions=questions,
+            data=data,
             tool_call_id=tool_call_id,
         )
 
@@ -331,6 +333,26 @@ class InboxStore:
             if self.resolve(item.id, resolution):
                 closed += 1
         return closed
+
+    def advance_question(
+        self,
+        item_id: str,
+        *,
+        step: int,
+        answers: dict[str, str],
+    ) -> Optional[InboxItem]:
+        """Persist one grouped Channel answer without resolving the whole item."""
+        with self._lock:
+            item = self._items.get(item_id)
+            if item is None or item.state != STATE_PENDING or not item.questions:
+                return None
+            item.data = dict(item.data or {})
+            item.data["channel_step"] = int(step)
+            item.data["channel_answers"] = {
+                str(key): str(value) for key, value in answers.items()
+            }
+            self._save()
+            return item
 
     async def wait(self, item_id: str) -> str:
         """Await an item's resolution; returns the resolution string. Used by the approver to

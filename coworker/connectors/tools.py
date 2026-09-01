@@ -159,9 +159,13 @@ def make_send_message_tool(
     secrets: SecretStore,
     *,
     senders: Optional[dict[str, Sender]] = None,
+    file_senders: Optional[dict[str, FileSender]] = None,
+    workspace: Optional[Path] = None,
+    file_storage: Optional[Any] = None,
 ) -> Callable[..., Any]:
     """Build the `send_message` tool bound to a SecretStore (and optional sender registry)."""
     senders = senders if senders is not None else DEFAULT_SENDERS
+    file_senders = file_senders if file_senders is not None else DEFAULT_FILE_SENDERS
 
     def send_message(target: str, text: str) -> dict[str, Any]:
         try:
@@ -181,10 +185,56 @@ def make_send_message_tool(
             if platform == "wecom":
                 return {"error": "企业微信未连接 — 请先在连接设置中填写 bot_id 与 secret"}
             return {"error": f"no bot token for {platform} — connect it first"}
+        from ..channels.rich_output import (
+            compose_channel_rich_reply,
+            deliver_rich_reply_files,
+            needs_channel_html_delivery,
+            rich_delivery_failure_text,
+        )
+
+        rich = None
+        if needs_channel_html_delivery(text, workspace):
+            rich = compose_channel_rich_reply(
+                assistant_text=text,
+                workspace=workspace,
+                file_storage=file_storage,
+            )
+            text = rich.text
         if platform == "slack":
             from .attribution import sender_prefix
 
             text = sender_prefix(secrets, chat_id) + text
+        if rich is not None and (
+            rich.preview_image_bytes or (rich.html_url is None and rich.html_bytes)
+        ):
+            delivered = deliver_rich_reply_files(
+                platform=platform,
+                chat_id=chat_id,
+                thread_id=thread_id,
+                token=token,
+                reply=rich,
+                comment=text,
+                file_storage=file_storage,
+                file_senders=file_senders,
+                text_senders=senders,
+            )
+            if rich.html_url is None and rich.html_bytes:
+                if delivered.get("ok"):
+                    return {
+                        "ok": True,
+                        "message_id": delivered.get("message_id"),
+                        "target": target,
+                        "delivery": delivered.get("delivery"),
+                        "filename": rich.filename,
+                        "preview": delivered.get("preview"),
+                    }
+                text = delivered.get("text") or rich_delivery_failure_text(
+                    rich, delivered.get("error") or ""
+                )
+                if platform == "slack":
+                    from .attribution import sender_prefix
+
+                    text = sender_prefix(secrets, chat_id) + text
         result = sender(token, chat_id, text, thread_id)
         if result.ok:
             return {"ok": True, "message_id": result.message_id, "target": target}
@@ -384,7 +434,36 @@ def make_send_file_tool(
         token = _resolve_token(secrets, platform, chat_id)
         if not token:
             return {"error": f"no bot token for {platform} — connect it first"}
-        if as_screenshot:
+        # D-195c: WeCom renders Markdown files poorly — convert .md → polished HTML.
+        wecom_md_converted = False
+        if platform == "wecom" and resolved.suffix.lower() in {".md", ".markdown"}:
+            from ..report_html.cook import cook_report_html
+
+            try:
+                md_text = resolved.read_text(encoding="utf-8")
+            except OSError as exc:
+                return {
+                    "error": (
+                        "企业微信不发送 Markdown 文件；读取报告以生成精装 HTML 失败："
+                        f"{exc}"
+                    )
+                }
+            cooked = cook_report_html(
+                md_text,
+                title=resolved.stem,
+                workspace=workspace,
+                write_local=True,
+            )
+            data = cooked.html.encode("utf-8")
+            filename = f"{(title or cooked.title or resolved.stem).strip() or resolved.stem}.html"
+            if not filename.lower().endswith((".html", ".htm")):
+                filename = f"{filename}.html"
+            if not (comment or "").strip():
+                comment = "完整版已转为精装网页（企业微信不发送 Markdown 文件）"
+            if not title:
+                title = cooked.title
+            wecom_md_converted = True
+        elif as_screenshot:
             if resolved.suffix.lower() not in (".html", ".htm"):
                 return {"error": "as_screenshot only applies to .html files"}
             try:
@@ -422,6 +501,11 @@ def make_send_file_tool(
                 "filename": filename,
                 "delivery": delivered.delivery,
             }
+            if wecom_md_converted:
+                out["converted_from"] = "markdown"
+                out["warning"] = (
+                    "企业微信不适合发送 Markdown 文件，已自动改为精装 HTML 完整版。"
+                )
             if delivered.file_ref is not None:
                 out["file_ref"] = {
                     "url": delivered.file_ref.url,

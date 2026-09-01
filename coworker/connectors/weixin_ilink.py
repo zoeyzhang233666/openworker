@@ -301,12 +301,17 @@ class WeixinIlinkAdapter(BasePlatformAdapter):
         self._qr_poll_base_url = DEFAULT_BASE_URL
         self._pending_verify_code = ""
         self._sent_keys: set[str] = set()
+        self._last_poll_at: Optional[float] = None
+        self._last_poll_message_count = 0
+        self._last_inbound_at: Optional[float] = None
         self.capabilities = ChannelCapabilities(
             direct_messages=True,
             group_chat=False,
             group_mentions=False,
             proactive_messages=False,
-            streaming=False,
+            # iLink has no WeCom-style single-message update API. ChemClaw provides ordered,
+            # throttled incremental messages and reports the concrete mode in status details.
+            streaming=True,
             receive_images=True,
             send_images=True,
             receive_files=True,
@@ -325,6 +330,10 @@ class WeixinIlinkAdapter(BasePlatformAdapter):
             **({"qr_url": self._qr_url} if self._qr_url else {}),
             **({"qr_status": self._qr_status} if self._qr_status else {}),
             "needs_verify_code": self._qr_status == "need_verifycode",
+            "last_poll_at": self._last_poll_at,
+            "last_poll_message_count": self._last_poll_message_count,
+            "last_inbound_at": self._last_inbound_at,
+            "streaming_mode": "incremental_messages",
         }
         if self._last_error:
             status.last_error = self._last_error
@@ -511,6 +520,9 @@ class WeixinIlinkAdapter(BasePlatformAdapter):
         while not self._closing and self.api.token:
             try:
                 data = await self.api.get_updates(self._cursor)
+                self._last_poll_at = time.time()
+                messages = data.get("msgs") if isinstance(data.get("msgs"), list) else []
+                self._last_poll_message_count = len(messages)
                 ret = int(data.get("ret") or data.get("errcode") or 0)
                 if ret == -14:
                     self.api.token = ""
@@ -528,7 +540,7 @@ class WeixinIlinkAdapter(BasePlatformAdapter):
                 if next_cursor != self._cursor:
                     self._cursor = next_cursor
                     self._persist()
-                for message in data.get("msgs") or []:
+                for message in messages:
                     if isinstance(message, dict) and int(message.get("message_type") or 0) == 1:
                         await self._on_message(message)
             except asyncio.CancelledError:
@@ -543,6 +555,7 @@ class WeixinIlinkAdapter(BasePlatformAdapter):
         inbound = weixin_update_to_inbound(raw, account_id=self.account_id)
         if inbound is None:
             return
+        self._last_inbound_at = time.time()
         if inbound.context_token:
             self._context_tokens[inbound.user_id] = inbound.context_token
             self._persist()

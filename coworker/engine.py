@@ -1448,26 +1448,6 @@ class TurnEngine:
                 {"name": tool_call.name, "arguments": tool_call.arguments},
             )
             self._audit(tool_call, stage="proposed")
-            market_guard = self._market_tool_guard(tool_call.name)
-            if market_guard is not None and not market_guard[0]:
-                reason = market_guard[1]
-                self.messages.append(_tool_error_message(tool_call, reason))
-                self._audit(
-                    tool_call,
-                    stage="finished",
-                    status="denied",
-                    reason=reason,
-                )
-                yield Event(
-                    EventType.TOOL_FINISHED,
-                    {
-                        "name": tool_call.name,
-                        "status": "denied",
-                        "reason": reason,
-                        "outcome": {"status": "denied", "error_code": "DENIED"},
-                    },
-                )
-                continue
             plan_guard = self._turn_plan_tool_guard(tool_call.name)
             if plan_guard is not None and not plan_guard[0]:
                 reason = plan_guard[1]
@@ -1484,7 +1464,7 @@ class TurnEngine:
                 )
                 continue
             # Interactive tools skip PermissionEngine because their out-of-band user
-            # choice is the consent, but they still pass both execution guards above.
+            # choice is the consent, but they still pass the Scenario guard above.
             if tool_call.name == "request_directory":
                 async for event in self._handle_directory_request(tool_call):
                     yield event
@@ -1532,17 +1512,18 @@ class TurnEngine:
             result, status = await asyncio.to_thread(self._execute_sync, tool_call)
             yield self._record_result(tool_call, result, status)
 
-    def _market_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
-        plan = self._active_turn_plan
-        selection = plan.market_selection if plan is not None else None
-        if selection is None:
-            return None
-        return selection.guard_tool(tool_name, self._resolved_market_scope)
-
     def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
         """D-169 allowlist guard; PermissionEngine remains the final authority."""
         plan = self._active_turn_plan
         if plan is None or not plan.scenario_projection_applied:
+            return None
+        if (
+            plan.market_selection is not None
+            and plan.market_selection.intent.is_market
+        ):
+            # D-197: market plans use projection as model guidance, not a second
+            # execution-denial layer. Correct live MCP calls must not be rejected
+            # because a durable/stale plan captured a different provider name.
             return None
         profile = plan.execution_profile
         allowed = set(profile.allowed_tool_names or ()) if profile is not None else set()

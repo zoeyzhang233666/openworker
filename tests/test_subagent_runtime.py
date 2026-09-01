@@ -400,12 +400,13 @@ def test_research_child_inherits_parent_dual_market_scope(tmp_path):
     assert (
         child._inherited_market_selection.intent.kind.value == "cn_spot_futures"
     )
-    # Short child task alone would clarify; inheritance must unlock dual tools.
+    # Inheritance still informs routing/projection, but D-197 makes the market
+    # Scenario guard advisory at execution time.
     child._activate_plan("研究上游成本与期现关系")
     spot = "mcp__chem_data_hub__get_price_trend"
     futures = "lookup_cn_futures_ohlc"
-    assert child._market_tool_guard(spot) == (True, "market scope matched")
-    assert child._market_tool_guard(futures) == (True, "market scope matched")
+    assert child._turn_plan_tool_guard(spot) is None
+    assert child._turn_plan_tool_guard(futures) is None
     manager.background_tasks.close()
 
 

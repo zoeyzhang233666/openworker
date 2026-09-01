@@ -61,6 +61,37 @@ def test_spot_mcp_server_name_normalizes_hyphen_and_underscore():
     assert selection.allowed_tool_names == (SPOT_UNDERSCORE, *WEB)
 
 
+def test_market_news_mcp_is_supplemental_not_price_scope_controlled():
+    tools = _tools()
+    tools.append(
+        ToolDescriptor(
+            "mcp__chem-data-hub__list_market_news_live",
+            "mcp",
+            ("chem_data_hub",),
+        )
+    )
+    selection = resolve_market_tools("查询甲醇现货价格及相关新闻", tools)
+
+    assert selection.intent.kind is MarketIntentKind.CHEMICAL_SPOT
+    assert selection.guard_tool(
+        "mcp__chem-data-hub__list_market_news_live", selection.intent.scope
+    ) is None
+    assert selection.guard_tool(SPOT, selection.intent.scope) == (
+        True,
+        "market scope matched",
+    )
+
+
+def test_legacy_scope_diagnostic_still_classifies_dynamic_price_mcp():
+    tools = _tools()
+    tools.append(ToolDescriptor("mcp__other-market__get_product_price", "mcp"))
+    selection = resolve_market_tools("查询甲醇现货价格", tools)
+
+    assert selection.guard_tool(
+        "mcp__other-market__get_product_price", selection.intent.scope
+    ) == (False, "该工具与用户选择的现货/期货市场口径不一致")
+
+
 def test_dynamic_mcp_requires_matching_server_or_capability_metadata():
     selection = resolve_market_tools("查甲醇现货价格", _tools(include_spot=False))
     assert selection.intent.kind is MarketIntentKind.CHEMICAL_SPOT
