@@ -5,7 +5,7 @@ from dataclasses import replace
 from coworker.config import Config
 from coworker.execution_profile import RequestRoute
 from coworker.request_router import RouterContext
-from coworker.turn_planner import PromptProfile, TurnPlanner
+from coworker.turn_planner import PromptProfile, TurnOrigin, TurnPlanner
 
 
 TOOLS = (
@@ -38,6 +38,8 @@ TOOLS = (
     "background_task_stop",
     "background_task_gather",
     "mcp__chem-data-hub__get_price_trend",
+    "mcp__chem-data-hub__search_compound",
+    "mcp__chem-data-hub__list_market_news_live",
     "mcp_custom_unknown",
 )
 
@@ -228,9 +230,12 @@ def test_turn_planner_guards_attachment_source_skill_persona_and_resume():
     attachment = planner.plan(
         [{"type": "text", "text": "你好"}, {"type": "image_url", "image_url": {}}]
     )
-    source = planner.plan("你好", source={"kind": "slack"})
+    channel_user = planner.plan("你好", source={"kind": "dm", "connector": "weixin"})
+    source = planner.plan("你好", source={"kind": "subagent"}, origin=TurnOrigin.BACKGROUND)
     forced = planner.plan("你好", display="/skill finance")
     resumed = planner.plan("(resumed)", durable_resume=True)
+    assert channel_user.decision is not None
+    assert channel_user.decision.route is RequestRoute.FAST_CHAT
     for plan in (attachment, source, forced, resumed):
         assert plan.decision is not None
         assert plan.decision.route is RequestRoute.AGENT
@@ -250,6 +255,21 @@ def test_turn_planner_guards_attachment_source_skill_persona_and_resume():
     ).plan("你好")
     assert persona.decision is not None
     assert persona.decision.route is RequestRoute.AGENT
+
+
+def test_market_report_uses_bounded_summary_profile_and_no_shell() -> None:
+    plan = _planner().plan("生成液化气的市场周报")
+    assert plan.scenario_resolution is not None
+    assert plan.scenario_resolution.scenario_id == "chemical_market_report"
+    assert plan.decision is not None
+    assert plan.decision.route is RequestRoute.VERIFIED
+    assert plan.execution_profile is not None
+    assert plan.execution_profile.max_iterations == 3
+    assert plan.prompt_profile is PromptProfile.REPORT_SUMMARY
+    allowed = set(plan.execution_profile.allowed_tool_names or ())
+    assert "run_shell" not in allowed
+    assert "write_file" not in allowed
+    assert "mcp__chem-data-hub__get_price_trend" in allowed
 
 
 def test_router_off_is_fully_legacy():

@@ -15,3 +15,9 @@ def test_tool_outcome_classifies_legacy_payloads_without_losing_raw_data() -> No
     assert partial.status == "partial"
     assert failed.status == "failed"
     assert denied.status == "denied"
+
+
+def test_tool_outcome_marks_shell_timeout_failed() -> None:
+    outcome = normalize_tool_outcome({"timed_out": True, "output": "partial"})
+    assert outcome.status == "failed"
+    assert outcome.error_code == "TIMEOUT"

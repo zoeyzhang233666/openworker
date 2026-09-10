@@ -2158,6 +2158,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         ) -> None:
             # The receive loop atomically claims this session before scheduling the task.
             # Keeping the claim outside prevents two back-to-back frames from both starting.
+            final_text = ""
             try:
                 events = (
                     engine.retry()
@@ -2167,6 +2168,8 @@ def create_app(manager: SessionManager) -> FastAPI:
                     )
                 )
                 async for event in events:
+                    if event.type.value == "assistant_message":
+                        final_text = str((event.data or {}).get("text") or final_text)
                     # Broadcast to every socket viewing this session (this socket included — it's a
                     # registered client), so a second view of the same session stays in sync too.
                     await manager.broadcast_session(
@@ -2177,6 +2180,10 @@ def create_app(manager: SessionManager) -> FastAPI:
             finally:
                 manager.mark_idle(session_id)
                 manager.save(session_id, engine)
+                if not retry and final_text:
+                    manager.start_market_report_background(
+                        session_id, content, summary=final_text
+                    )
                 await manager.broadcast_session(
                     session_id, {"type": "turn_done", "data": {}}
                 )
@@ -2261,6 +2268,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     _resolve_pending(str(message.get("answer", "")))
                 elif kind == "interrupt":
                     engine.request_interrupt()
+                    manager._cancel_market_reports(session_id)
                 elif kind == "retry":
                     # Re-run after a provider error (engine guards on the error-notice
                     # tail, so a stray frame is a no-op that still ends with turn_done).

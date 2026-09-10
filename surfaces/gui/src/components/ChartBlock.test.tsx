@@ -526,9 +526,10 @@ describe("candlestick stage annotations", () => {
     });
     render(<ChartBlock source={candle} />);
     await waitFor(() => expect(ChartMock).toHaveBeenCalled());
-    // Default latest on mount, pinned.
+    // Default latest on mount, crosshair follows cursor.
     await waitFor(() => expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/2026-01-03/));
-    expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("true");
+    expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false");
+    expect(screen.getByTestId("chart-crosshair-status").textContent).toMatch(/跟随|follows/i);
 
     const wrap = screen.getByTestId("chart-canvas-wrap");
     const canvas = screen.getByTestId("chart-canvas");
@@ -545,12 +546,6 @@ describe("candlestick stage annotations", () => {
     } as DOMRect;
     vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue(rect);
 
-    // Unpin so hover can snap.
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() =>
-      expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false"),
-    );
-
     fireEvent.mouseMove(wrap, { clientX: 200, clientY: 40 });
     await waitFor(() => expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/2026-01-02/));
     const panel = screen.getByTestId("chart-axis-panel");
@@ -558,6 +553,7 @@ describe("candlestick stage annotations", () => {
     expect(panel.style.left).toBe("4px");
     expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/拖动平移|Drag to pan/);
     expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/单击固定|Click to pin/);
+    expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/双击取消|double-click/i);
     expect(screen.getByTestId("chart-hint-row").getAttribute("data-reveal")).toBe("hover");
     expect(screen.getByTestId("chart-hint-row").getAttribute("data-slot")).toBe("top");
     expect(
@@ -597,17 +593,32 @@ describe("candlestick stage annotations", () => {
       expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false");
       expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/2026-01-03/);
     });
+
+    getValueForPixelMock.mockReturnValue(1);
+    fireEvent.mouseMove(wrap, { clientX: 200, clientY: 40 });
+    await waitFor(() => expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/2026-01-02/));
+    fireEvent.mouseDown(wrap, { clientX: 200, clientY: 40, button: 0 });
+    fireEvent.click(wrap, { clientX: 200, clientY: 40, button: 0 });
+    await waitFor(() =>
+      expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("true"),
+    );
+    fireEvent.doubleClick(wrap, { clientX: 200, clientY: 40 });
+    await waitFor(() =>
+      expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false"),
+    );
   });
 
-  it("line chart defaults to latest pinned and centers short panel", async () => {
+  it("line chart defaults to latest with crosshair following and centers short panel", async () => {
     render(<ChartBlock source={validLine} />);
     await waitFor(() => expect(ChartMock).toHaveBeenCalled());
     await waitFor(() => expect(screen.getByTestId("chart-axis-panel")).toBeTruthy());
     expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/D2/);
-    expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("true");
+    expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false");
+    expect(screen.getByTestId("chart-crosshair-status").textContent).toMatch(/跟随|follows/i);
     expect(screen.getByTestId("chart-axis-panel").getAttribute("data-centered")).toBe("true");
     expect(screen.getByTestId("chart-axis-panel-series").textContent).toMatch(/6035\.00/);
     expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/拖动平移|Drag to pan/);
+    expect(screen.getByTestId("chart-hint-row").textContent).toMatch(/双击取消|double-click/i);
     expect(screen.getByTestId("chart-hint-row").getAttribute("data-reveal")).toBe("hover");
     expect(screen.getByTestId("chart-hint-row").getAttribute("data-slot")).toBe("top");
     expect(
@@ -636,9 +647,19 @@ describe("candlestick stage annotations", () => {
     fireEvent.mouseMove(wrap, { clientX: 200, clientY: 40 });
     await waitFor(() => expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/D1/));
     expect(screen.getByTestId("chart-axis-panel-series").textContent).toMatch(/6100\.00/);
+
+    fireEvent.mouseDown(wrap, { clientX: 200, clientY: 40, button: 0 });
+    fireEvent.click(wrap, { clientX: 200, clientY: 40, button: 0 });
+    await waitFor(() =>
+      expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("true"),
+    );
+    fireEvent.doubleClick(wrap, { clientX: 200, clientY: 40 });
+    await waitFor(() =>
+      expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false"),
+    );
   });
 
-  it("focusLabel pins that date on mount", async () => {
+  it("focusLabel highlights that date on mount without pinning", async () => {
     const withFocus = JSON.stringify({
       version: 1,
       type: "line",
@@ -648,7 +669,7 @@ describe("candlestick stage annotations", () => {
     });
     render(<ChartBlock source={withFocus} />);
     await waitFor(() => expect(screen.getByTestId("chart-axis-panel-date").textContent).toMatch(/D1/));
-    expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("true");
+    expect(screen.getByTestId("chart-axis-panel").getAttribute("data-pinned")).toBe("false");
   });
 
   it("line stages paint annotations and show in panel", async () => {

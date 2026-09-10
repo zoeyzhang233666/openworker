@@ -79,13 +79,16 @@ class _Recorder(ProviderClient):
     def __init__(self, name: str):
         self.name = name
         self.models: list[str] = []
+        self.settings: list[dict] = []
 
     def complete(self, *, model, messages, tools=None, **settings):
         self.models.append(model)
+        self.settings.append(settings)
         return AssistantTurn(text=self.name)
 
     def stream(self, *, model, messages, tools=None, **settings):
         self.models.append(model)
+        self.settings.append(settings)
         yield StreamChunk(turn=AssistantTurn(text=self.name))
 
     def capabilities(self, model):
@@ -117,6 +120,19 @@ def test_router_routes_and_strips_prefix(monkeypatch):
 
     router.complete(model="gpt-5.5", messages=[])  # bare → default openai
     assert state["latest"]["openai"].models == ["gpt-5.5"]
+
+
+def test_router_consumes_opencode_session_for_non_chat_provider(monkeypatch):
+    state = _patch_build(monkeypatch)
+    router = ProviderRouter(secrets=None, default_provider="anthropic")
+
+    router.complete(
+        model="anthropic:claude-sonnet-4-6",
+        messages=[],
+        _opencode_session_id="session-private",
+    )
+
+    assert state["latest"]["anthropic"].settings == [{}]
 
 
 def test_router_caches_and_invalidates(monkeypatch):

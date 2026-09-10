@@ -303,6 +303,22 @@ class FeishuAdapter(BasePlatformAdapter):
             self._last_error = f"飞书消息发送失败（{type(exc).__name__}）"
             return SendResult(False, error=self._last_error)
 
+    async def update_message(self, chat_id: str, message_id: str, text: str) -> None:
+        """Patch a bot-authored text message; Gateway falls back if Feishu rejects it."""
+        import httpx
+
+        _ = chat_id
+        token = await self._access_token()
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.patch(
+                f"{self.api_base}/im/v1/messages/{message_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"msg_type": "text", "content": json.dumps({"text": text})},
+            )
+        data = response.json()
+        if response.status_code >= 400 or data.get("code") not in (None, 0):
+            raise RuntimeError(data.get("msg") or f"HTTP {response.status_code}")
+
     async def _send_message(self, chat_id: str, msg_type: str, content: dict[str, Any]) -> SendResult:
         import httpx
 

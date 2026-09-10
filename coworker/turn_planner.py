@@ -13,6 +13,10 @@ from enum import Enum
 from typing import Callable, Iterable
 
 from .capabilities import CapabilityPlan, CapabilityResolver
+from .channels.delivery import (
+    CHANNEL_DENIED_TOOLS,
+    is_channel_user_source,
+)
 from .config import Config
 from .execution_profile import ExecutionProfile, RequestRoute
 from .market_intent import MarketToolSelection, resolve_market_tools
@@ -40,11 +44,24 @@ class PromptProfile(str, Enum):
     KNOWLEDGE = "knowledge"
     VERIFIED = "verified"
     VERIFIED_MARKET = "verified_market"
+    REPORT_SUMMARY = "report_summary"
+    REPORT_CHANNEL = "report_channel"
     AGENT = "agent"
     AGENT_TARGETED = "agent_targeted"
     AGENT_WORKSPACE = "agent_workspace"
     AGENT_VISUAL = "agent_visual"
     DEEP_RESEARCH = "deep_research"
+
+
+class TurnOrigin(str, Enum):
+    """Execution provenance, deliberately separate from the display-only source card."""
+
+    USER = "user"
+    RESUME = "resume"
+    SCHEDULED = "scheduled"
+    SELF_WAKE = "self_wake"
+    BACKGROUND = "background"
+    SUBAGENT_COMPLETE = "subagent_complete"
 
 
 _PROMPT_PROFILE_BY_ROUTE = {
@@ -189,6 +206,7 @@ class TurnPlanner:
         user_input: str | list,
         *,
         source: dict | None = None,
+        origin: TurnOrigin = TurnOrigin.USER,
         display: str | None = None,
         durable_resume: bool = False,
         scenario_id: str | None = None,
@@ -199,10 +217,13 @@ class TurnPlanner:
 
         started = time.perf_counter()
         text, has_attachment = _text_and_attachment(user_input)
+        channel_user = (
+            origin is TurnOrigin.USER and is_channel_user_source(source)
+        )
         context = self._context_provider()
         guarded_full_agent = bool(
             has_attachment
-            or source is not None
+            or origin is not TurnOrigin.USER
             or display is not None
             or durable_resume
             or context.pending_ask_user
@@ -285,6 +306,18 @@ class TurnPlanner:
                 if scenario_resolution.scenario_id
                 else None
             )
+            if (
+                not guarded_full_agent
+                and scenario_spec is not None
+                and scenario_spec.output_contract == "staged_market_report"
+                and scenario_resolution.status == "matched"
+            ):
+                decision = replace(
+                    decision,
+                    route=RequestRoute.VERIFIED,
+                    source="scenario_market_report",
+                    reason="market report starts with a bounded evidence summary",
+                )
             # D-184: matched research scenarios upgrade AGENT → DEEP_RESEARCH so
             # scenario projection narrows the parent tool surface and forces delegation.
             if (
@@ -305,6 +338,7 @@ class TurnPlanner:
                 and scenario_spec.allow_subagent
                 and scenario_resolution.status == "matched"
                 and decision.route in {RequestRoute.AGENT, RequestRoute.DEEP_RESEARCH}
+                and not channel_user
             )
             if subagent_eligible:
                 live_names = set(self._available_tool_names())
@@ -373,11 +407,36 @@ class TurnPlanner:
                 )
             decision = replace(decision, allowed_tool_names=selected)
 
+        if (
+            channel_user
+            and not guarded_full_agent
+            and decision.route in {RequestRoute.AGENT, RequestRoute.DEEP_RESEARCH}
+        ):
+            decision = replace(
+                decision,
+                route=RequestRoute.VERIFIED,
+                source="channel_fast",
+                reason="channel delivery uses bounded verified surface",
+            )
+
         decision, capability_plan = self._apply_chem_web_fallback(
             decision, capability_plan, market_selection
         )
 
         profile = decision_to_execution_profile(decision, self.config)
+        market_report_channel = (
+            channel_user
+            and scenario_resolution is not None
+            and scenario_resolution.scenario_id == "chemical_market_report"
+        )
+        if (
+            scenario_resolution is not None
+            and scenario_resolution.scenario_id == "chemical_market_report"
+        ):
+            cap = 6 if market_report_channel else 3
+            profile = replace(profile, max_iterations=min(cap, profile.max_iterations))
+        elif channel_user:
+            profile = replace(profile, max_iterations=min(4, profile.max_iterations))
         skill_names: tuple[str, ...] | None
         if decision.route in (
             RequestRoute.FAST_CHAT,
@@ -393,7 +452,7 @@ class TurnPlanner:
                 preferred.extend(_forced_skill_names(display))
             skill_names = self._skill_selector(text, preferred)
 
-        if skill_names and profile.allowed_tool_names is not None:
+        if skill_names and profile.allowed_tool_names is not None and not channel_user:
             live = set(self._available_tool_names())
             expanded = list(profile.allowed_tool_names)
             for name in ("search_skills", "load_skill"):
@@ -403,7 +462,31 @@ class TurnPlanner:
             decision = replace(decision, allowed_tool_names=allowed)
             profile = replace(profile, allowed_tool_names=allowed)
 
+        if channel_user and profile.allowed_tool_names is not None:
+            live = set(self._available_tool_names())
+            allowed = [
+                name
+                for name in profile.allowed_tool_names
+                if name not in CHANNEL_DENIED_TOOLS
+            ]
+            if market_report_channel:
+                for name in ("write_file", "edit_file", "read_file", "list_files"):
+                    if name in live and name not in allowed:
+                        allowed.append(name)
+            allowed = tuple(dict.fromkeys(allowed))
+            decision = replace(decision, allowed_tool_names=allowed)
+            profile = replace(profile, allowed_tool_names=allowed)
+
         prompt_profile = _PROMPT_PROFILE_BY_ROUTE[decision.route]
+        if (
+            scenario_resolution is not None
+            and scenario_resolution.scenario_id == "chemical_market_report"
+        ):
+            prompt_profile = (
+                PromptProfile.REPORT_CHANNEL
+                if market_report_channel
+                else PromptProfile.REPORT_SUMMARY
+            )
         allowed = profile.allowed_tool_names
         if (
             decision.route is RequestRoute.VERIFIED

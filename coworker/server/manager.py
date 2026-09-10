@@ -21,6 +21,7 @@ from typing import Any, Optional
 from ..agent import build_engine
 from ..agents import get_agent
 from ..chemclaw_paths import stable_session_workspace, workspace_relpath_or_none
+from ..channels.delivery import is_channel_delivery_source
 from ..channels import (
     ChannelAttachment,
     ChannelDeliveryCoordinator,
@@ -62,6 +63,7 @@ from ..scenarios import ScenarioResolver, builtin_scenario_registry
 from ..config import load_config, workspace_allowed_commands
 from ..conversations import ConversationStore, title_from
 from ..engine import ApprovalOutcome, Approver, TurnEngine
+from ..turn_planner import TurnOrigin
 from ..roots import RootDir, is_system_skills_root, skill_readonly_root_dicts
 from ..workspace_trust import WorkspaceTrustStore
 from ..automation import Schedule, ScheduledTask, Scheduler, TaskRun, TaskStore
@@ -133,6 +135,21 @@ logger = logging.getLogger("coworker.manager")
 
 def _delivery_text(message: str | list) -> str:
     return content_to_text(message, image_placeholder="[附件]")
+
+
+def _delivery_turn_origin(source: dict[str, Any] | None) -> TurnOrigin:
+    """Keep Channel identity out of planning while preserving conservative system turns."""
+    data = source or {}
+    kind = str(data.get("kind") or "").lower()
+    if data.get("connector") and kind in {"dm", "group", "channel"}:
+        return TurnOrigin.USER
+    if kind == "subagent_cohort_complete":
+        return TurnOrigin.SUBAGENT_COMPLETE
+    if kind in {"scheduled", "schedule"}:
+        return TurnOrigin.SCHEDULED
+    if kind in {"self_wake", "wake"}:
+        return TurnOrigin.SELF_WAKE
+    return TurnOrigin.BACKGROUND
 
 
 def _grants_of(engine) -> dict[str, Any]:
@@ -216,6 +233,7 @@ class SessionManager:
             max_concurrency=int(os.environ.get("CHEMCLAW_CHANNEL_CONCURRENCY", "10")),
             turn_timeout=float(os.environ.get("CHEMCLAW_CHANNEL_TURN_TIMEOUT", "300")),
             is_waiting_for_human=lambda sid: bool(self.inbox.pending(sid)),
+            on_timeout=self._channel_timeout_grace,
         )
         # Desktop/UI prefs (default model, onboarding state) — not secrets; a plain JSON file.
         self._prefs = self._load_prefs()
@@ -327,6 +345,8 @@ class SessionManager:
                 self._on_background_task_change
             )
         )
+        self._report_progress_ids: dict[str, str] = {}
+        self._report_heartbeat_tasks: dict[str, asyncio.Task] = {}
 
     # -- workspaces -------------------------------------------------------------
     def open_workspace(self, path: str, *, create: bool = False) -> dict[str, Any]:
@@ -1735,6 +1755,144 @@ class SessionManager:
         )
         return data
 
+    def start_market_report_background(
+        self,
+        session_id: str,
+        request: str | list,
+        *,
+        source: dict[str, Any] | None = None,
+        summary: str = "",
+    ) -> BackgroundTaskRecord | None:
+        """Detach the expensive report expansion after a bounded foreground summary."""
+        engine = self._engines.get(session_id)
+        plan = getattr(engine, "_last_turn_plan", None) if engine is not None else None
+        from ..reports import ReportWorkflow
+
+        if not ReportWorkflow.starts_for(plan):
+            return None
+        workspace = self.engine_workspace(session_id) or self._provision_scratch(session_id)
+        target = str((source or {}).get("target") or "")
+        connector = str((source or {}).get("connector") or "")
+        request_text = _delivery_text(request)
+        task = self.subagent_runtime.start(
+            task=ReportWorkflow.background_brief(request_text, summary),
+            profile_id="market_report",
+            owner_session_id=session_id,
+            workspace=workspace,
+            description=f"市场报告：{request_text[:180]}",
+            join_cohort=False,
+            metadata={
+                "d201_market_report": "1",
+                "channel_target": target,
+                "connector": connector,
+            },
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            self._report_heartbeat_tasks[task.id] = loop.create_task(
+                self._market_report_watchdog(task.id), name=f"market-report:{task.id}"
+            )
+        except RuntimeError:
+            pass
+        return task
+
+    async def _market_report_watchdog(self, task_id: str) -> None:
+        """Provide a visible heartbeat and force a partial handoff at the hard deadline."""
+        started = time.monotonic()
+        soft_stop_requested = False
+        try:
+            while True:
+                task = self.background_tasks.get(task_id)
+                if task is None or task.status in TERMINAL_TASK_STATUSES:
+                    return
+                elapsed = time.monotonic() - started
+                from ..reports import ReportWorkflow
+
+                if elapsed >= ReportWorkflow.budget.soft_deadline_seconds and not soft_stop_requested:
+                    soft_stop_requested = True
+                    try:
+                        self.background_tasks.send_message(
+                            task_id,
+                            "【报告时限】停止新的检索，立即写入 report.md 并返回可交付的部分报告。",
+                        )
+                    except Exception:
+                        pass
+                    await self._publish_market_report_progress(task, "正在收尾并生成部分报告")
+                if elapsed >= ReportWorkflow.budget.hard_deadline_seconds:
+                    await asyncio.to_thread(
+                        self.background_tasks.stop, task_id, mode="immediate"
+                    )
+                    return
+                if elapsed and int(elapsed) % 20 == 0:
+                    await self._publish_market_report_progress(task, "仍在整理证据与报告")
+                await asyncio.sleep(1)
+        finally:
+            self._report_heartbeat_tasks.pop(task_id, None)
+
+    async def _publish_market_report_progress(
+        self, task: BackgroundTaskRecord, detail: str = ""
+    ) -> None:
+        # D-202: Channel reports are single-turn; never spam progress bubbles on IM.
+        target = str(task.metadata.get("channel_target") or "")
+        if not target:
+            return
+        return
+
+    async def _deliver_market_report_terminal(self, task: BackgroundTaskRecord) -> None:
+        target = str(task.metadata.get("channel_target") or "")
+        if not target or self.gateway is None or not self._channel_mapping_allows_delivery(task.owner_session_id, target):
+            return
+        page = self.background_tasks.read_output(task.id, max_chars=30_000)
+        report = "".join(chunk.text for chunk in page.chunks if chunk.stream == "assistant").strip()
+        if not report:
+            report = "市场报告未能生成完整正文。请查看任务状态或稍后重试。"
+        if task.status != "completed":
+            report = "## 市场报告（部分完成）\n\n" + report
+        from ..channels.rich_output import compose_channel_rich_reply, rich_reply_attachments
+
+        rich = compose_channel_rich_reply(
+            assistant_text=report,
+            workspace=self.engine_workspace(task.owner_session_id),
+            file_storage=self.file_storage(),
+        )
+        await self.gateway.deliver_envelope(
+            target,
+            OutboundEnvelope(
+                platform=str(task.metadata.get("connector") or ""),
+                account_id="default",
+                conversation_id="",
+                kind="final",
+                text=rich.text,
+                attachments=rich_reply_attachments(rich),
+                idempotency_key=f"d201-market-report-final:{task.id}",
+            ),
+        )
+
+    def _cancel_market_reports(self, session_id: str) -> None:
+        for task in self.background_tasks.list(owner_session_id=session_id, limit=100):
+            if task.metadata.get("d201_market_report") == "1" and task.status not in TERMINAL_TASK_STATUSES:
+                self.background_tasks.stop(task.id, owner_session_id=session_id, mode="immediate")
+
+    def _market_report_status_text(self, session_id: str) -> str:
+        reports = [
+            task
+            for task in self.background_tasks.list(owner_session_id=session_id, limit=30)
+            if task.metadata.get("d201_market_report") == "1"
+        ]
+        if not reports:
+            return "当前会话没有正在生成的市场报告。"
+        task = reports[0]
+        elapsed = max(0, int(time.time() - (task.started_at or task.created_at)))
+        labels = {
+            "queued": "排队中",
+            "running": "正在生成",
+            "completed": "已完成",
+            "failed": "失败",
+            "cancelled": "已停止",
+            "interrupted": "已中断",
+        }
+        return f"市场报告{labels.get(task.status, task.status)}，已耗时 {elapsed} 秒。"
+
     def _on_background_task_change(self, change: BackgroundTaskChange) -> None:
         task = change.task
         ready = None
@@ -1765,6 +1923,18 @@ class SessionManager:
             )
         except RuntimeError:
             pass
+        if task.metadata.get("d201_market_report") == "1":
+            try:
+                if change.change in {"created", "status", "output"}:
+                    asyncio.run_coroutine_threadsafe(
+                        self._publish_market_report_progress(task), loop
+                    )
+                if change.change == "status" and task.status in TERMINAL_TASK_STATUSES:
+                    asyncio.run_coroutine_threadsafe(
+                        self._deliver_market_report_terminal(task), loop
+                    )
+            except RuntimeError:
+                pass
         if (
             change.change == "status"
             and task.kind == "agent"
@@ -4106,6 +4276,18 @@ class SessionManager:
         mcp_tools = await self.prepare_mcp_tools(session_id, agent=persona)
         return self.get_engine(session_id, extra_tools=mcp_tools, agent=persona)
 
+    async def _channel_timeout_grace(self, session_id: str, payload: Any) -> None:
+        """Ask for a bounded final answer before the FIFO performs a hard cancellation."""
+        engine = self._engines.get(session_id)
+        if engine is not None:
+            engine.queue_steering(
+                "【时间限制】请立刻停止新的工具调用，只根据已有证据给出可发送的部分结论。"
+            )
+        source = (payload or {}).get("source") if isinstance(payload, dict) else {}
+        target = str((source or {}).get("target") or "")
+        if target and self.gateway is not None:
+            await self.gateway.upsert_progress(target, "ChemClaw 正在根据已获得的信息收尾…")
+
     async def deliver_to_session(
         self,
         session_id: str,
@@ -4147,6 +4329,9 @@ class SessionManager:
         weixin_sent_prefix = ""
         weixin_last_stream_at = 0.0
         weixin_chunk_index = 0
+        weixin_progress_index = 0
+        weixin_last_progress_at = 0.0
+        weixin_last_progress_text = ""
         stream_message_key = str(
             (source or {}).get("message_id") or len(engine.messages)
         )
@@ -4154,8 +4339,9 @@ class SessionManager:
         STREAM_MIN_INTERVAL = 0.55
         STREAM_MIN_CHARS = 80
         WEIXIN_STREAM_MIN_INTERVAL = 1.0
-        WEIXIN_STREAM_MIN_CHARS = 240
+        WEIXIN_STREAM_MIN_CHARS = 80
         WEIXIN_STREAM_HARD_CHARS = 720
+        WEIXIN_PROGRESS_MIN_INTERVAL = 2.0
 
         async def _wecom_push(text: str, *, force: bool = False) -> None:
             nonlocal last_stream_at, last_stream_len, last_progress
@@ -4208,6 +4394,49 @@ class SessionManager:
                 return min(len(text), start + WEIXIN_STREAM_HARD_CHARS)
             return start
 
+        async def _weixin_progress(text: str, *, force: bool = False) -> None:
+            """Discrete progress bubbles; iLink cannot refresh one message in place."""
+            nonlocal weixin_progress_index, weixin_last_progress_at, weixin_last_progress_text
+            if (
+                not weixin_stream
+                or self.gateway is None
+                or not self._channel_mapping_allows_delivery(
+                    session_id, channel_target
+                )
+            ):
+                return
+            body = (text or "").strip()
+            if not body:
+                return
+            now = time.monotonic()
+            if not force:
+                if body == weixin_last_progress_text:
+                    return
+                if (now - weixin_last_progress_at) < WEIXIN_PROGRESS_MIN_INTERVAL:
+                    return
+            result = await self.gateway.deliver_envelope(
+                channel_target,
+                OutboundEnvelope(
+                    platform="weixin",
+                    account_id="default",
+                    conversation_id="",
+                    kind="progress",
+                    text=body,
+                    idempotency_key=(
+                        f"channel-progress:{session_id}:{stream_message_key}:"
+                        f"{weixin_progress_index}"
+                    ),
+                ),
+            )
+            if getattr(result, "ok", False):
+                # Opening ack / errors use force and must not delay the first tool tip.
+                if not force:
+                    weixin_last_progress_at = now
+                weixin_last_progress_text = body
+                weixin_progress_index += 1
+            else:
+                logger.warning("weixin progress delivery failed for %s", session_id)
+
         async def _weixin_push(text: str) -> None:
             """Send only the newly stable suffix; iLink cannot edit one message in place."""
             nonlocal weixin_sent_prefix, weixin_last_stream_at, weixin_chunk_index
@@ -4258,29 +4487,16 @@ class SessionManager:
                 logger.warning("weixin incremental delivery failed for %s", session_id)
 
         try:
-            if (
-                weixin_stream
-                and self.gateway is not None
-                and self._channel_mapping_allows_delivery(session_id, channel_target)
-            ):
-                progress = await self.gateway.deliver_envelope(
-                    channel_target,
-                    OutboundEnvelope(
-                        platform="weixin",
-                        account_id="default",
-                        conversation_id="",
-                        kind="progress",
-                        text="ChemClaw 正在处理…",
-                        idempotency_key=(
-                            f"channel-progress:{session_id}:{stream_message_key}"
-                        ),
-                    ),
+            if weixin_stream:
+                await _weixin_progress(
+                    "ChemClaw 正在处理…",
+                    force=True,
                 )
-                if not getattr(progress, "ok", False):
-                    logger.warning("weixin progress delivery failed for %s", session_id)
+            origin = _delivery_turn_origin(source)
             async for event in engine.run(
                 message,
                 source=source,
+                origin=origin,
                 trace_source_kind=(
                     str(source.get("kind") or "background")
                     if source
@@ -4309,10 +4525,14 @@ class SessionManager:
                         draft_text = candidate
                         if wecom_stream:
                             await _wecom_push(candidate, force=True)
-                elif etype == "tool_started" and wecom_stream:
+                elif etype == "tool_started":
                     tool_name = str(data.get("name") or "工具")
                     if not draft_text.strip():
-                        await _wecom_push(f"ChemClaw 正在调用 {tool_name}…")
+                        tip = f"ChemClaw 正在调用 {tool_name}…"
+                        if wecom_stream:
+                            await _wecom_push(tip)
+                        elif weixin_stream:
+                            await _weixin_progress(tip)
                 elif etype == "tool_finished":
                     if data.get("name") == "send_message":
                         outcome = data.get("outcome") or {}
@@ -4320,16 +4540,18 @@ class SessionManager:
                             channel_reply_sent = True
                     chart_spec = data.get("chart_spec")
                     if isinstance(chart_spec, dict):
-                        chart_tool_results.append(
-                            {
-                                "name": str(data.get("name") or ""),
-                                "chart_spec": chart_spec,
-                                "args": data.get("args")
-                                if isinstance(data.get("args"), dict)
-                                else {},
-                                "preview": data.get("preview"),
-                            }
-                        )
+                        row: dict[str, Any] = {
+                            "name": str(data.get("name") or ""),
+                            "chart_spec": chart_spec,
+                            "args": data.get("args")
+                            if isinstance(data.get("args"), dict)
+                            else {},
+                            "preview": data.get("preview"),
+                        }
+                        for key in ("symbol", "series_name", "aliases"):
+                            if key in data:
+                                row[key] = data[key]
+                        chart_tool_results.append(row)
                 # A background turn has no user watching to read an inline error: a dead model or
                 # tool failure would otherwise vanish. Log it and park it in the dead-letter store.
                 if etype == "error":
@@ -4340,10 +4562,12 @@ class SessionManager:
                     self.unrouted.record(
                         session_id, "-", _delivery_text(message), reason=reason
                     )
-                    if wecom_stream and not channel_reply_sent:
-                        await _wecom_push(
-                            f"ChemClaw 本轮出错：{reason}", force=True
-                        )
+                    if not channel_reply_sent:
+                        err_text = f"ChemClaw 本轮出错：{reason}"
+                        if wecom_stream:
+                            await _wecom_push(err_text, force=True)
+                        elif weixin_stream:
+                            await _weixin_progress(err_text, force=True)
             self.save(session_id, engine)
             # A Channel surface owns delivery of its final answer.  Tool-aware models may
             # explicitly call send_message; plain-answer models still get a reliable reply.
@@ -4365,13 +4589,20 @@ class SessionManager:
                     rich_reply_attachments,
                 )
                 from ..channels.wecom_reply import extract_user_text_from_source
+                from ..report_html.chart_spec import (
+                    collect_chart_tool_results_from_messages,
+                    merge_chart_tool_results,
+                )
 
                 workspace = self.engine_workspace(session_id)
                 rich = compose_channel_rich_reply(
                     assistant_text=final_text,
                     workspace=workspace,
                     file_storage=self.file_storage(),
-                    chart_tool_results=chart_tool_results,
+                    chart_tool_results=merge_chart_tool_results(
+                        collect_chart_tool_results_from_messages(engine.messages),
+                        chart_tool_results,
+                    ),
                     user_text=extract_user_text_from_source(source),
                 )
                 outbound_text = rich.text
@@ -4424,6 +4655,40 @@ class SessionManager:
                         idempotency_key=f"channel-final-empty:{session_id}",
                     ),
                 )
+            if (
+                origin is TurnOrigin.USER
+                and final_text
+                and not is_channel_delivery_source(source)
+            ):
+                self.start_market_report_background(
+                    session_id, message, source=source, summary=final_text
+                )
+        except asyncio.CancelledError:
+            # Channel FIFO cancellation must still have a human-visible terminal state.
+            if (
+                channel_target
+                and not channel_reply_sent
+                and self.gateway is not None
+                and self._channel_mapping_allows_delivery(session_id, channel_target)
+            ):
+                try:
+                    await self.gateway.deliver_envelope(
+                        channel_target,
+                        OutboundEnvelope(
+                            platform=connector,
+                            account_id="default",
+                            conversation_id="",
+                            kind="final",
+                            text=(
+                                "ChemClaw 已到达本轮时间上限，已停止继续调用；"
+                                "请根据已发送摘要查看当前结论。"
+                            ),
+                            idempotency_key=f"channel-final-timeout:{session_id}",
+                        ),
+                    )
+                except Exception:
+                    logger.debug("channel timeout final delivery failed", exc_info=True)
+            raise
         except (
             Exception
         ) as exc:  # an unexpected raise out of the turn must not be swallowed
@@ -4476,6 +4741,13 @@ class SessionManager:
         text = (getattr(event, "text", "") or "").strip()
         lowered = self._normalized_channel_command(text)
         engine = self._engines.get(session_id)
+        if lowered == "/status":
+            if self.gateway is not None:
+                await self.gateway.deliver(
+                    target or event.source.target,
+                    self._market_report_status_text(session_id),
+                )
+            return
         if lowered in {"/stop", "停止当前任务", "停止"}:
             if engine is not None and self.is_running(session_id):
                 engine.request_interrupt()
@@ -4483,6 +4755,7 @@ class SessionManager:
             # actively sampling the model. Resolve it as part of stop so the old
             # turn can observe the interrupt and release the per-session FIFO.
             self.inbox.resolve_session(session_id, "channel stop")
+            self._cancel_market_reports(session_id)
             return
         steering_prefixes = ("/steer ", "/补充 ", "补充当前任务：", "补充当前任务:")
         source = dict(source or {})
@@ -4531,11 +4804,12 @@ class SessionManager:
             )
             message = build_user_content(framed, prompt_attachments)
         source = dict(payload.get("source") or {})
-        # D-195: WeCom-only delivery guidance (summary + HTML link default).
-        if source.get("connector") == "wecom":
-            from ..channels.wecom_reply import wecom_turn_guidance_suffix
+        # D-195/D-203: Channel delivery guidance (chart auto-delivery + HTML link default).
+        connector_name = str(source.get("connector") or "").strip().lower()
+        if connector_name in {"wecom", "weixin", "feishu", "dingtalk", "telegram", "slack"}:
+            from ..channels.wecom_reply import channel_turn_guidance_suffix
 
-            suffix = wecom_turn_guidance_suffix()
+            suffix = channel_turn_guidance_suffix(connector_name)
             if isinstance(message, str):
                 message = message + suffix
             elif isinstance(message, list):
@@ -4746,6 +5020,7 @@ class SessionManager:
                 if self.is_running(old_sid):
                     old_engine.request_interrupt()
             self.inbox.resolve_session(old_sid, "channel session reset")
+            self._cancel_market_reports(old_sid)
 
         if self.gateway is not None:
             await self.gateway.deliver(
@@ -4806,10 +5081,12 @@ class SessionManager:
             f'"{target}"；该会话内的文本回复已预授权。'
             + (
                 " 企业微信不要发送 Markdown（.md）附件——完整报告由系统生成精装 HTML 链接；"
-                "普通问答只回文字、不要 send_file。发送其它文件仍须用户明确要求并走 send_file 审批。"
+                "行情图须在回复中包含 ```chart，系统会自动发送 PNG 预览与 HTML。"
+                "普通文字问答只回文字、不要 send_file。其它文件须用户明确要求并走 send_file 审批。"
                 if src.platform == "wecom"
                 else (
-                    "发送文件仍必须由用户明确要求，并继续走 send_file 的权限审批。"
+                    " 行情图须在回复中包含 ```chart，系统会自动发送 PNG 预览与 HTML 链接。"
+                    "发送文件仍须用户明确要求，并继续走 send_file 的权限审批。"
                 )
             )
         )

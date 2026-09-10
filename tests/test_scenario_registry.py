@@ -12,6 +12,7 @@ def test_builtin_scenario_and_capability_references_are_complete() -> None:
     assert {item.id for item in scenarios.list()} == {
         "chemical_spot_price",
         "cn_futures_market",
+        "chemical_market_report",
         "chemical_identity",
         "chemical_company_research",
         "chemical_market_research",

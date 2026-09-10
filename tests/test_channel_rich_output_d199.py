@@ -9,6 +9,7 @@ from coworker.channels.rich_output import (
     compose_channel_rich_reply,
     has_renderer_blocks,
     needs_channel_html_delivery,
+    rich_reply_attachments,
 )
 
 PREVIEW_PNG = b"\x89PNG\r\n\x1a\npreview"
@@ -49,11 +50,11 @@ def test_rich_reply_cooks_chart_html_and_uploads_link(tmp_path: Path):
         assistant_text=CHART_REPLY,
         workspace=tmp_path,
         file_storage=storage,
-        render_preview=lambda _path: PREVIEW_PNG,
     )
     assert reply.has_rich_blocks
     assert reply.html_url and "查看交互图表" in reply.text
-    assert reply.preview_image_bytes == PREVIEW_PNG
+    assert reply.preview_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(reply.preview_image_bytes) > 5_000
     assert "```chart" not in reply.text and "2410" not in reply.text
     uploaded = next(iter(storage.objects.values())).decode("utf-8")
     assert "甲醇价格" in uploaded
@@ -95,6 +96,76 @@ def test_plain_reply_without_chart_or_report_is_text_only(tmp_path: Path):
     assert not reply.preview_image_bytes
 
 
+def test_image_only_reply_sends_png_without_html_link(tmp_path: Path):
+    storage = MemoryFileStorage(pub_url="https://cos.example/")
+    reply = compose_channel_rich_reply(
+        assistant_text=CHART_REPLY,
+        workspace=tmp_path,
+        file_storage=storage,
+        user_text="给我原油现货走势图，要图片，不要html",
+    )
+    assert reply.delivery_mode == "image_only"
+    assert reply.image_only is True
+    assert reply.html_url is None
+    assert reply.preview_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(reply.preview_image_bytes) > 5_000
+    assert "查看交互图表" not in reply.text
+    assert "图表预览" in reply.text
+    attachments = rich_reply_attachments(reply)
+    assert any(a.kind == "image" for a in attachments)
+    assert not any(a.name.endswith(".html") for a in attachments)
+    assert not storage.objects  # HTML not uploaded when image-only
+
+
+def test_salvage_chart_from_tool_sidecar_without_model_fence(tmp_path: Path):
+    sidecar = [
+        {
+            "name": "mcp__chem-data-hub__get_price_trend",
+            "chart_spec": {
+                "version": 1,
+                "type": "line",
+                "title": "原油现货",
+                "labels": ["08-26", "08-27", "09-01"],
+                "series": [{"name": "山东｜南美", "values": [6100, 6050, 5980]}],
+            },
+        }
+    ]
+    reply = compose_channel_rich_reply(
+        assistant_text="已获取山东市场原油现货，近一周先高后低。",
+        workspace=tmp_path,
+        file_storage=MemoryFileStorage(pub_url="https://cos.example/"),
+        chart_tool_results=sidecar,
+        user_text="给我原油现货价格走势图，要图片，不要html",
+        render_preview=lambda _path: PREVIEW_PNG,
+    )
+    assert reply.has_rich_blocks
+    assert reply.preview_image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+    assert reply.delivery_mode == "image_only"
+    attachments = rich_reply_attachments(reply)
+    assert any(a.kind == "image" for a in attachments)
+
+
+def test_render_chart_spec_png_with_chinese_labels():
+    pytest.importorskip("matplotlib")
+    from coworker.report_html.preview import render_chart_spec_png
+
+    png = render_chart_spec_png(
+        {
+            "version": 1,
+            "type": "line",
+            "title": "原油现货价格走势",
+            "unit": "元/吨",
+            "labels": ["2026-07-22", "2026-08-01", "2026-09-01"],
+            "series": [
+                {"name": "南美原油", "values": [6100, 6050, 5980]},
+                {"name": "海洋原油", "values": [5900, 5850, 5800]},
+            ],
+        }
+    )
+    assert png and png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(png) > 5_000
+
+
 def test_send_message_telegram_replaces_chart_json_with_html_link(tmp_path: Path):
     secrets = SecretStore(tmp_path / "secrets.json")
     secrets.put("telegram:default", {"type": "token", "bot_token": "T0K"})
@@ -113,9 +184,10 @@ def test_send_message_telegram_replaces_chart_json_with_html_link(tmp_path: Path
     )
     result = tool(target="telegram:123", text=CHART_REPLY)
     assert result["ok"]
-    assert len(sent) == 1
-    assert "查看交互图表" in sent[0]
-    assert "```chart" not in sent[0] and "2410" not in sent[0]
+    assert len(sent) >= 1
+    assert any("查看交互图表" in item for item in sent)
+    joined = "\n".join(sent)
+    assert "```chart" not in joined and "2410" not in joined
     assert storage.objects
 
 

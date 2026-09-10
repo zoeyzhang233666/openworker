@@ -60,7 +60,11 @@ def normalize_tool_outcome(
     ).upper()
     status = str(raw_result.get("status") or "").lower()
     message = raw_result.get("user_message") or raw_result.get("message")
-    if code in _UNAVAILABLE_CODES or status in {"unavailable", "not_found", "no_data"}:
+    if raw_result.get("timed_out") is True:
+        kind = "failed"
+        code = code or "TIMEOUT"
+        message = message or "工具执行超时"
+    elif code in _UNAVAILABLE_CODES or status in {"unavailable", "not_found", "no_data"}:
         kind = "unavailable"
     elif status == "partial" or raw_result.get("partial") is True:
         kind = "partial"

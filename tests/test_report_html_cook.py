@@ -65,6 +65,96 @@ def test_bake_short_ref_from_tool_sidecar():
     assert err is None and spec is not None
 
 
+def test_bake_short_ref_cn_futures_symbol_fuzzy():
+    raw = {
+        "from_tool": "lookup_cn_futures_ohlc",
+        "symbol": "SC2610",
+        "version": 1,
+        "type": "candlestick",
+        "title": "上海原油期货 SC2610 (INE, 日线)",
+    }
+    baked = bake_short_ref(
+        raw,
+        [
+            {
+                "name": "lookup_cn_futures_ohlc",
+                "args": {"symbol": "SC2610.INE"},
+                "symbol": "SC2610.INE",
+                "series_name": "上海原油",
+                "aliases": ["SC2610", "原油"],
+                "chart_spec": {
+                    "version": 1,
+                    "type": "candlestick",
+                    "title": "SC2610.INE",
+                    "labels": ["2026-06-01", "2026-06-02"],
+                    "ohlc": [
+                        {"o": 590, "h": 610, "l": 580, "c": 605},
+                        {"o": 605, "h": 620, "l": 600, "c": 615},
+                    ],
+                },
+            }
+        ],
+    )
+    assert baked.get("from_tool") is None
+    assert baked["title"] == "上海原油期货 SC2610 (INE, 日线)"
+    spec, err = parse_chart_spec(baked)
+    assert err is None and spec is not None
+    assert len(spec["labels"]) == 2
+
+
+def test_cook_short_ref_cn_futures_html():
+    from coworker.report_html.chart_spec import collect_chart_tool_results_from_messages
+
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "tc1",
+                    "function": {
+                        "name": "lookup_cn_futures_ohlc",
+                        "arguments": '{"symbol":"SC2610.INE"}',
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "tc1",
+            "content": json.dumps(
+                {
+                    "status": "ok",
+                    "symbol": "SC2610.INE",
+                    "name": "上海原油",
+                    "aliases": ["SC2610"],
+                    "chart_spec": {
+                        "version": 1,
+                        "type": "candlestick",
+                        "title": "SC2610.INE",
+                        "labels": ["2026-06-01", "2026-06-02"],
+                        "ohlc": [
+                            {"o": 590, "h": 610, "l": 580, "c": 605},
+                            {"o": 605, "h": 620, "l": 600, "c": 615},
+                        ],
+                    },
+                },
+                ensure_ascii=False,
+            ),
+        },
+    ]
+    md = """已获取上海原油期货 SC2610 近三个月日线。
+
+```chart
+{"from_tool":"lookup_cn_futures_ohlc","symbol":"SC2610","type":"candlestick","version":1}
+```
+"""
+    sidecars = collect_chart_tool_results_from_messages(messages)
+    result = cook_report_html(md, chart_tool_results=sidecars, write_local=False)
+    assert result.chart_count == 1
+    assert "短引用图表缺少烘焙数据" not in result.html
+    assert "chemclaw-chart-0" in result.html
+
+
 def test_cook_embeds_chart_js_zoom_and_fullscreen(tmp_path: Path):
     md = """# 价格报告
 
@@ -77,8 +167,10 @@ def test_cook_embeds_chart_js_zoom_and_fullscreen(tmp_path: Path):
     result = cook_report_html(md, workspace=tmp_path, write_local=True)
     assert result.chart_count == 1
     assert "chart.js" in result.html
+    assert "chartjs-chart-financial" in result.html
     assert "chartjs-plugin-zoom" in result.html
-    assert "requestFullscreen" in result.html
+    assert "chart-axis-panel" in result.html
+    assert "CHEMCLAW_CHART_BOOT" in result.html
     assert "chemclaw-chart-0" in result.html
     assert result.local_path is not None and result.local_path.is_file()
 
@@ -89,9 +181,8 @@ def test_cook_html_includes_mobile_chart_polish():
 ```"""
     result = cook_report_html(md, write_local=False)
     assert "max-width: 640px" in result.html
-    assert "chart-wrap { height: clamp(280px, 52vw, 420px);" in result.html
-    assert "zoomScale('x'" in result.html
-    assert "labels.length - 24" in result.html
+    assert "chart-wrap--interactive" in result.html
+    assert "zoomScale('x'" in result.html or "onZoomComplete" in result.html
 
 
 def test_cook_renders_gfm_tables_as_html():
@@ -151,6 +242,40 @@ def test_cook_renders_table_immediately_after_heading_with_chart():
     assert "|---|" not in html
     assert "| 规格 |" not in html
     assert "chemclaw-chart-0" in html
+    assert "<ul>" in html
+    assert "7 月下旬至 8 月上旬震荡" in html
+
+
+def test_cook_renders_markdown_lists_without_blank_line_after_heading():
+    md = """**要点速览：**
+- 最新收盘 (9/1)：5930 元/吨
+- 6 月初至 7 月下旬震荡
+- 8 月 28 日放量反弹
+
+数据来源：新浪期货日线。
+"""
+    html = cook_report_html(md, write_local=False).html
+    assert "<ul>" in html
+    assert "<li>最新收盘 (9/1)：5930 元/吨</li>" in html
+    assert "<p>- 最新收盘" not in html
+
+
+def test_cook_html_includes_crosshair_status_and_dblclick():
+    md = """```chart
+{"version":1,"type":"line","title":"现货","labels":["d1","d2"],"series":[{"name":"价","values":[1,2]}]}
+```"""
+    html = cook_report_html(md, write_local=False).html
+    assert "chemclaw-chart-0-status" in html
+    assert "十字线跟随鼠标" in html
+    assert "单击固定 · 双击取消" in html
+    assert "updateCrosshairStatus" in html
+    assert 'addEventListener("dblclick"' in html
+
+
+def test_cook_html_footer_omits_layout_boilerplate():
+    html = cook_report_html("# 报告\n\n正文", write_local=False).html
+    assert "由 ChemClaw 从 Markdown 报告生成" in html
+    assert "表格与结构图已排版" not in html
 
 
 def test_cook_mermaid_uses_div_not_dark_code_block():
@@ -171,7 +296,15 @@ graph TD
     assert "graph TD" in result.html
 
 
-def test_cook_css_has_table_and_mermaid_polish():
+def test_cook_html_includes_stage_band_runtime():
+    md = """```chart
+{"version":1,"type":"candlestick","title":"沥青","labels":["2026-06-01","2026-06-15","2026-07-01","2026-08-01"],"ohlc":[[4800,4900,4700,4850],[4850,4950,4800,4900],[4900,5000,4850,4950],[4950,5100,4900,5050]],"stages":[{"start":"2026-06-01","end":"2026-06-15","tone":"down","reason":"回调"},{"start":"2026-07-01","end":"2026-08-01","tone":"up","reason":"反弹"}]}
+```"""
+    html = cook_report_html(md, write_local=False).html
+    assert "chartjs-plugin-annotation" in html
+    assert "paintStageBands" in html or "stageBand" in html
+    assert "beforeDatasetsDraw" in html
+    assert "STAGE_TONE_COLORS" in html or "rgba(229, 57, 53, 0.12)" in html
     html = cook_report_html("# Hi\n\nhello", write_local=False).html
     assert "table-scroll" in html or ".table-scroll" in html
     assert "Noto Sans SC" in html
@@ -255,12 +388,17 @@ def test_strip_md_artifacts_from_wecom_bubble():
 
 
 def test_wecom_guidance_forbids_md_files():
-    from coworker.channels.wecom_reply import wecom_turn_guidance_suffix
+    from coworker.channels.wecom_reply import channel_turn_guidance_suffix, wecom_turn_guidance_suffix
 
     g = wecom_turn_guidance_suffix()
-    assert "不要用 send_file 发送" in g or ".md" in g
-    assert "普通问答" in g
-    assert "精装 HTML" in g
+    assert "send_file" in g
+    assert "```chart" in g
+    assert "禁止声称" in g or "无法发送" in g
+    assert "精装 HTML" in g or "HTML" in g
+    assert "查价要快" in g
+    assert "无法调用 MCP" in g
+    assert channel_turn_guidance_suffix("weixin") != ""
+    assert "```chart" in channel_turn_guidance_suffix("feishu")
 
 
 def test_compose_summary_strips_artifact_md(tmp_path: Path):

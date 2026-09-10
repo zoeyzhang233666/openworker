@@ -15,6 +15,7 @@ from ..background_tasks import (
     BackgroundTaskSpec,
 )
 from ..engine import TurnEngine
+from ..turn_planner import TurnOrigin
 from ..events import EventType
 from .cohort import DelegationCohortTracker
 from .models import ForegroundSubagentResult, SubagentProfile
@@ -73,6 +74,7 @@ class TurnEngineTaskAdapter(AgentTaskAdapter):
                         "parent_session_id": self.record.owner_session_id,
                         "task_id": self.record.id,
                     },
+                    origin=TurnOrigin.BACKGROUND,
                     trace_source_kind="subagent",
                     parent_trace_id=self.record.parent_trace_id,
                 ):

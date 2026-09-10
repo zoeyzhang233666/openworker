@@ -293,6 +293,71 @@ def test_stream_text_deltas():
     assert out[-1].turn.finish_reason == "stop"
 
 
+def test_opencode_go_stream_uses_per_request_session_header():
+    chunks = [_chunk(content="ok"), _chunk(finish="stop")]
+    client = _FakeClient(_response(content="unused"))
+    client.chat.completions = _FakeCompletions(iter(chunks))
+    provider = OpenAIProvider(
+        client=client, base_url="https://opencode.ai/zen/go/v1/"
+    )
+
+    list(
+        provider.stream(
+            model="deepseek-v4-flash",
+            messages=[],
+            _opencode_session_id="session-a",
+        )
+    )
+
+    request = client.chat.completions.calls[0]
+    assert request["extra_headers"]["x-opencode-session"] == "session-a"
+    assert "_opencode_session_id" not in request
+
+
+def test_opencode_go_complete_session_is_stable_and_per_conversation():
+    client = _FakeClient(_response(content="ok"))
+    provider = OpenAIProvider(
+        client=client, base_url="https://opencode.ai/zen/go/v1"
+    )
+
+    for session_id in ("session-a", "session-a", "session-b"):
+        provider.complete(
+            model="deepseek-v4-flash",
+            messages=[],
+            _opencode_session_id=session_id,
+        )
+
+    requests = client.chat.completions.calls
+    assert [
+        request["extra_headers"]["x-opencode-session"] for request in requests
+    ] == ["session-a", "session-a", "session-b"]
+    assert all("_opencode_session_id" not in request for request in requests)
+
+
+def test_non_opencode_compatible_endpoint_has_no_automatic_session_header():
+    client = _FakeClient(_response(content="ok"))
+    provider = OpenAIProvider(client=client, base_url="https://compat.example/v1")
+
+    provider.complete(
+        model="deepseek-v4-flash",
+        messages=[],
+        _opencode_session_id="session-a",
+    )
+
+    request = client.chat.completions.calls[0]
+    assert "extra_headers" not in request
+    assert "_opencode_session_id" not in request
+
+
+def test_opencode_endpoint_match_rejects_lookalike_host_and_path():
+    from coworker.providers.openai_provider import _is_opencode_go_endpoint
+
+    assert _is_opencode_go_endpoint("https://opencode.ai/zen/go/v1")
+    assert _is_opencode_go_endpoint("https://opencode.ai/zen/go/v1/chat/completions")
+    assert not _is_opencode_go_endpoint("https://evil.example/opencode.ai/zen/go/v1")
+    assert not _is_opencode_go_endpoint("https://opencode.ai/zen/other/v1")
+
+
 def test_stream_tools_none_yields_deltas_before_upstream_finishes():
     """tools=None must true-stream: first delta is visible before later chunks arrive."""
     import threading
@@ -806,6 +871,46 @@ def test_stream_falls_back_to_nonstream_after_transport_failures():
     assert out[-1].turn.text == "from-nonstream"
     assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 2
     assert any(not c.get("stream") for c in client.chat.completions.calls)
+
+
+def test_opencode_stream_fallback_keeps_session_header():
+    class _StreamAlwaysDies:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if kwargs.get("stream"):
+                raise RuntimeError(
+                    "peer closed connection without sending complete "
+                    "message body (incomplete chunked read)"
+                )
+            return _response(content="from-nonstream")
+
+    client = _FakeClient(_response(content="unused"))
+    client.chat.completions = _StreamAlwaysDies()
+    provider = OpenAIProvider(
+        client=client, base_url="https://opencode.ai/zen/go/v1"
+    )
+
+    out = list(
+        provider.stream(
+            model="deepseek-v4-flash",
+            messages=[],
+            _opencode_session_id="session-fallback",
+        )
+    )
+
+    assert out[-1].turn.text == "from-nonstream"
+    assert len(client.chat.completions.calls) == 3
+    assert all(
+        call["extra_headers"]["x-opencode-session"] == "session-fallback"
+        for call in client.chat.completions.calls
+    )
+    assert all(
+        "_opencode_session_id" not in call
+        for call in client.chat.completions.calls
+    )
 
 
 def test_concurrent_streams_use_distinct_sdk_clients():

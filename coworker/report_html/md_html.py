@@ -55,6 +55,44 @@ def _is_table_block(lines: list[str], start: int) -> bool:
     return any(_line_is_table_separator(row) for row in block)
 
 
+_LIST_ITEM_RE = re.compile(r"^(\s*)([-*+]|\d+\.)\s+\S")
+
+
+def _line_is_list_item(line: str) -> bool:
+    return bool(_LIST_ITEM_RE.match(line or ""))
+
+
+def normalize_gfm_lists(markdown: str) -> str:
+    """Ensure list blocks are isolated before nl2br markdown runs.
+
+    Assistant replies often place ``- item`` immediately after a heading or bold
+    line without the blank line GFM needs. Without isolation, nl2br wraps list rows
+    in ``<p>`` and the leading hyphens show up literally in Channel HTML pages.
+    """
+    lines = (markdown or "").splitlines()
+    if not lines:
+        return markdown or ""
+
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if _line_is_list_item(line):
+            if out and out[-1].strip() and not _line_is_list_item(out[-1]):
+                out.append("")
+            block_end = index
+            while block_end < len(lines) and _line_is_list_item(lines[block_end]):
+                block_end += 1
+            out.extend(lines[index:block_end])
+            index = block_end
+            if index < len(lines) and lines[index].strip():
+                out.append("")
+            continue
+        out.append(line)
+        index += 1
+    return "\n".join(out)
+
+
 def normalize_gfm_tables(markdown: str) -> str:
     """Ensure pipe tables are isolated block elements before nl2br markdown runs.
 
@@ -119,7 +157,7 @@ def markdown_to_html_fragments(
     import markdown as md_lib
 
     text, blocks = extract_fenced_blocks(markdown or "")
-    text = normalize_gfm_tables(text)
+    text = normalize_gfm_lists(normalize_gfm_tables(text))
     html_body = md_lib.markdown(
         text,
         extensions=[

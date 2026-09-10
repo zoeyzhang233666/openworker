@@ -173,6 +173,37 @@ MAX_STREAM_ATTEMPTS = 2
 # HARD STOP F: ChemClaw-internal stream() kwarg — never forwarded to the OpenAI API.
 _STRUCTURED_TOOLS_STREAMING_SETTING = "structured_tools_true_streaming_enabled"
 
+# Per-conversation transport context for OpenCode Go. The engine/router may pass this
+# through ProviderClient settings, but this adapter must consume it before SDK kwargs are
+# built so it can never become part of the Chat Completions JSON body.
+_OPENCODE_SESSION_SETTING = "_opencode_session_id"
+_OPENCODE_SESSION_HEADER = "x-opencode-session"
+
+
+def _is_opencode_go_endpoint(base_url: Optional[str]) -> bool:
+    """Match the OpenCode Go API by parsed host and path, not a broad substring."""
+    if not base_url:
+        return False
+    parsed = urlparse(base_url)
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+    if (parsed.hostname or "").lower() != "opencode.ai":
+        return False
+    path = "/" + "/".join(part for part in parsed.path.split("/") if part)
+    return path == "/zen/go/v1" or path.startswith("/zen/go/v1/")
+
+
+def _apply_opencode_session_header(
+    settings: dict[str, Any], *, base_url: Optional[str], session_id: Any
+) -> None:
+    """Add the conversation header as a per-request OpenAI SDK option when required."""
+    value = str(session_id or "").strip()
+    if not value or not _is_opencode_go_endpoint(base_url):
+        return
+    headers = dict(settings.get("extra_headers") or {})
+    headers[_OPENCODE_SESSION_HEADER] = value
+    settings["extra_headers"] = headers
+
 # Conservative known-safe matrix for tools-enabled true streaming. Being
 # "OpenAI-compatible" alone is never enough — unknown/custom hosts stay salvage-safe.
 _KNOWN_SAFE_STRUCTURED_TOOL_MODEL_PREFIXES = ("gpt-4", "gpt-5", "o1", "o3", "o4")
@@ -328,6 +359,10 @@ class OpenAIProvider(ProviderClient):
         tools: Optional[list[dict[str, Any]]] = None,
         **settings: Any,
     ) -> AssistantTurn:
+        opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
+        _apply_opencode_session_header(
+            settings, base_url=self._base_url, session_id=opencode_session_id
+        )
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": _prepare_messages(messages),
@@ -377,6 +412,10 @@ class OpenAIProvider(ProviderClient):
         # ChemClaw-internal kill switch — never forward to the OpenAI request body.
         structured_tools_streaming = bool(
             settings.pop(_STRUCTURED_TOOLS_STREAMING_SETTING, False)
+        )
+        opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
+        _apply_opencode_session_header(
+            settings, base_url=self._base_url, session_id=opencode_session_id
         )
         kwargs: dict[str, Any] = {
             "model": model,
@@ -470,7 +509,10 @@ class OpenAIProvider(ProviderClient):
                     continue
 
             turn = self.complete(
-                model=model, messages=messages, tools=tools, **settings
+                model=model,
+                messages=messages,
+                tools=tools,
+                **{**settings, _OPENCODE_SESSION_SETTING: opencode_session_id},
             )
             if last_transport is not None and not (
                 turn.text or turn.tool_calls or turn.reasoning

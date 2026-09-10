@@ -134,6 +134,14 @@ class TelegramAdapter(BasePlatformAdapter):
     ) -> SendResult:
         return _send_telegram(self.token, chat_id, text, thread_id)
 
+    async def update_message(self, chat_id: str, message_id: str, text: str) -> None:
+        """Use Telegram's native edit path when a live adapter owns the reply."""
+        if self._app is None or not message_id:
+            raise RuntimeError("Telegram message editing is unavailable")
+        await self._app.bot.edit_message_text(
+            chat_id=chat_id, message_id=int(message_id), text=text
+        )
+
 
 class SlackAdapter(BasePlatformAdapter):
     platform = "slack"

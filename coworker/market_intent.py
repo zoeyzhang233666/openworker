@@ -145,7 +145,8 @@ class MarketToolSelection:
 
 
 _PRICE_RE = re.compile(
-    r"(价格|报价|均价|价差|走势|行情|k线|蜡烛|ohlc|price|quote|trend|market)",
+    r"(价格|报价|均价|价差|走势|行情|多少钱|现价|最新价|"
+    r"k线|蜡烛|ohlc|price|quote|trend|market)",
     re.I,
 )
 _SPOT_RE = re.compile(r"(现货|spot(?:\s+price)?|cash\s+price)", re.I)
@@ -171,8 +172,14 @@ _GLOBAL_RE = re.compile(
     r"(yahoo|美股|港股|恒生|nasdaq|nyse|\baapl\b|\btsla\b|黄金期货|\bgc=f\b)",
     re.I,
 )
-_WTI_RE = re.compile(r"(\bwti\b|\bcl=f\b|西德州|纽约原油)", re.I)
-_BRENT_RE = re.compile(r"(\bbrent\b|\bbz=f\b|布伦特)", re.I)
+_WTI_RE = re.compile(
+    r"(?<![a-z])wti(?![a-z])|\bcl=f\b|西德州|纽约原油",
+    re.I,
+)
+_BRENT_RE = re.compile(
+    r"(?<![a-z])brent(?![a-z])|\bbz=f\b|布伦特",
+    re.I,
+)
 _CLEAR_FINANCIAL_SPOT_RE = re.compile(
     r"(现货黄金|现货白银|\bxau\b|\bxag\b|比特币|\bbtc\b|外汇)", re.I
 )
@@ -584,6 +591,23 @@ def resolve_market_tools(
             supplemental_web,
         )
 
+    # D-204: price/trend with no futures or listed-security ambiguity → chemical spot.
+    # Spot-only products (柠檬酸/苯酚等) must keep get_price_trend even without「现货」.
+    if price_like and not _CLEAR_FINANCIAL_SPOT_RE.search(raw):
+        return _resolved_selection(
+            MarketIntent(
+                MarketIntentKind.CHEMICAL_SPOT,
+                product=_product_name(mentions) if mentions else None,
+                scope=MarketScope.CHEMICAL_SPOT,
+                reason="chemical price without futures ambiguity defaults to spot",
+            ),
+            MarketScope.CHEMICAL_SPOT,
+            spot_tools,
+            available,
+            spot_tools,
+            chem_web,
+        )
+
     return MarketToolSelection.non_market()
 
 
@@ -668,14 +692,25 @@ def render_market_turn_context(selection: MarketToolSelection) -> str:
         )
     if selection.intent.kind is MarketIntentKind.CHEMICAL_SPOT:
         availability = (
-            "请先调用已投影的 chem-data-hub `get_price_trend` 工具。"
+            "请立即调用已投影的 chem-data-hub `get_price_trend` 工具；"
+            "禁止 ask_user 索要用户粘贴数据、行业示意图、时间范围或产品形态问卷——"
+            "有 MCP 就查，无数据再说明缺口。"
             if selection.capability_available
             else "chem-data-hub `get_price_trend` 当前不可用。"
         )
+        fast = (
+            "若用户只要今天/现在/现价/多少钱（未要走势图），"
+            "用较小 limit（如 7–14 天）取最新点后立刻短答，不要先拉长历史或连环澄清。"
+        )
+        chart = (
+            "若用户要走势图/趋势，再拉足够序列并附 ```chart；仍不要先问卷。"
+        )
         return (
             "<market-scope-policy>\n"
-            "用户明确要求化工现货价。现货口径优先于产品别名。"
+            "用户要求化工现货价（含未写「现货」、且无期现歧义的化工品查价）。"
+            "现货口径优先于产品别名。"
             f"{availability} 禁止用国内期货或 Yahoo 替代现货价。"
+            f"{fast}{chart}"
             f"{web_fallback}\n"
             "</market-scope-policy>"
         )

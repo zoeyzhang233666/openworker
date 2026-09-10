@@ -68,7 +68,7 @@ def test_deep_research_outranks_cn_futures_quote_scenario() -> None:
     assert deep.status == "matched"
     assert deep.scenario_id == "chemical_market_research"
     weekly = resolver.resolve("写一份上海原油期货周报", tools=tools)
-    assert weekly.scenario_id == "chemical_market_research"
+    assert weekly.scenario_id == "chemical_market_report"
     # D-184: 产业链/上下游套利研究 outranks dual-scope quote adapters.
     for query in (
         "研究沥青期货产业链上下游套利怎么做",

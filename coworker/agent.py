@@ -214,17 +214,19 @@ chart-image。
 - 仅当用户明确需要 PNG/SVG/图片文件、报告素材、附件或其他静态导出图时，才用 chart-image。
 - 回答化工价格走势/近期价格，且工具/MCP 结果含时间序列（≥2 个带日期点）时，同一回复须附一张 \
 ```chart` 折线 ChartSpec（可与价格表、要点并列）。没有可用时间序列才可跳过图。
+- 用户只要今天/现在/现价/多少钱（未点名走势图）时：优先小 limit 取最新报价后立刻短答；\
+不要连环 ask_user 问时间范围/形态/「请用户贴数据」。需要走势图时再拉够序列出图。
 - 价格走势图默认回看：拉够历史以见上下文——优先 ≥ 约 60 个交易日的**日线**（`range=3mo`，\
-interval `1d`）。即使只问今天/本周/单点报价，仍画更长日线序列，并用可选 `focusLabel` 钉在所问\
-日期（或区间末）；仅当没有具体日期时省略 `focusLabel`（界面钉最新）。无 OHLC 的化工现货 MCP \
-仍可用 ≥12 个月度点。
+interval `1d`）。即使只问今天/本周/单点报价，若用户**同时**要图，仍画更长日线序列，并用可选 \
+`focusLabel` 钉在所问日期（或区间末）；仅当没有具体日期时省略 `focusLabel`（界面钉最新）。\
+无 OHLC 的化工现货 MCP 仍可用 ≥12 个月度点。仅问价不要图时不必强行拉长历史。
 - 股票/期货/上市期权价格图默认周期：**日线**。用户未点名周期（日线/周线/月线/年线/分时/1m/5m/\
 15m/30m/60m）时，调用日线 OHLC 工具——禁止 `lookup_cn_*_minute`，禁止 Yahoo `interval=1wk` 或 \
 `1mo`。「最近一年」未点名周/月/年线时表示 `range=1y` + 日线。CN 工具无周/月/年 K；不要把日线\
 重采样成假的高周期——说明后画日线。Yahoo 无年线；若用户要年线，用 `1mo` 并给够 `range`，并说明\
 是月线而非真年线。仅当用户明确要求时才用分钟/周/月工具。
-- 市场口径优先于产品别名。明确「现货」= 化工现货，必须用已投影的 chem-data-hub \
-`get_price_trend`；禁止用网页、Yahoo 或期货价替代。若该 MCP 能力缺失或无行，按不可用/无现货\
+- 市场口径优先于产品别名。明确「现货」或无期现歧义的化工品查价 = 化工现货，必须用已投影的 \
+chem-data-hub `get_price_trend`；禁止用网页、Yahoo 或期货价替代。若该 MCP 能力缺失或无行，按不可用/无现货\
 数据报告。同时存在货与期货的裸品种（如甲醇、原油）须先 `ask_user` 澄清，再做任何行情调用。
 - 中国大陆 A 股（茅台、600519、上证/深证）：调用 `lookup_cn_stock_quote` / \
 `lookup_cn_stock_ohlc` / `lookup_cn_stock_financials` / `lookup_cn_stock_feature`。仅当用户要\
@@ -683,6 +685,31 @@ def build_engine(
     verified_market_instructions = "\n\n".join(
         [*verified_parts[:3], _INLINE_CHART_GUIDANCE, *verified_parts[3:]]
     )
+    report_summary_instructions = "\n\n".join(
+        [
+            *verified_parts[:3],
+            "这是市场报告的快速摘要阶段。只使用已提供的少量行情/资讯工具，"
+            "优先并行调用；不得调用 shell、写文件、读大文件、加载 Skill 或展开新的研究分支。"
+            "先给用户一份可独立使用的简短摘要：周期、已核验价格或缺口、主要驱动、来源与限制。"
+            "数据不足时直接说明，不得编造。",
+            *verified_parts[3:],
+        ]
+    )
+    report_channel_instructions = "\n\n".join(
+        [
+            *verified_parts[:3],
+            _INLINE_CHART_GUIDANCE,
+            "这是企业微信/个人微信等 Channel 的市场报告单轮交付。"
+            "只使用已投影的行情/资讯工具，优先并行调用；禁止 shell、禁止 load_skill、"
+            "禁止读 outbound-clip 大文件或写 Python 解析脚本。"
+            "化工现货品名：用户说「液化气/LPG」时直接用规范品名「液化石油气」调 MCP，"
+            "不要反复空查别名。"
+            "工具返回的 summary/chart_spec 已预聚合，直接用于结论与 ```chart。"
+            "将完整报告写入工作区 report.md（周期、价格表/趋势、驱动、来源与限制）；"
+            "聊天气泡只回短摘要，完整版由 Channel 自动 cook 为 HTML 链接。",
+            *verified_parts[3:],
+        ]
+    )
 
     targeted_parts = [
         _TARGETED_ACTION_CORE,
@@ -725,6 +752,8 @@ def build_engine(
         PromptProfile.KNOWLEDGE: direct_instructions,
         PromptProfile.VERIFIED: verified_instructions,
         PromptProfile.VERIFIED_MARKET: verified_market_instructions,
+        PromptProfile.REPORT_SUMMARY: report_summary_instructions,
+        PromptProfile.REPORT_CHANNEL: report_channel_instructions,
         # Conservative routes retain the complete legacy prompt.
         PromptProfile.AGENT: instructions,
         PromptProfile.AGENT_TARGETED: targeted_instructions,

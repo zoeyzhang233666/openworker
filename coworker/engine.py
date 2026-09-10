@@ -23,6 +23,13 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Mapping, Optional
 _log = logging.getLogger(__name__)
 
 from . import compaction as _compaction
+from .connectors.context import current_channel_target
+from .channels.delivery import CHANNEL_DENIED_TOOLS
+from .reports.tool_projection import (
+    project_market_tool_result,
+    rewrite_price_tool_arguments,
+    should_project_market_tool,
+)
 from .events import Event, EventType
 from .execution_profile import (
     ExecutionProfile,
@@ -49,7 +56,13 @@ from .turn_instrumentation import (
     build_turn_snapshot,
     emit_instrumentation,
 )
-from .turn_planner import InvalidScenarioError, PromptProfile, TurnPlan, TurnPlanner
+from .turn_planner import (
+    InvalidScenarioError,
+    PromptProfile,
+    TurnOrigin,
+    TurnPlan,
+    TurnPlanner,
+)
 
 # HARD STOP G: outbound-only prompt for one model-only finalization at hard ceiling.
 _EMERGENCY_FINALIZATION_PROMPT = """The tool-call iteration budget has been exhausted.
@@ -304,6 +317,7 @@ class TurnEngine:
         user_input: str | list,
         *,
         source: Optional[dict[str, Any]] = None,
+        origin: TurnOrigin = TurnOrigin.USER,
         display: Optional[str] = None,
         durable_resume: bool = False,
         scenario_id: str | None = None,
@@ -324,6 +338,7 @@ class TurnEngine:
             plan = self.turn_planner.plan(
                 user_input,
                 source=source,
+                origin=origin,
                 display=display,
                 durable_resume=durable_resume,
                 scenario_id=scenario_id,
@@ -513,6 +528,7 @@ class TurnEngine:
         user_input: "str | list",
         *,
         source: Optional[dict[str, Any]] = None,
+        origin: TurnOrigin = TurnOrigin.USER,
         display: Optional[str] = None,
         scenario_id: str | None = None,
         trace_source_kind: str | None = None,
@@ -529,7 +545,11 @@ class TurnEngine:
         self._cancel.clear()
         self._owning_loop = asyncio.get_running_loop()
         self._activate_plan(
-            user_input, source=source, display=display, scenario_id=scenario_id
+            user_input,
+            source=source,
+            origin=origin,
+            display=display,
+            scenario_id=scenario_id,
         )
         recorder = self._start_trace(
             source_kind=str(
@@ -561,6 +581,9 @@ class TurnEngine:
             async for event in self._loop():
                 recorder.observe(event)
                 yield self._decorate_trace_event(event, recorder)
+        except asyncio.CancelledError:
+            recorder.observe(Event(EventType.INTERRUPTED, {"reason": "cancelled"}))
+            raise
         finally:
             await self._finish_trace(recorder)
             self._clear_active_plan()
@@ -664,7 +687,11 @@ class TurnEngine:
             return
         self._cancel.clear()
         self._owning_loop = asyncio.get_running_loop()
-        self._activate_plan(self._resume_plan_input(), durable_resume=True)
+        self._activate_plan(
+            self._resume_plan_input(),
+            origin=TurnOrigin.RESUME,
+            durable_resume=True,
+        )
         recorder = self._start_trace(source_kind="durable_resume")
         try:
             start_event = self._decorate_trace_event(
@@ -1397,6 +1424,9 @@ class TurnEngine:
                     model=model,
                     messages=messages,
                     tools=tools,
+                    _opencode_session_id=str(
+                        self.audit_context.get("session_id") or ""
+                    ),
                     structured_tools_true_streaming_enabled=structured_tools_streaming,
                     **settings,
                 ):
@@ -1451,6 +1481,21 @@ class TurnEngine:
             plan_guard = self._turn_plan_tool_guard(tool_call.name)
             if plan_guard is not None and not plan_guard[0]:
                 reason = plan_guard[1]
+                self.messages.append(_tool_error_message(tool_call, reason))
+                self._audit(tool_call, stage="finished", status="denied", reason=reason)
+                yield Event(
+                    EventType.TOOL_FINISHED,
+                    {
+                        "name": tool_call.name,
+                        "status": "denied",
+                        "reason": reason,
+                        "outcome": {"status": "denied", "error_code": "DENIED"},
+                    },
+                )
+                continue
+            channel_guard = self._channel_delivery_tool_guard(tool_call)
+            if channel_guard is not None and not channel_guard[0]:
+                reason = channel_guard[1]
                 self.messages.append(_tool_error_message(tool_call, reason))
                 self._audit(tool_call, stage="finished", status="denied", reason=reason)
                 yield Event(
@@ -1531,6 +1576,63 @@ class TurnEngine:
         if tool_name in allowed:
             return True, "turn plan capability matched"
         return False, "该工具未被本轮 Scenario/Capability 计划授权"
+
+    def _channel_delivery_tool_guard(self, tool_call: ToolCall) -> tuple[bool, str] | None:
+        """D-202: messaging Channels must not run shell or parse huge outbound clips."""
+        if not current_channel_target():
+            return None
+        if tool_call.name in {"run_shell", "run_terminal_cmd"}:
+            return (
+                False,
+                "企业微信/Channel 不支持 Shell；请使用已提供的结构化行情工具与预聚合摘要。",
+            )
+        if tool_call.name in CHANNEL_DENIED_TOOLS:
+            return False, f"Channel 快速交付面不支持 {tool_call.name}。"
+        args = tool_call.arguments or {}
+        if tool_call.name in {"read_file", "read_file_lines", "grep"}:
+            path = str(args.get("path") or args.get("file") or "").replace("\\", "/")
+            if "outbound-clip" in path or "/._chemclaw/outbound-clip/" in path:
+                return (
+                    False,
+                    "Channel 不支持读取 outbound 原始大回包；请直接使用工具返回的 summary。",
+                )
+        return None
+
+    def _should_project_market_tool_result(self, tool_name: str) -> bool:
+        if not should_project_market_tool(tool_name):
+            return False
+        plan = self._active_turn_plan
+        if plan is None:
+            return False
+        if plan.prompt_profile in {
+            PromptProfile.REPORT_SUMMARY,
+            PromptProfile.REPORT_CHANNEL,
+        }:
+            return True
+        resolution = plan.scenario_resolution
+        return (
+            resolution is not None
+            and resolution.scenario_id == "chemical_market_report"
+        )
+
+    def _prepare_tool_execution(
+        self, tool_call: ToolCall
+    ) -> ToolCall:
+        args = dict(tool_call.arguments or {})
+        if should_project_market_tool(tool_call.name):
+            args = rewrite_price_tool_arguments(args)
+        if args != (tool_call.arguments or {}):
+            return ToolCall(id=tool_call.id, name=tool_call.name, arguments=args)
+        return tool_call
+
+    def _project_tool_result(self, tool_call: ToolCall, result: Any) -> Any:
+        if not self._should_project_market_tool_result(tool_call.name):
+            return result
+        return project_market_tool_result(
+            result,
+            tool_name=tool_call.name,
+            arguments=tool_call.arguments,
+        )
 
     def _interrupted_tool(self, tool_call: ToolCall) -> Event:
         """The stop-path answer for a call that will not run: a tool-error result in the
@@ -1674,8 +1776,13 @@ class TurnEngine:
 
     def _execute_sync(self, tool_call: ToolCall) -> tuple[Any, str]:
         """Execute one authorized call (runs in a worker thread)."""
+        tool_call = self._prepare_tool_execution(tool_call)
         try:
-            return self.registry.execute(tool_call.name, tool_call.arguments), "ok"
+            result = self.registry.execute(tool_call.name, tool_call.arguments)
+            if isinstance(result, dict) and result.get("timed_out") is True:
+                return result, "error"
+            result = self._project_tool_result(tool_call, result)
+            return result, "ok"
         except Exception as exc:
             return {"error": str(exc), "error_type": type(exc).__name__}, "error"
 
@@ -1723,6 +1830,7 @@ class TurnEngine:
                 "name": tool_call.name,
                 "status": status,
                 "result_preview": _preview(result),
+                "args": dict(tool_call.arguments or {}),
                 "outcome": outcome.model_dump(
                     exclude={"data", "source_refs", "version"}
                 ),

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from time import time
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,9 @@ class ChannelCapabilities:
     group_mentions: bool = False
     proactive_messages: bool = False
     streaming: bool = False
+    # `replace` means a previously-sent progress message can be updated in place;
+    # iLink deliberately reports `incremental` instead of pretending it can edit.
+    progress_mode: Literal["replace", "incremental", "none"] = "none"
     receive_images: bool = False
     send_images: bool = False
     receive_files: bool = False

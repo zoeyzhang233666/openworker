@@ -9,7 +9,7 @@ from html import escape
 from pathlib import Path
 from typing import Any, Optional
 
-from .chart_spec import bake_short_ref, parse_chart_spec
+from .chart_spec import bake_short_ref, normalize_chart_spec_dict, parse_chart_spec
 from .chart_theme import (
     CN_CANDLE_DOWN,
     CN_CANDLE_DOWN_WICK,
@@ -24,9 +24,19 @@ _ARTIFACT_MD = re.compile(
 )
 
 CHART_JS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"
+FINANCIAL_CDN = (
+    "https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"
+)
 ZOOM_CDN = "https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"
+ANNOTATION_CDN = (
+    "https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"
+)
 HAMMER_CDN = "https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"
 MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"
+
+_CHART_RUNTIME_JS = (Path(__file__).with_name("chart_runtime.js")).read_text(
+    encoding="utf-8"
+)
 
 
 @dataclass
@@ -36,6 +46,7 @@ class CookResult:
     chart_count: int
     mermaid_count: int = 0
     local_path: Optional[Path] = None
+    charts: tuple[dict[str, Any], ...] = ()
 
 
 def find_report_markdown(
@@ -114,6 +125,9 @@ def cook_report_html(
             return '<div class="chart-error">图表 JSON 无法解析</div>'
         if isinstance(raw, dict):
             raw = bake_short_ref(raw, chart_tool_results)
+            normalized = normalize_chart_spec_dict(raw)
+            if normalized is not None:
+                raw = normalized
         spec, err = parse_chart_spec(raw)
         if err or spec is None:
             return f'<div class="chart-error">图表不可用：{escape(err or "未知错误")}</div>'
@@ -127,9 +141,23 @@ def cook_report_html(
             f'<button type="button" class="chart-fs-btn" data-chart-fs="{chart_id}" '
             f'aria-label="全屏">全屏</button>'
             f"</div>"
-            f'<div class="chart-wrap" id="{chart_id}-wrap">'
+            f'<div class="chart-hint-row">'
+            f'<span class="chart-hint-chip chart-hint-chip--status" id="{chart_id}-status" '
+            f'data-pinned="false">十字线跟随鼠标</span>'
+            f'<span class="chart-hint-chip">滚轮缩放 · 拖动平移</span>'
+            f'<span class="chart-hint-chip">单击固定 · 双击取消</span>'
+            f"</div>"
+            f'<div class="chart-stage" id="{chart_id}-stage">'
+            f'<div class="chart-axis-panel chart-axis-panel--center" '
+            f'id="{chart_id}-panel" hidden aria-hidden="true">'
+            f'<div class="chart-axis-panel-date" data-role="date"></div>'
+            f'<div class="chart-axis-panel-ohlc" data-role="ohlc"></div>'
+            f'<div class="chart-axis-panel-series" data-role="series" hidden></div>'
+            f'<div class="chart-axis-panel-stage" data-role="stage" hidden></div>'
+            f"</div>"
+            f'<div class="chart-wrap chart-wrap--interactive" id="{chart_id}-wrap">'
             f'<canvas id="{chart_id}"></canvas>'
-            f"</div></figure>"
+            f"</div></div></figure>"
         )
 
     body_html = markdown_to_html_fragments(markdown, fence_renderer=fence_renderer)
@@ -149,10 +177,14 @@ def cook_report_html(
         page_title, body_html, charts, mermaid_count=mermaid_count
     )
     local_path: Optional[Path] = None
-    if write_local and workspace:
-        ws = Path(workspace)
-        out_dir = ws / "._chemclaw" / "reports"
+    if write_local:
         try:
+            if workspace:
+                out_dir = Path(workspace) / "._chemclaw" / "reports"
+            else:
+                import tempfile
+
+                out_dir = Path(tempfile.gettempdir()) / "chemclaw-reports"
             out_dir.mkdir(parents=True, exist_ok=True)
             safe = re.sub(r"[^\w\u4e00-\u9fff\-]+", "_", page_title)[:60] or "report"
             local_path = out_dir / f"{safe}.html"
@@ -165,6 +197,7 @@ def cook_report_html(
         chart_count=len(charts),
         mermaid_count=mermaid_count,
         local_path=local_path,
+        charts=tuple(charts),
     )
 
 
@@ -227,137 +260,26 @@ def _wrap_page(
   <article class="report">
 {body_html}
   </article>
-  <footer class="note">由 ChemClaw 从 Markdown 报告生成 · 表格与结构图已排版 · 行情图支持缩放与全屏</footer>
+  <footer class="note">由 ChemClaw 从 Markdown 报告生成 · 行情图支持缩放与全屏</footer>
 </div>
 <script src="{HAMMER_CDN}"></script>
 <script src="{CHART_JS_CDN}"></script>
+<script src="{FINANCIAL_CDN}"></script>
 <script src="{ZOOM_CDN}"></script>
+<script src="{ANNOTATION_CDN}"></script>
 {mermaid_script}
 <script>
-(function() {{
-  const SPECS = {charts_json};
-  const COLORS = {colors_json};
-  const UP = "{CN_CANDLE_UP}";
-  const DOWN = "{CN_CANDLE_DOWN}";
-  const UP_W = "{CN_CANDLE_UP_WICK}";
-  const DOWN_W = "{CN_CANDLE_DOWN_WICK}";
-  if (typeof Chart === "undefined" || !SPECS.length) return;
-  if (typeof ChartZoom !== "undefined") {{
-    Chart.register(ChartZoom);
-  }} else if (window['chartjs-plugin-zoom']) {{
-    Chart.register(window['chartjs-plugin-zoom']);
-  }}
-  function candleData(spec) {{
-    const labels = spec.labels || [];
-    const ohlc = spec.ohlc || [];
-    return labels.map(function(label, i) {{
-      const b = ohlc[i] || {{o:0,h:0,l:0,c:0}};
-      return {{ x: i, o: b.o, h: b.h, l: b.l, c: b.c, label: label }};
-    }});
-  }}
-  function buildConfig(spec) {{
-    const labels = spec.labels || [];
-    const mobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches;
-    const zoomOpts = {{
-      zoom: {{ wheel: {{ enabled: true }}, pinch: {{ enabled: true }}, mode: 'x' }},
-      pan: {{ enabled: true, mode: 'x' }}
-    }};
-    if (spec.type === 'candlestick') {{
-      const pts = candleData(spec);
-      return {{
-        type: 'bar',
-        data: {{
-          labels: labels,
-          datasets: [{{
-            label: spec.title || 'OHLC',
-            data: pts.map(function(p) {{ return [p.l, p.h]; }}),
-            backgroundColor: pts.map(function(p) {{ return p.c >= p.o ? UP : DOWN; }}),
-            borderColor: pts.map(function(p) {{ return p.c >= p.o ? UP_W : DOWN_W; }}),
-            borderWidth: 1,
-            barPercentage: 0.4,
-          }}]
-        }},
-        options: {{
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {{
-            legend: {{ display: false }},
-            tooltip: {{
-              callbacks: {{
-                label: function(ctx) {{
-                  const p = pts[ctx.dataIndex];
-                  if (!p) return '';
-                  return '开 '+p.o+' 高 '+p.h+' 低 '+p.l+' 收 '+p.c;
-                }}
-              }}
-            }},
-            zoom: zoomOpts
-          }},
-          scales: {{
-            x: {{ ticks: {{ maxTicksLimit: mobile ? 6 : 8, maxRotation: mobile ? 45 : 0, autoSkip: true }} }},
-            y: {{ beginAtZero: false }}
-          }}
-        }}
-      }};
-    }}
-    const type = spec.type === 'area' ? 'line' : (spec.type || 'line');
-    const datasets = (spec.series || []).map(function(s, i) {{
-      const color = COLORS[i % COLORS.length];
-      return {{
-        label: s.name,
-        data: s.values,
-        borderColor: color,
-        backgroundColor: spec.type === 'area' ? color + '33' : color,
-        fill: spec.type === 'area',
-        tension: 0.25,
-        pointRadius: labels.length > 24 ? 0 : 2,
-      }};
-    }});
-    return {{
-      type: type === 'scatter' ? 'scatter' : type,
-      data: {{ labels: labels, datasets: datasets }},
-      options: {{
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {{
-          legend: {{ display: spec.showLegend !== false }},
-          zoom: zoomOpts
-        }},
-        scales: {{
-          x: {{ ticks: {{ maxTicksLimit: mobile ? 6 : 8, maxRotation: mobile ? 45 : 0, autoSkip: true }} }},
-          y: {{
-            beginAtZero: false,
-            min: spec.yMin,
-            max: spec.yMax,
-            title: {{ display: !!spec.yTitle, text: spec.yTitle || '' }}
-          }}
-        }}
-      }}
-    }};
-  }}
-  SPECS.forEach(function(spec, idx) {{
-    const canvas = document.getElementById('chemclaw-chart-' + idx);
-    if (!canvas) return;
-    const labels = spec.labels || [];
-    const chart = new Chart(canvas.getContext('2d'), buildConfig(spec));
-    if (labels.length > 24 && chart.options.plugins && chart.options.plugins.zoom) {{
-      const start = Math.max(0, labels.length - 24);
-      chart.zoomScale('x', {{ min: start, max: labels.length - 1 }});
-    }}
-    const btn = document.querySelector('[data-chart-fs="chemclaw-chart-' + idx + '"]');
-    const wrap = document.getElementById('chemclaw-chart-' + idx + '-wrap');
-    if (btn && wrap) {{
-      btn.addEventListener('click', function() {{
-        const req = wrap.requestFullscreen || wrap.webkitRequestFullscreen;
-        if (document.fullscreenElement || document.webkitFullscreenElement) {{
-          (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-        }} else if (req) {{
-          req.call(wrap);
-        }}
-      }});
-    }}
-  }});
-}})();
+window.CHEMCLAW_CHART_BOOT = {{
+  specs: {charts_json},
+  colors: {colors_json},
+  up: "{CN_CANDLE_UP}",
+  down: "{CN_CANDLE_DOWN}",
+  upWick: "{CN_CANDLE_UP_WICK}",
+  downWick: "{CN_CANDLE_DOWN_WICK}"
+}};
+</script>
+<script>
+{_CHART_RUNTIME_JS}
 </script>
 </body>
 </html>
@@ -522,6 +444,39 @@ article.report tbody tr:hover td { background: #eff6ff; }
   background: linear-gradient(180deg, #fafcff 0%, #fff 40%);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
 }
+.chart-hint-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 0 0.35rem;
+  padding: 0 2px;
+}
+.chart-hint-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--cc-blue-soft);
+  background: rgba(37, 99, 235, 0.06);
+  color: var(--cc-muted);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.chart-hint-chip--status {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.1);
+  color: #1e3a8a;
+  font-weight: 600;
+}
+.chart-hint-chip--status[data-pinned="true"] {
+  border-color: rgba(37, 99, 235, 0.55);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+.chart-stage {
+  position: relative;
+  width: 100%;
+}
 .diagram-caption,
 .chart-toolbar figcaption {
   margin: 0 0 0.55rem;
@@ -548,8 +503,113 @@ article.report tbody tr:hover td { background: #eff6ff; }
 .chart-fs-btn:hover { border-color: var(--cc-blue); color: var(--cc-blue); }
 .chart-wrap {
   position: relative;
-  height: 320px;
+  height: 360px;
   width: 100%;
+}
+.chart-wrap--interactive {
+  touch-action: none;
+  cursor: crosshair;
+}
+.chart-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+.chart-axis-panel {
+  position: absolute;
+  z-index: 3;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: fit-content;
+  min-width: 112px;
+  max-width: 172px;
+  max-height: calc(100% - 12px);
+  padding: 8px 10px 9px;
+  border-radius: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.55);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  pointer-events: auto;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: auto;
+}
+.chart-axis-panel--pinned {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12);
+}
+.chart-axis-panel-date {
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+}
+.chart-axis-panel-ohlc,
+.chart-axis-panel-series {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chart-axis-panel-kv--row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.chart-axis-panel-kv--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chart-axis-panel-k {
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chart-axis-panel-v {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chart-axis-panel-stage {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cc-border);
+}
+.chart-axis-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.chart-axis-panel-tone {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+.chart-axis-panel-tone[data-tone="up"] { background: #ef4444; }
+.chart-axis-panel-tone[data-tone="down"] { background: #22c55e; }
+.chart-axis-panel-tone[data-tone="side"] { background: #94a3b8; }
+.chart-axis-panel-tone-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: #334155;
+}
+.chart-axis-panel-row + .chart-axis-panel-row { margin-top: 4px; }
+.chart-axis-panel-label {
+  display: block;
+  font-size: 10.5px;
+  color: #64748b;
+}
+.chart-axis-panel-value {
+  display: block;
+  color: #1e293b;
+  font-size: 11.5px;
+}
+.chart-axis-panel-reason {
+  line-height: 1.4;
+  word-break: break-word;
 }
 .chart-wrap:fullscreen,
 .chart-wrap:-webkit-full-screen {
@@ -593,6 +653,7 @@ footer.note {
   .shell { padding: 1.25rem 0.85rem 3rem; max-width: 100%; }
   article.report { padding: 1.2rem 1rem 1.6rem; border-radius: 12px; }
   article.report table { min-width: 480px; font-size: 0.85rem; }
-  .chart-wrap { height: clamp(280px, 52vw, 420px); }
+  .chart-wrap { height: clamp(300px, 52vw, 440px); }
+  .chart-axis-panel { max-width: 148px; font-size: 11px; }
 }
 """

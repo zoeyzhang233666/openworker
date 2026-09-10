@@ -41,16 +41,51 @@ _WANT_MD_FILE_HINTS = (
     "下载 md",
 )
 
-_WECOM_GUIDANCE = (
-    "\n\n[企微交付约定 — 务必遵守]\n"
-    "1. 企业微信客户端对 Markdown 文件与气泡内复杂 MD 语法支持很差：默认不要用 send_file 发送 "
-    ".md/.markdown，也不要把 `[标题](artifact:….md)` 写进企微回复。\n"
-    "2. 本轮若写出了 Markdown 报告，系统会自动生成精装 HTML 完整版并附可打开链接；你只需给短总结"
-    "（结论与要点），勿再单独发 MD 附件。\n"
-    "3. 普通问答（无报告文件）：只发文字回答，不要 send_file，不要发任何附件。\n"
-    "4. 仅当用户明确要求「气泡全文/不要链接」时，才把完整正文写进气泡；"
-    "仅当用户明确索要「md/markdown 文件」时才可 send_file 发送 .md。"
+_CHANNEL_PLATFORM_LABELS = {
+    "wecom": "企业微信",
+    "weixin": "个人微信",
+    "feishu": "飞书",
+    "dingtalk": "钉钉",
+    "telegram": "Telegram",
+    "slack": "Slack",
+}
+
+_IMAGE_ONLY_HINTS = (
+    "不要html",
+    "不要 html",
+    "不要网页",
+    "不要链接",
+    "只要图片",
+    "只要图",
+    "要图片",
+    "给我图片",
+    "发图片",
+    "png图片",
+    "png 图片",
+    "要png",
+    "要 png",
 )
+
+
+def _channel_guidance_body(platform: str) -> str:
+    return (
+        f"\n\n[{platform}交付约定 — 务必遵守]\n"
+        "0. 查价要快：已投影 chem-data-hub / 行情工具时立刻调用，禁止连环 ask_user"
+        "（时间范围/产品形态/「请你贴生意社数据」等）；用户只要今天/现价/多少钱时用小 limit 取最新点后短答；"
+        "要走势图再拉序列并写 ```chart。禁止声称「无法调用 MCP」。\n"
+        "1. 行情/价格走势图：必须在回复中包含 ```chart JSON 块（ChartSpec version 1）。"
+        "系统会自动生成图表预览 PNG，并按需附精装 HTML 链接——"
+        "你不需要 send_file、chart-image 或 shell；禁止声称「无法发送图片/附件/文件」。"
+        "聊天气泡只写短摘要，图表由系统自动交付。\n"
+        "2. Markdown 报告：若写入 report.md 或 artifact 链接，系统会自动 cook 为精装 HTML；"
+        "你只需给短总结，勿用 send_file 发送 .md/.markdown。\n"
+        "3. 纯文字问答（无图表、无报告）：只发文字，不要 send_file。\n"
+        "4. 用户明确「气泡全文/不要链接」时，才把完整正文写进气泡；"
+        "明确索要 md 文件时才可 send_file 发送 .md。"
+    )
+
+
+_WECOM_GUIDANCE = _channel_guidance_body("企微")
 
 
 @dataclass
@@ -75,8 +110,23 @@ def wants_md_file(user_text: str) -> bool:
     return any(h.replace(" ", "") in compact for h in _WANT_MD_FILE_HINTS)
 
 
+def wants_image_only(user_text: str) -> bool:
+    """User asked for PNG/image delivery without an HTML link or attachment."""
+    compact = (user_text or "").strip().replace(" ", "").lower()
+    if not compact:
+        return False
+    return any(h.replace(" ", "") in compact for h in _IMAGE_ONLY_HINTS)
+
+
+def channel_turn_guidance_suffix(connector: str = "") -> str:
+    label = _CHANNEL_PLATFORM_LABELS.get((connector or "").strip().lower(), "消息平台")
+    if label == "企业微信":
+        return _WECOM_GUIDANCE
+    return _channel_guidance_body(label)
+
+
 def wecom_turn_guidance_suffix() -> str:
-    return _WECOM_GUIDANCE
+    return channel_turn_guidance_suffix("wecom")
 
 
 def truncate_summary(text: str, limit: int = _MAX_BUBBLE_CHARS) -> str:

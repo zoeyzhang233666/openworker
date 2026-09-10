@@ -583,6 +583,123 @@ async def test_weixin_long_answer_streams_ordered_chunks_without_repeating_final
 
 
 @pytest.mark.asyncio
+async def test_weixin_tool_turn_emits_progress_then_chunks_without_spam(tmp_path):
+    from coworker.events import Event, EventType
+
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "data",
+        provider=_TextProvider(),
+    )
+    gateway = _EnvelopeCaptureGateway()
+    manager.gateway = gateway  # type: ignore[assignment]
+    event = _event("查甲醇期货", platform="weixin", chat="owner", user="owner")
+    target = event.source.target
+    session_id = "weixin-tool-progress-session"
+    engine = manager.get_engine(session_id, agent=manager.personas.default_id())
+    assert engine is not None
+    manager.save(session_id, engine)
+    manager.mention_sessions.set(target, session_id, channel="weixin:owner")
+
+    answer = ("第一段增量内容。" * 40) + ("第二段收束内容。" * 24)
+
+    async def _scripted_run(message, source=None, **kwargs):
+        yield Event(EventType.TOOL_STARTED, {"name": "lookup_cn_futures_ohlc"})
+        yield Event(EventType.TOOL_STARTED, {"name": "web_search"})
+        for i in range(0, len(answer), 60):
+            yield Event(EventType.ASSISTANT_DELTA, {"delta": answer[i : i + 60]})
+            await asyncio.sleep(0)
+        yield Event(EventType.ASSISTANT_MESSAGE, {"text": answer})
+
+    engine.run = _scripted_run  # type: ignore[method-assign]
+
+    await manager.deliver_to_session(
+        session_id,
+        event.tagged_text(),
+        source={
+            "connector": "weixin",
+            "kind": "dm",
+            "channel_id": "owner",
+            "channel_name": "owner",
+            "sender_id": "owner",
+            "sender_name": "owner",
+            "ts": 1.0,
+            "text": event.text,
+            "target": target,
+            "message_id": "wx-tool-1",
+        },
+    )
+
+    progress_texts = [
+        envelope.text
+        for _target, envelope in gateway.envelopes
+        if envelope.kind == "progress"
+    ]
+    assert progress_texts[0] == "ChemClaw 正在处理…"
+    tool_progress = [t for t in progress_texts if "正在调用" in t]
+    assert len(tool_progress) == 1
+    assert "lookup_cn_futures_ohlc" in tool_progress[0]
+    kinds = [envelope.kind for _target, envelope in gateway.envelopes]
+    assert "stream_chunk" in kinds
+    assert kinds[-1] == "final"
+    delivered = "".join(
+        envelope.text
+        for _target, envelope in gateway.envelopes
+        if envelope.kind in {"stream_chunk", "final"}
+    )
+    assert delivered == answer
+
+
+@pytest.mark.asyncio
+async def test_weixin_error_emits_chinese_progress_bubble(tmp_path):
+    from coworker.events import Event, EventType
+
+    manager = SessionManager(
+        workspace=tmp_path,
+        data_dir=tmp_path / "data",
+        provider=_TextProvider(),
+    )
+    gateway = _EnvelopeCaptureGateway()
+    manager.gateway = gateway  # type: ignore[assignment]
+    event = _event("触发错误", platform="weixin", chat="owner", user="owner")
+    target = event.source.target
+    session_id = "weixin-error-progress-session"
+    engine = manager.get_engine(session_id, agent=manager.personas.default_id())
+    assert engine is not None
+    manager.save(session_id, engine)
+    manager.mention_sessions.set(target, session_id, channel="weixin:owner")
+
+    async def _scripted_run(message, source=None, **kwargs):
+        yield Event(EventType.ERROR, {"error": "上游超时"})
+
+    engine.run = _scripted_run  # type: ignore[method-assign]
+
+    await manager.deliver_to_session(
+        session_id,
+        event.tagged_text(),
+        source={
+            "connector": "weixin",
+            "kind": "dm",
+            "channel_id": "owner",
+            "channel_name": "owner",
+            "sender_id": "owner",
+            "sender_name": "owner",
+            "ts": 1.0,
+            "text": event.text,
+            "target": target,
+            "message_id": "wx-err-1",
+        },
+    )
+
+    progress_texts = [
+        envelope.text
+        for _target, envelope in gateway.envelopes
+        if envelope.kind == "progress"
+    ]
+    assert any("本轮出错" in t and "上游超时" in t for t in progress_texts)
+
+
+@pytest.mark.asyncio
 async def test_weixin_inbound_creates_session_and_replies_with_same_context_token(tmp_path):
     calls: list[tuple[str, str, list[dict]]] = []
 

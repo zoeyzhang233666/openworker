@@ -297,7 +297,15 @@ class Gateway:
         envelope.account_id = str(getattr(adapter, "account_id", "") or "default")
         envelope.conversation_id = bare_chat_id
         envelope.reply_to = envelope.reply_to or thread_id
-        return await adapter.send(envelope)
+        try:
+            return await adapter.send(envelope)
+        except TypeError:
+            # Legacy Telegram/Slack adapters still expose the older `(chat_id, text)`
+            # interface. Keep envelope callers platform-neutral while those adapters
+            # progressively adopt rich attachment delivery.
+            return await adapter.send(
+                bare_chat_id, envelope.text, thread_id=envelope.reply_to
+            )
 
     async def update_stream(self, target: str, text: str) -> SendResult:
         """Refresh an open WeCom (or similar) reply stream without finishing it (D-195)."""
@@ -309,6 +317,36 @@ class Gateway:
         if not callable(fn):
             return SendResult(False, error=f"{platform} 不支持流式更新")
         return await fn(bare_chat_id, text)
+
+    async def upsert_progress(
+        self, target: str, text: str, *, message_id: str = ""
+    ) -> SendResult:
+        """Best-effort single-progress-message seam with safe incremental fallback."""
+        platform, chat_id, _thread_id = parse_target(target)
+        adapter, bare_chat_id = self._adapter_for_target(platform, chat_id)
+        if adapter is None:
+            return SendResult(False, error=f"no adapter for {platform}")
+        if platform == "wecom":
+            streamed = await self.update_stream(target, text)
+            if streamed.ok:
+                return streamed
+        update = getattr(adapter, "update_message", None)
+        if message_id and callable(update):
+            try:
+                await update(bare_chat_id, message_id, text)
+                return SendResult(True, message_id=message_id)
+            except Exception:
+                pass
+        return await self.deliver_envelope(
+            target,
+            OutboundEnvelope(
+                platform=platform,
+                account_id=str(getattr(adapter, "account_id", "default") or "default"),
+                conversation_id="",
+                kind="progress",
+                text=text,
+            ),
+        )
 
     async def deliver_interactive(self, target: str, text: str, buttons) -> SendResult:
         """Send a prompt with choice buttons (adapters without interactive support show text only)."""

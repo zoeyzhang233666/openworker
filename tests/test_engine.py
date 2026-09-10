@@ -321,6 +321,38 @@ def test_streaming_emits_deltas(tmp_path):
     assert events[-1].type == EventType.TURN_END
 
 
+def test_engine_passes_stable_session_id_as_internal_provider_context(tmp_path):
+    class SessionCapturingProvider(ProviderClient):
+        def __init__(self):
+            self.settings: list[dict] = []
+
+        def complete(self, **kwargs):  # pragma: no cover - streamed instead
+            raise NotImplementedError
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+        def stream(self, *, model, messages, tools=None, **settings):
+            self.settings.append(settings)
+            yield StreamChunk(turn=_text_turn("ok"))
+
+    provider = SessionCapturingProvider()
+    engine = TurnEngine(
+        provider=provider,
+        registry=ToolRegistry(),
+        permissions=PermissionEngine(workspace_root=tmp_path),
+        model="openai:deepseek-v4-flash",
+    )
+    engine.audit_context = {"session_id": "chemclaw-session-42"}
+
+    _collect(engine, "first")
+    _collect(engine, "second")
+
+    assert [
+        settings["_opencode_session_id"] for settings in provider.settings
+    ] == ["chemclaw-session-42", "chemclaw-session-42"]
+
+
 class EmptyStreamProvider(ProviderClient):
     """Compat gateways with a wrong base_url often yield zero chunks and no turn."""
 

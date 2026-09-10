@@ -19,6 +19,12 @@ lookup_cn_futures_* 与已投影的 chem-data-hub 现货工具）。主张可追
 再只回给父智能体一段短摘要并附产物路径（过长最终气泡有上游拒答风险）。不要进入计划模式，
 不要调用 propose_plan，不要声称写工具被阻断或必须等待计划审批。不要嵌套启动子智能体。"""
 
+MARKET_REPORTER_INSTRUCTIONS = """你是 ChemClaw 化工市场报告后台工作流。
+默认用简体中文。复用父轮已经拿到的价格与资讯证据，只补充会影响结论的缺口；不要调用 shell、
+不要写临时解析脚本、不要读取大原始回包、不要启动子智能体。化工现货以 chem-data-hub 为准，
+无数据时如实标注，不得用期货或 Yahoo 冒充。将完整报告写到共享工作区的 report.md，包含数据
+周期、价格表/趋势、驱动、风险、来源与数据限制；随后只返回一段短摘要和报告路径。"""
+
 WORKER_INSTRUCTIONS = """你是 ChemClaw 工作执行子智能体，拥有独立上下文。
 默认用简体中文思考与回复；仅当用户或父任务明确要求其他语言时再切换。
 在共享工作区完成有界任务，遵守仓库说明，返回含改动文件与验证的简明自包含报告。
@@ -110,6 +116,32 @@ def builtin_subagent_profiles() -> SubagentProfileRegistry:
                 isolation="shared_workspace",
                 background=True,
                 instructions=RESEARCHER_INSTRUCTIONS,
+            ),
+            SubagentProfile(
+                id="market_report",
+                title="化工市场报告",
+                description="有界地补全市场报告并写入 report.md。",
+                agent_id="cowork",
+                mode="interactive",
+                max_turns=6,
+                tool_allowlist=(
+                    "read_file",
+                    "list_files",
+                    "write_file",
+                    "edit_file",
+                    "web_search",
+                    "web_fetch",
+                ),
+                disallowed_tools=(
+                    "run_shell",
+                    "start_subagent",
+                    "explore",
+                    "background_task_send",
+                ),
+                mcp_servers=("chem-data-hub",),
+                isolation="shared_workspace",
+                background=True,
+                instructions=MARKET_REPORTER_INSTRUCTIONS,
             ),
             SubagentProfile(
                 id="worker",

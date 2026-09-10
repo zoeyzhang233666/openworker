@@ -106,7 +106,11 @@ Skill/Agent 内容的一次可追溯变化。恢复旧内容也会产生新的�
 
 ### 个人微信增量流
 
-官方 iLink 私聊通道上的渐进式回答合同。iLink 没有企微 `reply_stream` 的单气泡原位刷新接口，因此 ChemClaw 先发一次处理提示，再按标点、长度和时间阈值发送有序正文段，终态只补未发送尾段；诊断值为 `streaming_mode=incremental_messages`。每段复用同一入站会话的 `context_token`，并在发送前校验 Channel 会话所有权。
+官方 iLink 私聊通道上的渐进式回答合同。iLink 没有企微 `reply_stream` 的单气泡原位刷新接口，因此 ChemClaw 先发一次处理提示；无正文草稿时再按工具开始事件发送「正在调用 …」过程气泡（节流防刷）；正文按标点、长度和时间阈值发送有序段；终态只补未发送尾段；诊断值为 `streaming_mode=incremental_messages`。每段复用同一入站会话的 `context_token`，并在发送前校验 Channel 会话所有权。
+
+### 分阶段市场报告
+
+市场周报、日报、月报先以受限工具面交付可独立阅读的快速摘要，再通过后台任务写入 `report.md` 并交付 HTML/PNG/文件。后台任务绑定其发起会话和 Channel target；`/stop`、`/new`、`/reset` 必须取消或抑制旧任务的迟到输出。化工现货大回包先经确定性 `MarketSeriesAggregator` 生成有界价格摘要与图表规范，不由模型读取整份回包或写 shell 解析脚本。
 
 ### Channel 富内容交付
 

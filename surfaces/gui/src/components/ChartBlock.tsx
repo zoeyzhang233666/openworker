@@ -1340,20 +1340,34 @@ export function ChartBlock({
     applyAxisAtIndex(idx);
   }
 
-  function applyFocusOrLatestPinned() {
+  function applyFocusOrLatest() {
     const idx = focusOrLatestIndex();
     if (idx == null) {
       setAxisHover(null);
       setAxisPinned(false);
       return;
     }
-    if (applyAxisAtIndex(idx)) {
-      setAxisPinned(true);
-    }
+    setAxisPinned(false);
+    applyAxisAtIndex(idx);
   }
 
   applyLatestRef.current = applyLatest;
-  applyFocusPinnedRef.current = applyFocusOrLatestPinned;
+  applyFocusPinnedRef.current = applyFocusOrLatest;
+
+  function handleAxisDoubleClick(e: ReactMouseEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement | null)?.closest?.(".chart-axis-panel")) return;
+    e.preventDefault();
+    pointerDownRef.current = null;
+    const chart = chartRef.current as ChartWithHover | null;
+    if (!chart) return;
+    const index = indexFromClient(e.clientX, e.clientY);
+    setAxisPinned(false);
+    if (index == null) {
+      applyLatest();
+      return;
+    }
+    applyAxisAtIndex(index, chart);
+  }
 
   function indexFromClient(clientX: number, clientY: number): number | null {
     const chart = chartRef.current as ChartWithHover | null;
@@ -1429,7 +1443,7 @@ export function ChartBlock({
       const chart = new Chart(canvas, chartJsConfigFromSpec(parsed.spec, tooltipUi, configOpts));
       chartRef.current = chart;
       setError(null);
-      // Default left rail to focusLabel (or latest), pinned.
+      // Default left rail to focusLabel (or latest), crosshair follows cursor.
       if (axisChart) {
         requestAnimationFrame(() => {
           applyFocusPinnedRef.current();
@@ -1565,6 +1579,12 @@ export function ChartBlock({
         >
           {isZoomable ? (
             <>
+              <span
+                className="chart-hint-chip chart-hint-chip--status"
+                data-testid="chart-crosshair-status"
+              >
+                {axisPinned ? t("chart.crosshair.pinned") : t("chart.crosshair.following")}
+              </span>
               <span className="chart-hint-chip">
                 <HintIconPan />
                 <span>{t("chart.candle.hint")}</span>
@@ -1576,6 +1596,12 @@ export function ChartBlock({
             </>
           ) : (
             <>
+              <span
+                className="chart-hint-chip chart-hint-chip--status"
+                data-testid="chart-crosshair-status"
+              >
+                {axisPinned ? t("chart.crosshair.pinned") : t("chart.crosshair.following")}
+              </span>
               <span className="chart-hint-chip">
                 <HintIconCrosshair />
                 <span>{t("chart.series.hint")}</span>
@@ -1597,6 +1623,7 @@ export function ChartBlock({
         onMouseLeave={isAxisChart ? handleWrapMouseLeave : undefined}
         onMouseDown={isAxisChart ? handleAxisPointerDown : undefined}
         onClick={isAxisChart ? handleAxisClick : undefined}
+        onDoubleClick={isAxisChart ? handleAxisDoubleClick : undefined}
       >
         {variant === "inline" && showChart && (
           <button

@@ -312,6 +312,7 @@ class WeixinIlinkAdapter(BasePlatformAdapter):
             # iLink has no WeCom-style single-message update API. ChemClaw provides ordered,
             # throttled incremental messages and reports the concrete mode in status details.
             streaming=True,
+            progress_mode="incremental",
             receive_images=True,
             send_images=True,
             receive_files=True,

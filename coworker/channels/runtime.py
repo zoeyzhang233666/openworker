@@ -42,12 +42,16 @@ class ChannelDeliveryCoordinator:
         *,
         max_concurrency: int = 10,
         turn_timeout: float = 300.0,
+        timeout_grace_seconds: float = 15.0,
         is_waiting_for_human: Optional[Callable[[str], bool]] = None,
+        on_timeout: Optional[Callable[[str, Any], Awaitable[None]]] = None,
     ) -> None:
         self._runner = runner
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self.turn_timeout = max(0.01, turn_timeout)
+        self.timeout_grace_seconds = max(0.0, timeout_grace_seconds)
         self._is_waiting_for_human = is_waiting_for_human or (lambda _sid: False)
+        self._on_timeout = on_timeout
         self._queues: dict[str, asyncio.Queue[_Queued]] = {}
         self._workers: dict[str, asyncio.Task] = {}
         self._route_depths: dict[Hashable, int] = defaultdict(int)
@@ -138,6 +142,16 @@ class ChannelDeliveryCoordinator:
                 except asyncio.TimeoutError:
                     if self._is_waiting_for_human(session_id):
                         continue
+                    if self._on_timeout is not None:
+                        await self._on_timeout(session_id, payload)
+                    if self.timeout_grace_seconds:
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.shield(task), timeout=self.timeout_grace_seconds
+                            )
+                            return
+                        except asyncio.TimeoutError:
+                            pass
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
                     raise

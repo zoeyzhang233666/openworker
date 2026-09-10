@@ -57,10 +57,11 @@ messaging = [
     "dingtalk-stream==0.24.4b1",
     "pycryptodome==3.23.0",
     "cos-python-sdk-v5==1.9.38",
+    "matplotlib>=3.8",
 ]
 # Alias kept for older docs (`pip install 'coworker[wecom]'`); same package as messaging.
 wecom = ["wecom-aibot-sdk==1.0.8"]
-# Interactive Cowork browser automation.
+# Interactive Cowork browser automation (optional). Channel chart PNG uses Matplotlib.
 browser = ["playwright>=1.44"]
 # AWS Bedrock provider (lazy-imported; desktop builds bundle it, pip users opt in).
 bedrock = ["boto3>=1.34"]

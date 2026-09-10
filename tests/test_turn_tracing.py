@@ -51,6 +51,12 @@ def test_trace_counts_general_subagent_tool_and_keeps_parent_link() -> None:
     assert trace.subagent_calls == 1
 
 
+def test_trace_keeps_cancelled_turn_interrupted() -> None:
+    recorder = TurnTraceRecorder(session_id="s", model="m", plan=None)
+    recorder.observe(Event(EventType.INTERRUPTED, {"reason": "cancelled"}))
+    assert recorder.finish().status == "interrupted"
+
+
 def test_trace_schema_rejects_message_content_fields() -> None:
     data = TurnTraceRecorder(session_id="s", model="m", plan=None).finish().model_dump()
     data["prompt"] = "must not persist"

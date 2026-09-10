@@ -94,6 +94,17 @@ for pkg in (
     except Exception:
         pass
 
+# Channel chart PNG preview (D-203): Matplotlib Agg must ship inside the sidecar.
+# Previously excluded to shrink the bundle; that broke WeCom/Weixin preview on fresh installs.
+for pkg in ("matplotlib",):
+    try:
+        d, b, h = collect_all(pkg)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
+        pass
+
 # ChemClaw runtime assets are NOT Python modules — collect_submodules skips them.
 # Without these trees the frozen sidecar has zero SKILL.md / lobster personas, so
 # seed_bundled_skills and PersonaRegistry fall back to whatever is already in the
@@ -132,7 +143,7 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     runtime_hooks=[],
-    excludes=["tkinter", "matplotlib", "PIL", "PyQt5", "PySide6"]
+    excludes=["tkinter", "PyQt5", "PySide6"]
     + ([] if INCLUDE_EXPERIMENTAL else ["coworker.connectors.experimental"]),
     noarchive=False,
 )

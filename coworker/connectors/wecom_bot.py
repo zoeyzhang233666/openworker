@@ -80,6 +80,7 @@ class WecomBotAdapter(BasePlatformAdapter):
             group_mentions=True,
             proactive_messages=True,
             streaming=True,
+            progress_mode="replace",
             receive_images=True,
             send_images=True,
             receive_files=True,

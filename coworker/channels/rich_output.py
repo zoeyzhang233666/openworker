@@ -7,18 +7,21 @@ single policy seam used by live drafts, automatic terminal replies, and ``send_m
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
 from ..filestore.base import FileStorage, FileStorageError, NullFileStorage
+from ..report_html.chart_spec import normalize_chart_spec_dict
 from ..report_html.cook import cook_report_html, find_report_markdown
 from ..report_html.preview import PreviewRenderer, render_chart_preview_png
 from .wecom_reply import (
     strip_md_artifacts_for_wecom,
     truncate_summary,
     wants_full_bubble,
+    wants_image_only,
 )
 
 _FENCE_OPEN = re.compile(
@@ -41,6 +44,7 @@ class ChannelRichReply:
     preview_filename: str = "ChemClaw-图表预览.png"
     delivery_mode: str = "summary_only"
     error: str = ""
+    image_only: bool = False
 
 
 def has_renderer_blocks(text: str) -> bool:
@@ -102,8 +106,9 @@ def compose_channel_rich_reply(
     render_preview: Optional[PreviewRenderer] = None,
 ) -> ChannelRichReply:
     """Build IM-safe bubble text plus optional preview PNG and a single HTML link."""
-    raw = assistant_text or ""
+    raw = _salvage_chart_markdown(assistant_text or "", chart_tool_results)
     stripped = strip_md_artifacts_for_wecom(raw)
+    image_only = wants_image_only(user_text)
     if wants_full_bubble(user_text):
         return ChannelRichReply(
             text=stripped or "（无正文）",
@@ -156,18 +161,28 @@ def compose_channel_rich_reply(
     html_bytes = cooked.html.encode("utf-8")
     preview_bytes = b""
     preview_path: Optional[Path] = None
-    if cooked.chart_count > 0 and cooked.local_path is not None:
-        preview_bytes = render_chart_preview_png(
-            cooked.local_path, render=render_preview
-        ) or b""
-        if preview_bytes:
+    if cooked.chart_count > 0:
+        preview_bytes = (
+            render_chart_preview_png(
+                cooked.local_path or "",
+                render=render_preview,
+                html_bytes=html_bytes if cooked.local_path is None else None,
+                chart_specs=list(cooked.charts),
+            )
+            or b""
+        )
+        if preview_bytes and cooked.local_path is not None:
             preview_path = _write_preview_png(
                 preview_bytes, cooked.local_path, cooked.title or cook_title
+            )
+        elif preview_bytes:
+            preview_path = _write_preview_png_bytes(
+                preview_bytes, workspace, cooked.title or cook_title
             )
 
     storage = file_storage or NullFileStorage()
     upload_error = ""
-    if storage.configured():
+    if storage.configured() and not image_only:
         try:
             ref = storage.upload(
                 html_bytes,
@@ -185,11 +200,40 @@ def compose_channel_rich_reply(
                 preview_image_bytes=preview_bytes,
                 preview_image_path=preview_path,
                 delivery_mode="summary_link",
+                image_only=image_only,
             )
         except FileStorageError as exc:
             upload_error = str(exc)
         except Exception as exc:
             upload_error = f"{type(exc).__name__}"
+
+    if image_only:
+        if preview_bytes:
+            note = "（图表预览见上方图片）"
+            return ChannelRichReply(
+                text=f"{summary}\n\n{note}".strip(),
+                has_rich_blocks=True,
+                html_path=cooked.local_path,
+                html_bytes=html_bytes,
+                filename=filename,
+                preview_image_bytes=preview_bytes,
+                preview_image_path=preview_path,
+                delivery_mode="image_only",
+                image_only=True,
+            )
+        note = "（未能生成图表预览图；请确认 sidecar 已包含 Matplotlib）"
+        if cooked.chart_count == 0:
+            note = "（未能解析图表数据；请确认工具返回了有效时间序列）"
+        return ChannelRichReply(
+            text=f"{summary}\n\n{note}".strip(),
+            has_rich_blocks=True,
+            html_path=cooked.local_path,
+            html_bytes=html_bytes,
+            filename=filename,
+            delivery_mode="summary_only",
+            image_only=True,
+            error=note,
+        )
 
     if cooked.local_path is not None:
         note = f"{link_label}已整理为 HTML 文件。"
@@ -236,15 +280,16 @@ def rich_reply_attachments(reply: ChannelRichReply) -> list:
             )
         )
     if reply.html_path is not None and reply.html_url is None and reply.html_bytes:
-        attachments.append(
-            ChannelAttachment(
-                kind="file",
-                name=reply.filename,
-                mime_type="text/html; charset=utf-8",
-                size=len(reply.html_bytes),
-                local_path=str(reply.html_path),
+        if not reply.image_only:
+            attachments.append(
+                ChannelAttachment(
+                    kind="file",
+                    name=reply.filename,
+                    mime_type="text/html; charset=utf-8",
+                    size=len(reply.html_bytes),
+                    local_path=str(reply.html_path),
+                )
             )
-        )
     return attachments
 
 
@@ -290,7 +335,7 @@ def deliver_rich_reply_files(
         else:
             sent_preview = True
 
-    if reply.html_url is None and reply.html_bytes:
+    if reply.html_url is None and reply.html_bytes and not reply.image_only:
         delivered = deliver_file(
             platform=platform,
             chat_id=chat_id,
@@ -318,6 +363,37 @@ def deliver_rich_reply_files(
             "preview": sent_preview,
         }
     return {"ok": True, "preview": sent_preview}
+
+
+def _salvage_chart_markdown(
+    raw: str,
+    chart_tool_results: list[dict[str, Any]] | None,
+) -> str:
+    """Append a ```chart block from tool sidecars when the model forgot to emit one."""
+    if has_renderer_blocks(raw):
+        return raw
+    for row in reversed(chart_tool_results or []):
+        if not isinstance(row, dict):
+            continue
+        spec = row.get("chart_spec")
+        normalized = normalize_chart_spec_dict(spec)
+        if normalized:
+            block = json.dumps(normalized, ensure_ascii=False)
+            return f"{raw.rstrip()}\n\n```chart\n{block}\n```"
+    return raw
+
+
+def _write_preview_png_bytes(
+    data: bytes, workspace: Path | str | None, title: str
+) -> Path:
+    import tempfile
+
+    base = Path(workspace) if workspace else Path(tempfile.gettempdir()) / "chemclaw-reports"
+    base.mkdir(parents=True, exist_ok=True)
+    safe = re.sub(r"[^\w\u4e00-\u9fff\-]+", "_", title or "")[:60].strip("_")
+    out = base / f"{safe or 'ChemClaw-图表预览'}-preview.png"
+    out.write_bytes(data)
+    return out
 
 
 def _html_filename(title: str) -> str:

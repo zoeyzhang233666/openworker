@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from .base import ProviderClient
 from .capabilities import capabilities_for
+from .openai_provider import OpenAIProvider, _OPENCODE_SESSION_SETTING
 from .registry import build_provider_client, get_descriptor
 
 
@@ -97,7 +98,11 @@ class ProviderRouter(ProviderClient):
         **settings: Any,
     ):
         self._note_use(model)
-        return self._client_for(model).complete(
+        client = self._client_for(model)
+        opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
+        if isinstance(client, OpenAIProvider) and opencode_session_id:
+            settings[_OPENCODE_SESSION_SETTING] = opencode_session_id
+        return client.complete(
             model=self._bare(model), messages=messages, tools=tools, **settings
         )
 
@@ -110,7 +115,11 @@ class ProviderRouter(ProviderClient):
         **settings: Any,
     ):
         self._note_use(model)
-        return self._client_for(model).stream(
+        client = self._client_for(model)
+        opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
+        if isinstance(client, OpenAIProvider) and opencode_session_id:
+            settings[_OPENCODE_SESSION_SETTING] = opencode_session_id
+        return client.stream(
             model=self._bare(model), messages=messages, tools=tools, **settings
         )
 

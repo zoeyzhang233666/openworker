@@ -59,6 +59,23 @@ _BUILTINS = ScenarioRegistry(
             priority=100,
         ),
         ScenarioSpec(
+            id="chemical_market_report",
+            category="market",
+            title="化工市场周报",
+            description="生成化工品市场日报、周报、月报或市场简报。",
+            examples=("生成液化气的市场周报", "甲醇日报", "化工行情月报"),
+            aliases=("周报", "日报", "月报", "市场简报", "行情报告"),
+            required_capabilities=("market.price.chemical_spot",),
+            optional_capabilities=(
+                "market.price.chemical_spot_catalog",
+                "market.news.chemical",
+                "research.web.search",
+            ),
+            output_contract="staged_market_report",
+            fallback_policy=("continue_with_available_evidence",),
+            priority=110,
+        ),
+        ScenarioSpec(
             id="chemical_identity",
             category="chemical",
             title="化学品标识",

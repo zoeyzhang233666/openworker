@@ -54,6 +54,36 @@ _BUILTINS = CapabilityRegistry(
                 ),
             ),
         ),
+        CapabilitySpec(
+            id="market.price.chemical_spot_catalog",
+            description="化工现货品名与别名查询。",
+            providers=(
+                CapabilityProvider(
+                    provider_id="chem-data-hub",
+                    binding_kind="mcp_metadata",
+                    selector="chem-data-hub:search_compound",
+                    priority=100,
+                    authority="specialist",
+                    freshness="live",
+                    network_scope="mcp",
+                ),
+            ),
+        ),
+        CapabilitySpec(
+            id="market.news.chemical",
+            description="化工品市场资讯。",
+            providers=(
+                CapabilityProvider(
+                    provider_id="chem-data-hub",
+                    binding_kind="mcp_metadata",
+                    selector="chem-data-hub:list_market_news_live",
+                    priority=100,
+                    authority="specialist",
+                    freshness="live",
+                    network_scope="mcp",
+                ),
+            ),
+        ),
         _tool("market.price.cn_futures.quote", "国内期货实时报价。", "lookup_cn_futures_quote", authority="exchange_public", freshness="live", network_scope="public_web"),
         _tool("market.ohlc.cn_futures", "国内期货 OHLC。", "lookup_cn_futures_ohlc", authority="exchange_public", freshness="daily", network_scope="public_web"),
         _tool("chem.identity", "化学品名称、CAS 与分子式标识。", "lookup_chemical_identity", authority="pubchem", network_scope="public_api"),

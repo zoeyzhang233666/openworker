@@ -21,6 +21,10 @@ _DEEP_RESEARCH_INTENT_RE = re.compile(
     r"deep\s+research|industry\s+report|weekly\s+report)",
     re.I,
 )
+_MARKET_REPORT_RE = re.compile(
+    r"(市场)?(周报|日报|月报|简报|行情报告|market\s*(weekly|daily|monthly)\s*report)",
+    re.I,
+)
 _COMPANY_RE = re.compile(r"(公司|企业|集团|股份|化学|化工|万华|巴斯夫|陶氏|company|corp)", re.I)
 _MARKET_RESEARCH_RE = re.compile(r"(市场|供需|产业链|价格驱动|未来半年|market)", re.I)
 _COMPANY_SUBJECT_RE = re.compile(r"(万华|巴斯夫|陶氏|公司|企业)", re.I)
@@ -29,6 +33,11 @@ _COMPANY_SUBJECT_RE = re.compile(r"(万华|巴斯夫|陶氏|公司|企业)", re.
 def text_has_deep_research_intent(text: str) -> bool:
     """True when the user asked for research rather than a single market quote."""
     return bool(_DEEP_RESEARCH_INTENT_RE.search(text or ""))
+
+
+def text_has_market_report_intent(text: str) -> bool:
+    """A report is staged market work, not generic deep-research delegation."""
+    return bool(_MARKET_REPORT_RE.search(text or ""))
 
 
 def _research_scenario_for_text(text: str, *, confidence: float) -> ScenarioResolution:
@@ -129,6 +138,8 @@ class ScenarioResolver:
             )
 
         market = market_selection or resolve_market_tools(text, tools)
+        if text_has_market_report_intent(text):
+            return _adapter_match("chemical_market_report", confidence=0.98)
         # Deep research outranks spot/futures quote adapters so Subagent eligibility
         # is not killed by cn_futures_market / chemical_spot_price (allow_subagent=false).
         if text_has_deep_research_intent(text) and (

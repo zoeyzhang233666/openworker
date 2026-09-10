@@ -133,19 +133,46 @@ def test_cn_futures_extra_tools_require_corresponding_intent():
 
 
 def test_wti_and_brent_futures_only_use_yahoo():
-    for query in ("查 WTI 原油期货", "BZ=F 最近一年走势"):
+    for query in (
+        "查 WTI 原油期货",
+        "生成WTI原油期货的价格走势图",
+        "BZ=F 最近一年走势",
+        "布伦特原油期货走势",
+    ):
         selection = resolve_market_tools(query, _tools())
-        assert selection.intent.kind is MarketIntentKind.GLOBAL_FUTURES
-        assert selection.allowed_tool_names == ("lookup_yahoo_ohlc",)
-        assert selection.web_is_supplemental is False
+        assert selection.intent.kind is MarketIntentKind.GLOBAL_FUTURES, query
+        assert selection.allowed_tool_names == ("lookup_yahoo_ohlc",), query
+        assert selection.web_is_supplemental is False, query
     assert "CL=F" in render_market_turn_context(
-        resolve_market_tools("查 WTI 原油期货", _tools())
+        resolve_market_tools("生成WTI原油期货的价格走势图", _tools())
     )
 
 
 def test_generic_futures_concept_is_not_misclassified_as_a_price_lookup():
     selection = resolve_market_tools("深度研究期货制度的基本概念", _tools())
     assert selection.intent.kind is MarketIntentKind.NON_MARKET
+
+
+def test_bare_spot_only_chemical_price_defaults_to_chem_data_hub():
+    """Citric acid etc. have no CN futures contract — do not strip MCP (D-204)."""
+    for query in (
+        "给我柠檬酸价格走势图",
+        "柠檬酸价格",
+        "柠檬酸今天多少钱",
+        "查一下苯酚报价",
+    ):
+        selection = resolve_market_tools(query, _tools())
+        assert selection.intent.kind is MarketIntentKind.CHEMICAL_SPOT, query
+        assert selection.intent.scope is MarketScope.CHEMICAL_SPOT, query
+        assert selection.allowed_tool_names == (SPOT, *WEB), query
+        assert selection.needs_clarification is False, query
+        _assert_chem_web_allowed(selection)
+    context = render_market_turn_context(
+        resolve_market_tools("柠檬酸今天多少钱", _tools())
+    )
+    assert "get_price_trend" in context
+    assert "不可用" not in context
+    assert "立即" in context or "不要" in context  # fast-path / no fake ask_user
 
 
 def test_bare_methanol_requires_clarification_and_guards_market_calls():
