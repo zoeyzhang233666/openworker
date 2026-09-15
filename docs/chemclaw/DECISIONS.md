@@ -320,6 +320,8 @@
 - **D-204（2026-09-02）**：**裸化工查价默认现货 MCP + Channel 快答**。D-166 原先要求显式「现货」或期现澄清才投影 `get_price_trend`，导致柠檬酸等无期货合约品种在企微上被判 non_market、工具面只剩网页，模型连环问卷并发明 `get_available_tools`。现改为：有价格/走势/多少钱语义且无期货/上市证券歧义时默认 `CHEMICAL_SPOT`；甲醇/原油等仍澄清。市场策略与 Channel 约定禁止「请用户贴数据」；今天/现价小 limit 短答，走势图再拉序列。
 - **D-205（2026-09-09）**：**OpenCode Go 复用 ChemClaw 会话 ID**。仅当 OpenAI custom endpoint 解析为 hostname `opencode.ai` 且 path 为 `/zen/go/v1`（或其子路径）时，Chat Completions 的 stream/complete 请求使用 SDK per-request `extra_headers` 添加 `x-opencode-session`。值来自 `TurnEngine.audit_context["session_id"]`，不生成随机或固定替代值；Router 隔离非 Chat Completions provider，provider 在构造 SDK kwargs 前消费内部参数，stream transport fallback 显式续传同值。官方 OpenAI、Azure、Ollama、DeepSeek 官方及其他兼容端点不自动添加。
 
+- **D-206（2026-09-15）**：**显式 MCP 请求不能被领域投影静默裁掉**。中文紧邻的 MCP 标记与已注册/配置服务器名称都要识别。桌面保留当前会话已注册工具，Channel 只补入显式 MCP 工具且继续禁止 shell/Skill/子智能体；权限审批、禁工具与禁联网策略仍是最终边界，预览与实际工具面对齐。多事件新闻中的泛价格波动不等于单独现货查价。`query_scope` / `count_scope` / `progress_snapshot` 使用 120 秒慢查询上限（环境覆盖优先）；客户端超时取消 pending future，区分本地等待到期与传输/服务端超时，返回中文工具级诊断，不自动重试、不将超时称作未注册、不推断数据库索引。MCP 测试按已测试接口逐项报告，未测试不得计入成功，经营范围查询不冒充新闻文本抽取。定向回归 **232 passed, 1 deselected**；正式安装版尚未替换，服务端性能未宣称修复。
+
 ## 协作治理
 
 - **D-057**：项目事实沉淀在 Git 跟踪的本地文档，而不是依赖聊天历史。

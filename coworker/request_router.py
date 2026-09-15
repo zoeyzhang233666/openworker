@@ -275,7 +275,7 @@ _PRODUCT_ACTION_PATTERNS = [
     # messaging
     r"(发给|发送给|发消息|发邮件给|send (this |it )?(to|an? email)|message .+|发给\s*\w+)",
     # connectors / MCP / CRM
-    r"(连接|connector|mcp\b|hubspot|创建联系人|crm|创建任务)",
+    r"(连接|connector|hubspot|创建联系人|crm|创建任务)",
     # files / workspace
     r"(读取|打开|修改|写入|保存到|写进|写到).*(文件|file|\.md|\.py|\.csv|report|"
     r"pyproject|engine\.py)|"
@@ -295,9 +295,13 @@ _PRODUCT_ACTION_PATTERNS = [
 
 
 def _product_action_suspected(text: str) -> bool:
+    from .mcp_intent import mentions_mcp
+
     t = text.strip()
     if not t:
         return False
+    if mentions_mcp(t):
+        return True
     for pat in _PRODUCT_ACTION_PATTERNS:
         if re.search(pat, t, re.I):
             return True

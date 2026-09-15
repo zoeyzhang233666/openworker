@@ -373,6 +373,18 @@ def resolve_market_tools(
     """Resolve market scope and return the exact Provider-visible Tool set."""
 
     raw = str(text or "").strip()
+    # A multi-event news roundup is not itself a request for a spot quote.
+    # Keep explicit market qualifiers/quote requests on the existing domain path.
+    if (
+        re.search(r"(新闻|资讯|news)", raw, re.I)
+        and len(set(re.findall(r"招投标|招标|增产|扩产|停产|检修", raw))) >= 2
+        and not find_futures_mentions(raw)
+        and not re.search(
+            r"(现货|期货|走势图|多少钱|现价|报价|查询.*价格|查.*走势|spot|futures)",
+            raw, re.I,
+        )
+    ):
+        return MarketToolSelection.non_market()
     descriptors = tuple(tools)
     available = {tool.name for tool in descriptors}
     spot_tools = _chemical_spot_tools(descriptors)

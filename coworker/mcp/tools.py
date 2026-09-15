@@ -73,6 +73,7 @@ _WRITE_TOKENS = (
 _DEFAULT_TIMEOUT = 30.0
 _SLOW_TIMEOUT = 120.0
 _SLOW_TOKENS = ("batch", "export", "download", "crawl", "index", "embed", "sync")
+_SLOW_QUERY_TOOLS = frozenset({"query_scope", "count_scope", "progress_snapshot"})
 
 
 def tool_name(server: str, tool: str) -> str:
@@ -104,7 +105,7 @@ def _mcp_timeout(remote_name: str, *, default: float | None = None) -> float:
     if default is not None:
         return default
     lowered = (remote_name or "").lower()
-    if any(tok in lowered for tok in _SLOW_TOKENS):
+    if lowered in _SLOW_QUERY_TOOLS or any(tok in lowered for tok in _SLOW_TOKENS):
         return _SLOW_TIMEOUT
     return _DEFAULT_TIMEOUT
 
@@ -156,10 +157,37 @@ def build_callables(
         def _invoke(
             _remote: str = remote,
             _timeout: float = call_timeout,
+            _server: str = server.name,
             **kwargs: Any,
         ) -> Any:
             future = asyncio.run_coroutine_threadsafe(call_async(_remote, kwargs), loop)
-            return future.result(_timeout)
+            try:
+                return future.result(_timeout)
+            except TimeoutError:
+                if future.done():
+                    # A response may race with the local wait deadline.
+                    try:
+                        return future.result()
+                    except TimeoutError:
+                        pass
+                    source = "transport_or_server"
+                    message = "MCP 传输或服务端返回超时；请检查网络与服务端查询日志。"
+                else:
+                    source = "client_wait"
+                    future.cancel()
+                    message = (
+                        f"MCP 调用等待超过 {_timeout:g} 秒，已取消客户端等待。"
+                        "服务端是否停止查询取决于其取消支持。请缩小查询范围，"
+                        "或检查服务端查询耗时；这不表示接口未注册或整个 MCP 不可用。"
+                    )
+                return {
+                    "error": f"{_server}/{_remote}：{message}",
+                    "error_type": "TimeoutError",
+                    "timeout_source": source,
+                    "server": _server,
+                    "tool": _remote,
+                    "timeout_seconds": _timeout,
+                }
 
         # We attach the schema + metadata explicitly (rather than via `ai.tool`, which would
         # try to derive a schema from this `**kwargs` wrapper): the registry reads both attrs.

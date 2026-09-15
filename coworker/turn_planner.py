@@ -20,6 +20,7 @@ from .channels.delivery import (
 from .config import Config
 from .execution_profile import ExecutionProfile, RequestRoute
 from .market_intent import MarketToolSelection, resolve_market_tools
+from .mcp_intent import mentions_mcp, referenced_mcp_tools
 from .request_router import (
     RequestRouter,
     RouteDecision,
@@ -33,7 +34,7 @@ from .scenarios import (
     builtin_scenario_registry,
     text_has_deep_research_intent,
 )
-from .tool_policy import TurnToolPolicy
+from .tool_policy import TurnToolPolicy, filter_tool_names
 from .tool_projection import select_agent_tool_names, select_verified_tool_names
 from .tools.registry import ToolDescriptor
 
@@ -221,8 +222,16 @@ class TurnPlanner:
             origin is TurnOrigin.USER and is_channel_user_source(source)
         )
         context = self._context_provider()
+        live_names = tuple(self._available_tool_names())
+        referenced = referenced_mcp_tools(text, live_names)
+        explicit_mcp = bool(
+            mentions_mcp(text)
+            or referenced
+            or referenced_mcp_tools(text, self._configured_tool_names())
+        )
         guarded_full_agent = bool(
             has_attachment
+            or (explicit_mcp and not channel_user)
             or origin is not TurnOrigin.USER
             or display is not None
             or durable_resume
@@ -423,6 +432,22 @@ class TurnPlanner:
             decision, capability_plan, market_selection
         )
 
+        if channel_user and explicit_mcp:
+            # Keep Channel's bounded surface; explicit MCP is not shell/Skill access.
+            mcp_names = referenced or tuple(
+                name for name in live_names if name.startswith("mcp__")
+            )
+            selected = decision.allowed_tool_names
+            if selected is None:
+                selected = tuple(
+                    name for name in ("web_search", "web_fetch", "ask_user")
+                    if name in live_names
+                )
+            decision = replace(
+                decision,
+                allowed_tool_names=tuple(dict.fromkeys((*selected, *mcp_names))),
+            )
+
         profile = decision_to_execution_profile(decision, self.config)
         market_report_channel = (
             channel_user
@@ -512,6 +537,17 @@ class TurnPlanner:
                 )
             else:
                 prompt_profile = PromptProfile.AGENT_TARGETED
+
+        if explicit_mcp and capability_plan is not None:
+            # Preview must describe the actual surface, not the superseded scenario subset.
+            actual_names = tuple(filter_tool_names(
+                live_names if profile.allowed_tool_names is None else profile.allowed_tool_names,
+                decision.tool_policy,
+            ))
+            capability_plan = capability_plan.model_copy(update={
+                "selected_tool_names": actual_names,
+                "blocked_tool_names": tuple(name for name in live_names if name not in actual_names),
+            })
 
         return TurnPlan(
             decision=decision,

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Iterable, Optional
 
 from .execution_profile import ExecutionProfile, RequestRoute
 from .market_intent import MarketToolSelection, resolve_market_tools
+from .mcp_intent import mentions_mcp, referenced_mcp_tools
 from .tool_policy import TurnToolPolicy, filter_tool_names, tool_allowed_under_policy
 from .tools.registry import ToolDescriptor
 
@@ -200,7 +201,9 @@ def select_agent_tool_names(
     avail = list(dict.fromkeys(available))
     if not t:
         return None
-    if re.search(r"(\bmcp\b|connector|连接器|连接\s*[^，。 ]+)", t, re.I):
+    if mentions_mcp(t) or referenced_mcp_tools(t, avail) or re.search(
+        r"(connector|连接器|连接\s*[^，。 ]+)", t, re.I
+    ):
         return None
 
     packs: list[str] = []
