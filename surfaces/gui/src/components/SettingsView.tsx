@@ -1,3 +1,4 @@
+import { ModelProfileCard } from "./ModelProfileCard";
 import { useEffect, useRef, useState } from "react";
 import {
   getSettings,
@@ -942,7 +943,7 @@ function CompactionCard() {
     getSettings()
       .then((s) => {
         setCfg({
-          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.70,
+          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.80,
           compaction_cap_tokens: s.compaction_cap_tokens ?? 100_000,
           compaction_model: s.compaction_model ?? "",
         });
@@ -951,7 +952,7 @@ function CompactionCard() {
       })
       .catch(() =>
         setCfg({
-          compaction_threshold_pct: 0.70,
+          compaction_threshold_pct: 0.80,
           compaction_cap_tokens: 100_000,
           compaction_model: "",
         }),
@@ -960,7 +961,8 @@ function CompactionCard() {
 
   const save = async (patch: Partial<CompactionSettings>) => {
     setCfg((p) => (p ? { ...p, ...patch } : p));
-    await setCompactionSettings(patch);
+    const result = await setCompactionSettings(patch);
+    if (!result.ok) throw new Error(result.error || "保存压缩设置失败");
   };
 
   if (!cfg) return null;
@@ -987,7 +989,7 @@ function CompactionCard() {
             onChange={(e) =>
               save({
                 compaction_threshold_pct:
-                  Math.max(10, Math.min(Number(e.target.value) || 70, 95)) / 100,
+                  Math.max(10, Math.min(Number(e.target.value) || 80, 95)) / 100,
               })
             }
           />
@@ -1042,6 +1044,7 @@ function CompactionCard() {
           "The summary is written by this model. For better reliability, choose a stable non-reasoning model that returns normal text. A provider-prefixed model uses that provider's endpoint; the default follows the session model.",
         )}
       </div>
+      <ModelProfileCard models={models} />
     </div>
   );
 }

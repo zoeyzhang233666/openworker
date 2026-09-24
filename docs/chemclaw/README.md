@@ -2,6 +2,8 @@
 
 ## 当前状态
 
+- **运行内核整改（2026-09-24，实施中）**：用户批准通用引擎＋工作流技能。阶段一计量、端点模型配置、完整请求预算、摘要质量和错误分类已落地；99 项定向回归与 GUI 类型检查通过。后续工具发现/渠道等价/续跑仍实施中。详见 [计划](../superpowers/plans/2026-09-24-chemclaw-runtime-renewal.md)。未替换安装版。
+
 - **D-206：显式 MCP 请求保留工具 + 超时诊断（2026-09-15）**：修复中文紧邻 `mcp` 未识别、新闻复合任务因行情投影丢失用户点名 MCP。桌面显式 MCP/服务器名请求保留已注册工具，Channel 仅补 MCP 并保持禁 shell/Skill/子智能体；预览对齐实际工具面。多事件新闻不因泛“价格波动”单独落现货。`query_scope` / `count_scope` / `progress_snapshot` 等待上限 120 秒（环境覆盖优先）；客户端超时取消未完成等待，中文错误区分客户端与传输/服务端，不推断数据库索引。定向与 MCP/权限/提示组合 **232 passed，1 deselected**；含真实引擎两轮出站 schema 验证。**源码已修复，未重启运行中程序、未重打/安装正式包，GUI 生效仍需加载新版 sidecar。** 规格：[design](../superpowers/specs/2026-09-15-chemclaw-explicit-mcp-design.md) / [plan](../superpowers/plans/2026-09-15-chemclaw-explicit-mcp.md)。服务端查询性能未宣称修复。
 
 - **本机 NSIS 安装包（2026-09-10）**：仅从本 worktree `chemclaw-UI` 的源码提交 `58d9f62` 构建未签名 `ChemClaw_0.1.7_x64-setup.exe`，产物位于 `surfaces/gui/src-tauri/target/release/bundle/nsis/`，大小 **125.63 MiB**，SHA-256 `18B1B7DEE35B947E564637E60D23DDD030209370EC7B958BE113821F60901A07`。staged sidecar 与源码一致：**108** 个 `SKILL.md` + **7** 个 builtin persona；未包含 `builtin_mcp.bundle` / `builtin_servers.json`，也未发现 ChemClaw sessions、聊天记录数据库、用户配置或密钥。聊天仍只保存在 `%APPDATA%\\ChemClaw`，不进入安装包。构建前定向回归：Python **254 passed**、GUI ChartBlock **54 passed**，`compileall` 通过。无 updater 签名密钥，因此不含自动更新制品。

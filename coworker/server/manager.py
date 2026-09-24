@@ -237,6 +237,8 @@ class SessionManager:
         )
         # Desktop/UI prefs (default model, onboarding state) — not secrets; a plain JSON file.
         self._prefs = self._load_prefs()
+        if isinstance(self.provider, ProviderRouter):
+            self.provider.model_profile_settings = lambda: self._prefs.get("model_profiles", {})
         if self._prefs.get("default_model"):
             self.model = self._prefs["default_model"]
         if self._prefs.get("default_mode"):
@@ -3015,6 +3017,35 @@ class SessionManager:
             "pdf_max_pages": max(1, min(pages, 100)),
             "pdf_max_mb": max(1, min(mb, 10)),
         }
+
+    def model_profile_payload(self, model: str = "") -> dict[str, Any]:
+        from ..providers.model_profile import resolve_model_profile
+        from ..context_budget import budget_request
+        model = model or self.model
+        getter = getattr(self.provider, "model_profile", None)
+        profile = getter(model) if getter else resolve_model_profile(
+            model, overrides=self._prefs.get("model_profiles", {}))
+        cfg = self.compaction_settings()
+        budget = budget_request([], None, window=profile.context_window,
+            max_output=profile.max_output_tokens, threshold=cfg["threshold_pct"], cap=cfg["cap_tokens"])
+        return {**profile.as_dict(), "effective_trigger": budget.trigger,
+                "input_limit": budget.input_limit, "target_tokens": budget.target}
+
+    def set_model_profile(self, model: str, overrides: Any) -> dict[str, Any]:
+        from ..providers.model_profile import validate_overrides
+        if not isinstance(model, str) or not model.strip():
+            return {"ok": False, "error": "请选择模型"}
+        try:
+            values = validate_overrides(overrides)
+            current = self.model_profile_payload(model)
+            window = values.get("context_window", current["context_window"])
+            if values.get("max_output_tokens", current["max_output_tokens"]) >= window:
+                raise ValueError("最大输出必须小于上下文窗口")
+        except (ValueError, TypeError) as exc:
+            return {"ok": False, "error": str(exc)}
+        self._prefs.setdefault("model_profiles", {})[current["key"]] = values
+        self._save_prefs()
+        return {"ok": True, **self.model_profile_payload(model)}
 
     def compaction_settings(self) -> dict[str, Any]:
         """The live auto-compaction knobs (OPE-27) — read by every engine per check, so a

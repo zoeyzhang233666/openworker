@@ -1214,6 +1214,35 @@ export interface CompactionSettings {
   compaction_summary_input_tokens?: number;
 }
 
+export interface ModelProfile {
+  model: string;
+  provider: string;
+  endpoint: string;
+  context_window: number;
+  max_output_tokens: number;
+  reasoning_effort: string;
+  structured_tools_streaming: boolean | null;
+  source: string;
+  effective_trigger: number;
+  target_tokens: number;
+}
+
+export async function getModelProfile(model: string): Promise<ModelProfile> {
+  const res = await fetch(`${httpBase()}/v1/settings/model-profile?model=${encodeURIComponent(model)}`);
+  if (!res.ok) throw new Error("无法读取模型能力配置");
+  return res.json();
+}
+
+export async function setModelProfile(model: string, overrides: Partial<ModelProfile>): Promise<ModelProfile> {
+  const res = await fetch(`${httpBase()}/v1/settings/model-profile`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, overrides }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) throw new Error(data.error || "保存模型能力失败");
+  return data;
+}
+
 /** Persist the auto-compaction overrides (threshold %, token cap, summarizer model). */
 export async function setCompactionSettings(
   patch: Partial<CompactionSettings>,

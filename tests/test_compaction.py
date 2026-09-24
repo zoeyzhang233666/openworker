@@ -85,7 +85,7 @@ def convo(turns=6, bulk=2000):
 class FakeSummarizer:
     def __init__(
         self,
-        text="## Summary\nall good",
+        text="## Primary request and intent\nKeep building the report and preserve user constraints.\n## Decisions\nUse recorded evidence and exact artifact paths; do not repeat completed writes.\n## Current work\nReview the results and finish the report with citations.",
         fail_times=0,
         *,
         reasoning=None,
@@ -117,17 +117,17 @@ class FakeSummarizer:
 
 
 def test_trigger_is_min_of_pct_and_cap():
-    assert trigger_tokens(100_000) == 70_000
+    assert trigger_tokens(100_000) == 80_000
     assert trigger_tokens(10_000_000) == DEFAULT_CAP_TOKENS  # the 100k cap wins
-    assert trigger_tokens(None) == int(0.70 * DEFAULT_CONTEXT_WINDOW)
+    assert trigger_tokens(None) == min(DEFAULT_CAP_TOKENS, int(0.80 * DEFAULT_CONTEXT_WINDOW))
     # both knobs are user-overridable
     assert trigger_tokens(100_000, threshold_pct=0.5, cap_tokens=40_000) == 40_000
     assert trigger_tokens(100_000, threshold_pct=0.5, cap_tokens=999_999) == 50_000
 
 
 def test_should_compact_crosses_threshold():
-    assert not should_compact(69_999, 100_000)
-    assert should_compact(70_000, 100_000)
+    assert not should_compact(79_999, 100_000)
+    assert should_compact(80_000, 100_000)
 
 
 def test_estimate_tokens_is_chars_over_four():
@@ -287,10 +287,10 @@ def test_summary_budget_reserves_output_and_uses_conservative_caps():
     unknown = summary_budget(None)
     tight = summary_budget(128_000, tight=True)
 
-    assert small == SummaryBudget(16_000, 11_000, 3_000, 2_000, False)
-    assert normal.input_tokens == 24_000
+    assert small == SummaryBudget(16_000, 6_000, 8_000, 2_000, False)
+    assert normal.input_tokens == 14_000
     assert large.input_tokens == 24_000
-    assert unknown.context_window == 32_000 and unknown.input_tokens == 24_000
+    assert unknown.context_window == 32_000 and unknown.input_tokens == 14_000
     assert tight.input_tokens == 8_000 and tight.tight
     for budget in (small, normal, large, unknown, tight):
         assert budget.input_tokens + budget.output_tokens + budget.safety_tokens <= budget.context_window
@@ -367,12 +367,12 @@ def test_summarizer_messages_tight_span_clips_harder():
 
 
 def test_summarize_span_passes_model_and_raises_on_empty():
-    fake = FakeSummarizer(text="## ok")
+    fake = FakeSummarizer(text="## Primary request and intent\nKeep building the report and preserve user constraints.\n## Decisions\nUse recorded evidence and exact artifact paths; do not repeat completed writes.\n## Current work\nReview the results and finish the report with citations.")
     out = summarize_span(fake, "prov:model-x", [user("hi")])
-    assert out == "## ok"
+    assert out == "## Primary request and intent\nKeep building the report and preserve user constraints.\n## Decisions\nUse recorded evidence and exact artifact paths; do not repeat completed writes.\n## Current work\nReview the results and finish the report with citations."
     assert fake.calls[0]["model"] == "prov:model-x"
     assert fake.calls[0]["tools"] is None
-    assert fake.calls[0]["reasoning_effort"] == "none"
+    assert "reasoning_effort" not in fake.calls[0]
 
     with pytest.raises(SummaryFailure) as empty:
         summarize_span(FakeSummarizer(text="  "), "m", [user("hi")])
@@ -411,7 +411,7 @@ def test_summarize_span_rejects_length_truncated_output():
 
 def test_build_state_and_outbound_view():
     msgs = convo(turns=6)
-    fake = FakeSummarizer(text="## Summary\nthe gist")
+    fake = FakeSummarizer(text="## Primary request and intent\nKeep building the report and preserve user constraints.\n## Decisions\nUse recorded evidence and exact artifact paths; do not repeat completed writes.\n## Current work\nReview the results and finish the report with citations.\nthe gist")
     state = build_state(
         msgs, provider=fake, model="m", keep_tokens=estimate_tokens(msgs[-4:]) + 10
     )

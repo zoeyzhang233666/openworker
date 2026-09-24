@@ -15,6 +15,24 @@ from __future__ import annotations
 
 from typing import Optional
 
+
+def safe_provider_diagnostic(exc: BaseException) -> dict:
+    """Only protocol enums, never upstream message/body (which may echo credentials)."""
+    import re
+    result = {"error_type": type(exc).__name__}
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        result["http_status"] = status
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error", body)
+        if isinstance(error, dict):
+            for key in ("code", "type", "param"):
+                value = error.get(key)
+                if isinstance(value, str) and re.fullmatch(r"[a-zA-Z0-9_.\[\]-]{1,64}", value):
+                    result[key] = value
+    return result
+
 # Error-body markers, verbatim from the vendors' error codes/messages:
 # OpenAI: {"error": {"code": "model_not_found", "message": "The model `X` does not exist or
 #   you do not have access to it."}} (404/403) and {"code": "insufficient_quota"} (429).
@@ -67,7 +85,7 @@ def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
         )
     if any(marker in text for marker in _STREAM_TRANSPORT):
         return (
-            f"模型 {model} 的流式连接被中断（服务端提前关闭了响应）。"
+            f"模型 {model} 的流式连接中断（尚无法确定是模型服务、网关还是网络链路）。"
             "请点击重试；若反复出现，可更换模型或稍后再试。"
         )
     if any(
@@ -80,7 +98,7 @@ def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
     ):
         return (
             f"模型 {model} 拒绝了本次请求（上游参数/上下文校验失败）。"
-            "ChemClaw 已尝试压缩上下文后重试；若仍失败，请缩短任务或分批研究。"
+            "请检查模型能力与端点参数；该错误不会自动触发上下文压缩。"
         )
     if any(marker in text for marker in _NO_QUOTA):
         return (

@@ -18,7 +18,7 @@ from coworker.providers import (
 from coworker.providers.base import TokenUsage
 from coworker.tools import ToolRegistry
 
-SUMMARY = "## Primary request and intent\nkeep building the report"
+SUMMARY = "## Primary request and intent\nKeep building the report and preserve user constraints.\n## Decisions\nUse recorded evidence and exact artifact paths; do not repeat completed writes.\n## Current work\nReview the results and finish the report with citations."
 
 
 class CompactingProvider(ProviderClient):
@@ -85,7 +85,7 @@ def long_history(turns=8, bulk=1500):
     return msgs
 
 
-def make_engine(tmp_path, provider, *, messages=None, cap=400):
+def make_engine(tmp_path, provider, *, messages=None, cap=1_600):
     engine = TurnEngine(
         provider=provider,
         registry=ToolRegistry(),
@@ -110,7 +110,7 @@ def collect(engine, text="continue"):
 
 def test_compacts_before_the_turn_when_estimate_crosses(tmp_path):
     provider = CompactingProvider([AssistantTurn(text="done", finish_reason="stop")])
-    engine = make_engine(tmp_path,provider, messages=long_history(), cap=400)
+    engine = make_engine(tmp_path,provider, messages=long_history(), cap=1_600)
     events = collect(engine)
 
     assert any(e.type == EventType.COMPACTED for e in events)
@@ -146,7 +146,7 @@ def test_usage_signal_triggers_between_tool_turns(tmp_path):
             AssistantTurn(text="done", finish_reason="stop"),
         ]
     )
-    engine = make_engine(tmp_path,provider, messages=long_history(turns=2, bulk=10), cap=400)
+    engine = make_engine(tmp_path,provider, messages=long_history(turns=2, bulk=10), cap=1_600)
     events = collect(engine)
     assert any(e.type == EventType.COMPACTED for e in events)
     assert provider.summary_calls  # driven by usage, not the (tiny) estimate
@@ -157,7 +157,7 @@ def test_summarizer_failure_unattended_auto_trims(tmp_path):
     provider = CompactingProvider(
         [AssistantTurn(text="done", finish_reason="stop")], summary_fails=99
     )
-    engine = make_engine(tmp_path,provider, messages=long_history(), cap=400)
+    engine = make_engine(tmp_path,provider, messages=long_history(), cap=1_600)
     events = collect(engine)  # is_attended is None → unattended policy
 
     compacted = [e for e in events if e.type == EventType.COMPACTED]
@@ -171,7 +171,7 @@ def test_summarizer_failure_attended_never_blocks(tmp_path):
     provider = CompactingProvider(
         [AssistantTurn(text="done", finish_reason="stop")], summary_fails=2
     )
-    engine = make_engine(tmp_path,provider, messages=long_history(), cap=400)
+    engine = make_engine(tmp_path,provider, messages=long_history(), cap=1_600)
     engine.is_attended = lambda: True
     asked = []
 
@@ -192,7 +192,7 @@ def test_reasoning_only_is_classified_without_logging_private_content(tmp_path, 
     )
     messages = long_history()
     messages[1]["content"] = "TOP-SECRET-USER-TEXT"
-    engine = make_engine(tmp_path, provider, messages=messages, cap=400)
+    engine = make_engine(tmp_path, provider, messages=messages, cap=1_600)
 
     with caplog.at_level(logging.WARNING, logger="coworker.engine"):
         collect(engine)
@@ -227,9 +227,9 @@ def test_summarizer_timeout_retries_then_uses_deterministic_state(tmp_path):
         },
     )
     messages.insert(4, {"role": "tool", "tool_call_id": "todo-1", "content": '{"count":1}'})
-    engine = make_engine(tmp_path, provider, messages=messages, cap=400)
+    engine = make_engine(tmp_path, provider, messages=messages, cap=1_600)
     engine.compaction_settings = lambda: {
-        "cap_tokens": 400,
+        "cap_tokens": 1_600,
         "threshold_pct": 0.8,
         "context_window": 100_000,
         "timeout_seconds": 0.01,
@@ -324,7 +324,7 @@ def test_compaction_state_survives_save_and_rebuild(tmp_path):
     sid = "compact-persist"
     engine = mgr.get_engine(sid, agent="cowork", workspace=str(tmp_path))
     assert callable(engine.compaction_settings)  # live Settings getter is wired
-    assert engine.compaction_settings()["threshold_pct"] == 0.70
+    assert engine.compaction_settings()["threshold_pct"] == 0.80
 
     engine.messages += long_history(turns=3)[1:]
     engine.compaction_state = CompactionState(
@@ -341,7 +341,7 @@ def test_compacting_signal_precedes_the_compacted_marker(tmp_path):
     # The transient-progress contract: COMPACTING fires before the (slow) summarizer
     # call, COMPACTED after — surfaces key the "Compacting context…" spinner on it.
     provider = CompactingProvider([AssistantTurn(text="done", finish_reason="stop")])
-    engine = make_engine(tmp_path, provider, messages=long_history(), cap=400)
+    engine = make_engine(tmp_path, provider, messages=long_history(), cap=1_600)
     events = collect(engine)
 
     types = [e.type for e in events]

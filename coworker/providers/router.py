@@ -36,6 +36,18 @@ class ProviderRouter(ProviderClient):
         # Optional callable(provider_name) fired when a completion is dispatched — drives the
         # Settings pane's "Last used" line. Best-effort: its failures never break a model call.
         self._on_use = on_use
+        self.model_profile_settings = lambda: {}
+
+    def model_profile(self, model: str):
+        from .model_profile import resolve_model_profile
+        name = self._provider_name(model)
+        profile = self._secrets.get(f"provider:{name}") or {} if self._secrets else {}
+        descriptor = get_descriptor(name)
+        endpoint = profile.get("base_url") or ""
+        if not endpoint and descriptor:
+            endpoint = next((f.default for f in descriptor.fields if f.key == "base_url"), "")
+        return resolve_model_profile(model, provider=name, endpoint=endpoint,
+                                     overrides=self.model_profile_settings())
 
     def _note_use(self, model: str) -> None:
         if self._on_use is None:

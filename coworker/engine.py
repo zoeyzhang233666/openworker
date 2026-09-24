@@ -243,6 +243,10 @@ class TurnEngine:
         self.compaction_settings: Optional[Callable[[], dict[str, Any]]] = None
         self.is_attended: Optional[Callable[[], bool]] = None
         self._last_context_tokens: Optional[int] = None
+        self._last_request_estimate: Optional[int] = None
+        self._summary_rejected_key: str | None = None
+        self._compaction_blocked = False
+        self._compaction_diagnostic: dict = {}
         self.audit_context: dict[str, Any] = {}
         existing_system = bool(
             self.messages and self.messages[0].get("role") == "system"
@@ -943,12 +947,18 @@ class TurnEngine:
             # COMPACTING signal precedes the (multi-second) summarizer call so surfaces
             # can show progress instead of a silent stall.
             notice = None
+            self._compaction_blocked = False
             if self._compaction_due():
                 yield Event(EventType.COMPACTING, {})
                 notice = await self._compact_now()
             if notice:
                 self._append_notice("compacted", notice)
-                yield Event(EventType.COMPACTED, {"text": notice})
+                yield Event(EventType.COMPACTED, {"text": notice, **self._compaction_diagnostic})
+            if self._compaction_blocked:
+                text = "上下文预算不足：压缩后仍无法腾出安全空间。请减少当前附件/工具输入或核实模型窗口后重试；已有结果已保留。"
+                self._append_notice("error", text)
+                yield Event(EventType.ERROR, {"error": text, "error_type": "ContextBudgetExceeded", **self._compaction_diagnostic})
+                return
 
             turn: Optional[AssistantTurn] = None
             streamed: list[str] = []
@@ -1010,43 +1020,6 @@ class TurnEngine:
                         self._append_notice("compacted", notice)
                         yield Event(EventType.COMPACTED, {"text": notice})
                         continue
-                # D-179: ApiHub generic "Upstream rejected…invalid" — compact once and
-                # retry; a second reject falls through to ERROR (optionally after EF).
-                if (
-                    _compaction.is_retryable_provider_reject(exc)
-                    and not self._provider_reject_retried
-                    and not self._cancel.is_set()
-                ):
-                    self._provider_reject_retried = True
-                    yield Event(EventType.COMPACTING, {})
-                    notice = await self._compact_now(force=True)
-                    if notice:
-                        self._append_notice("compacted", notice)
-                        yield Event(EventType.COMPACTED, {"text": notice})
-                    else:
-                        # Still retry once even if compact was a no-op (shape/param issues).
-                        self._append_notice(
-                            "compacted",
-                            "上游拒绝请求；正在重试本轮推理",
-                        )
-                        yield Event(
-                            EventType.COMPACTED,
-                            {"text": "上游拒绝请求；正在重试本轮推理"},
-                        )
-                    continue
-                if (
-                    _compaction.is_retryable_provider_reject(exc)
-                    and self.emergency_finalization_enabled
-                    and not self._emergency_finalizing
-                    and not self._cancel.is_set()
-                ):
-                    # Salvage: one tools-off finalization attempt before hard fail.
-                    self._emergency_finalizing = True
-                    self._append_notice(
-                        "emergency_finalization",
-                        "上游再次拒绝；尝试无工具短结论文本",
-                    )
-                    continue
                 # D-187: timeout after tool work — salvage once instead of bare ERROR.
                 if (
                     _compaction.is_provider_timeout(exc)
@@ -1183,31 +1156,80 @@ class TurnEngine:
                 self._inject_steering()
 
     # -- auto-compaction (OPE-27) ------------------------------------------------
+    def _model_profile(self, model: str | None = None):
+        from .providers.model_profile import resolve_model_profile
+        getter = getattr(self.provider, "model_profile", None)
+        return getter(model or self.model) if getter else resolve_model_profile(model or self.model)
+
     def _compaction_config(self) -> dict[str, Any]:
         cfg = dict(self.compaction_settings() or {}) if self.compaction_settings else {}
-        if not cfg.get("context_window"):
-            from .providers.matrix import model_context_windows
-
-            cfg["context_window"] = model_context_windows().get(self.model)
+        profile = self._model_profile()
+        cfg.setdefault("context_window", profile.context_window)
+        cfg.setdefault("max_output_tokens", profile.max_output_tokens)
         cfg.setdefault("threshold_pct", _compaction.DEFAULT_THRESHOLD_PCT)
         cfg.setdefault("cap_tokens", _compaction.DEFAULT_CAP_TOKENS)
         return cfg
 
-    def _compaction_due(self) -> bool:
-        """The trigger check alone — cheap and side-effect free, so the loop can emit
-        the COMPACTING signal before committing to the (slow) summarizer call."""
+    def _provider_tools(self):
+        if self._emergency_finalizing:
+            return None
+        return project_provider_visible_schemas(
+            self.registry, tool_projection_enabled=self.tool_projection_enabled,
+            profile=self._current_execution_profile(), tool_policy=self._current_tool_policy(),
+            mandatory_tool_names=self.mandatory_tool_names)
+
+    def _context_budget(self):
+        from .context_budget import budget_request
         cfg = self._compaction_config()
-        if cfg.get("enabled") is False:
+        return budget_request(self._outbound_messages(), self._provider_tools(),
+            window=int(cfg["context_window"]), max_output=int(self.model_settings.get("max_tokens") or cfg["max_output_tokens"]),
+            threshold=float(cfg["threshold_pct"]), cap=int(cfg["cap_tokens"]),
+            last_actual=self._last_context_tokens, last_estimate=self._last_request_estimate)
+
+    def _compaction_due(self) -> bool:
+        if self._compaction_config().get("enabled") is False:
             return False
-        signal = self._last_context_tokens or _compaction.estimate_tokens(
-            self._outbound_messages()
-        )
-        return _compaction.should_compact(
-            signal,
-            cfg.get("context_window"),
-            threshold_pct=float(cfg["threshold_pct"]),
-            cap_tokens=int(cfg["cap_tokens"]),
-        )
+        budget = self._context_budget()
+        return budget.estimated_input >= budget.trigger
+
+    def _commit_compaction(self, state, before, *, reason: str) -> str | None:
+        from pathlib import Path
+        previous = self.compaction_state
+        self.compaction_state = state
+        self._last_context_tokens = None
+        self._last_request_estimate = None
+        after = self._context_budget()
+        # Boundary progress alone is not evidence of a smaller request.
+        if after.estimated_input >= before.estimated_input:
+            self.compaction_state = previous
+            self._compaction_blocked = True
+            return None
+        self._compaction_blocked = after.estimated_input >= after.trigger
+        self._compaction_diagnostic = {
+            "reason": reason, "before_tokens": before.estimated_input,
+            "after_tokens": after.estimated_input, "target_tokens": after.target,
+            "schema_tokens": after.schema_tokens, "window_source": self._model_profile().source,
+            "summary_failure": state.diagnostics.get("summary_failure"),
+            "target_met": after.estimated_input <= after.target,
+        }
+        state.diagnostics.update(self._compaction_diagnostic)
+        try:
+            folder = Path(self.permissions.workspace_root) / "._chemclaw" / "history"
+            folder.mkdir(parents=True, exist_ok=True)
+            # A unique name prevents cross-session overwrite in shared workspaces.
+            import uuid
+            path = folder / f"compacted-{uuid.uuid4().hex}.jsonl"
+            with path.open("x", encoding="utf-8") as output:
+                for message in self.messages[:state.boundary_index]:
+                    if message.get("role") not in {"user", "assistant", "tool"}:
+                        continue
+                    clean = {k: v for k, v in message.items() if k in {"role", "content", "tool_calls", "tool_call_id"}}
+                    output.write(json.dumps(clean, ensure_ascii=False) + "\n")
+            state.transcript_path = str(path)
+        except OSError:
+            state.transcript_path = ""
+        emit_instrumentation("compaction", self._compaction_diagnostic)
+        return "上下文已自动精简以继续" if state.trimmed else "上下文已自动压缩（较早轮次已摘要）"
 
     async def _compact_now(self, *, force: bool = False) -> Optional[str]:
         """Run the compaction policy.
@@ -1222,18 +1244,19 @@ class TurnEngine:
         pct = float(cfg["threshold_pct"])
         cap = int(cfg["cap_tokens"])
         window = cfg.get("context_window")
-        keep = int(
-            _compaction.KEEP_RECENT_FRACTION
-            * _compaction.trigger_tokens(window, threshold_pct=pct, cap_tokens=cap)
-        )
+        before = self._context_budget()
+        self._compaction_blocked = False
+        # Reserve room for the new summary, mechanically retained intent and working state.
+        keep = max(0, before.target - before.fixed_tokens - min(8_000, before.target // 2))
+        if force or before.estimated_input >= before.trigger:
+            keep = min(keep, before.messages_tokens // 4)
         model = str(cfg.get("model") or "") or self.model
-        from .providers.matrix import model_context_windows
-
-        summary_context_window = (
-            cfg.get("summary_context_window")
-            or model_context_windows().get(model)
-            or _compaction.SUMMARY_UNKNOWN_CONTEXT_WINDOW
-        )
+        summary_profile = self._model_profile(model)
+        summary_context_window = cfg.get("summary_context_window") or summary_profile.context_window
+        summary_settings = {}
+        if summary_profile.reasoning_effort:
+            summary_settings["reasoning_effort"] = summary_profile.reasoning_effort
+        rejected_key = str((summary_profile.as_dict(), summary_settings))
         input_override = int(cfg.get("summary_input_tokens") or 0) or None
         timeout_seconds = float(cfg.get("timeout_seconds") or 90)
 
@@ -1241,10 +1264,11 @@ class TurnEngine:
         failed = False
         # Attempt 0: normal summarizer input. Attempt 1: tighter span clip (less likely
         # to overflow/timeout the summarizer itself). Then Trim — never block the turn.
-        for attempt in range(2):
+        for attempt in range(0 if self._summary_rejected_key == rejected_key else 2):
             tight = attempt > 0
             budget = _compaction.summary_budget(
                 summary_context_window,
+                max_output_tokens=min(16_000, summary_profile.max_output_tokens),
                 tight=tight,
                 input_override=input_override,
             )
@@ -1262,6 +1286,7 @@ class TurnEngine:
                     prior=self.compaction_state,
                     tight_span=_tight,
                     budget=_budget,
+                    request_settings=summary_settings,
                 )
 
             started = time.monotonic()
@@ -1302,31 +1327,23 @@ class TurnEngine:
                 failure.reasoning_chars if failure is not None else 0,
                 failure.cause_type if failure is not None else type(caught).__name__,
             )
+            if failure is not None:
+                _log.warning("summary diagnostic %s", json.dumps(failure.diagnostic))
+                self._compaction_diagnostic = {"summary_failure": {"reason": failure.reason, **failure.diagnostic}}
+            if failure is not None and failure.reason == "invalid_request":
+                self._summary_rejected_key = rejected_key
+                break
             if attempt == 0 and failure is not None and failure.reason == "rate_limited":
                 await asyncio.sleep(0.1)
         if state is not None:
-            self.compaction_state = state
-            self._last_context_tokens = None  # stale once the outbound view shrank
-            return "上下文已自动压缩（较早轮次已摘要）"
-        if failed or force:
-            try:
-                trimmed = _compaction.build_deterministic_state(
-                    self.messages,
-                    keep_tokens=keep,
-                    prior=self.compaction_state,
-                )
-            except Exception as exc:
-                _log.warning(
-                    "deterministic compaction failed error_type=%s",
-                    type(exc).__name__,
-                )
-                trimmed = _compaction.trim_state(
-                    self.messages, prior=self.compaction_state
-                )
-            if trimmed is not None:
-                self.compaction_state = trimmed
-                self._last_context_tokens = None
-                return "上下文已自动精简以继续"
+            self._summary_rejected_key = None
+        else:
+            state = _compaction.build_deterministic_state(
+                self.messages, keep_tokens=keep, prior=self.compaction_state)
+        if state is not None:
+            state.diagnostics = dict(self._compaction_diagnostic)
+            return self._commit_compaction(state, before, reason="overflow" if force else "threshold")
+        self._compaction_blocked = True
         return None
 
     # -- helpers ----------------------------------------------------------------
@@ -1335,20 +1352,16 @@ class TurnEngine:
         thread + queue, so text deltas surface live without blocking the event loop."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
-        # HARD STOP G: emergency finalization is model-only (tools disabled).
-        if self._emergency_finalizing:
-            tools = None
-        else:
-            tools = project_provider_visible_schemas(
-                self.registry,
-                tool_projection_enabled=self.tool_projection_enabled,
-                profile=self._current_execution_profile(),
-                tool_policy=self._current_tool_policy(),
-                mandatory_tool_names=self.mandatory_tool_names,
-            )
+        tools = self._provider_tools()
         model = self.model
         messages = self._outbound_messages()
         settings = dict(self.model_settings)
+        model_profile = self._model_profile()
+        settings.setdefault("max_tokens", model_profile.max_output_tokens)
+        if model_profile.reasoning_effort:
+            settings.setdefault("reasoning_effort", model_profile.reasoning_effort)
+        from .context_budget import estimate
+        self._last_request_estimate = estimate(messages) + (estimate(tools) if tools else 0)
         profile = self._current_execution_profile()
         if profile is not None:
             # Route reasoning defaults only when an explicit profile is attached.

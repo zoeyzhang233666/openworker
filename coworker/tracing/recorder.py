@@ -50,9 +50,13 @@ class TurnTraceRecorder:
         if event.type is EventType.ASSISTANT_MESSAGE:
             self.model_calls += 1
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-            self.input_tokens += _usage_int(usage, "input_tokens", "prompt_tokens", "context_tokens")
-            self.output_tokens += _usage_int(usage, "output_tokens", "completion_tokens")
-            self.total_tokens += _usage_int(usage, "total_tokens")
+            prompt = (_usage_int(usage, "input") + _usage_int(usage, "cache_read")
+                      + _usage_int(usage, "cache_write")) if "input" in usage else _usage_int(
+                          usage, "input_tokens", "prompt_tokens", "context_tokens")
+            output = _usage_int(usage, "output", "output_tokens", "completion_tokens")
+            self.input_tokens += prompt
+            self.output_tokens += output
+            self.total_tokens += _usage_int(usage, "total_tokens") or prompt + output
         elif event.type is EventType.TOOL_PROPOSED:
             name = str(data.get("name") or "")
             if name:

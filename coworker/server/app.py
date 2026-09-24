@@ -1690,6 +1690,14 @@ def create_app(manager: SessionManager) -> FastAPI:
     def settings_get() -> dict[str, Any]:
         return manager.get_settings()
 
+    @app.get("/v1/settings/model-profile")
+    def model_profile_get(model: str = "") -> dict[str, Any]:
+        return manager.model_profile_payload(model)
+
+    @app.post("/v1/settings/model-profile")
+    def model_profile_set(body: dict) -> dict[str, Any]:
+        return manager.set_model_profile(body.get("model", ""), body.get("overrides", {}))
+
     @app.post("/v1/settings/model-key")
     def settings_set_model_key(body: dict) -> dict[str, Any]:
         return manager.set_model_key((body or {}).get("api_key", ""))
