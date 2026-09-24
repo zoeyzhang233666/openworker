@@ -754,7 +754,7 @@ export function Transcript({
                 {item.text}
                 {item.retriable && !running && onRetry && block.i === retryAnchor(items) && (
                   <button className="btn ml-2" data-testid="notice-retry" onClick={onRetry}>
-                    {t("Retry")}
+                    {t(item.resumable ? "Continue task" : "Retry")}
                   </button>
                 )}
               </div>

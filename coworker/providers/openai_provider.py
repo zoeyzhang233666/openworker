@@ -143,7 +143,7 @@ def _param_fix_retry(kwargs: dict[str, Any], exc: Exception) -> dict[str, Any]:
     match = _UNSUPPORTED_PARAM.search(msg)
     if match:
         param = match.group(1).split(".", 1)[0].split("[", 1)[0]
-        if param in kwargs and param not in ("model", "messages"):
+        if param in kwargs and param not in ("model", "messages", "tools", "stream"):
             fixed = dict(kwargs)
             fixed.pop(param, None)
             return fixed
@@ -359,6 +359,7 @@ class OpenAIProvider(ProviderClient):
         tools: Optional[list[dict[str, Any]]] = None,
         **settings: Any,
     ) -> AssistantTurn:
+        stream_override = settings.pop("_structured_tools_streaming_override", None)
         opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
         _apply_opencode_session_header(
             settings, base_url=self._base_url, session_id=opencode_session_id
@@ -413,6 +414,7 @@ class OpenAIProvider(ProviderClient):
         structured_tools_streaming = bool(
             settings.pop(_STRUCTURED_TOOLS_STREAMING_SETTING, False)
         )
+        stream_override = settings.pop("_structured_tools_streaming_override", None)
         opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
         _apply_opencode_session_header(
             settings, base_url=self._base_url, session_id=opencode_session_id
@@ -444,10 +446,12 @@ class OpenAIProvider(ProviderClient):
             base_url=self._base_url,
             enabled=structured_tools_streaming,
         )
+        if stream_override is not None and tools is not None:
+            true_stream_tools = bool(stream_override)
         try:
             last_transport: Optional[BaseException] = None
             for attempt in range(MAX_STREAM_ATTEMPTS):
-                progress = {"seen": False}
+                progress = {"seen": False, "visible": False}
                 if tools is None:
                     stream_mode = "direct"
                 elif true_stream_tools:
@@ -471,9 +475,10 @@ class OpenAIProvider(ProviderClient):
                     pass
                 try:
                     if tools is None or true_stream_tools:
-                        yield from _iter_true_stream_chunks(
-                            client, kwargs, progress=progress
-                        )
+                        for chunk in _iter_true_stream_chunks(client, kwargs, progress=progress):
+                            if chunk.text_delta or chunk.reasoning_delta or chunk.turn is not None:
+                                progress["visible"] = True
+                            yield chunk
                     else:
                         buffered = _collect_stream_chunks(
                             client, kwargs, tools=tools, progress=progress
@@ -499,12 +504,12 @@ class OpenAIProvider(ProviderClient):
                                 provider_progress_seen=bool(progress.get("seen")),
                                 transport_failure_type=type(exc).__name__,
                                 retried=attempt + 1 < MAX_STREAM_ATTEMPTS
-                                and not progress.get("seen"),
+                                and not progress.get("visible"),
                             ),
                         )
                     except Exception:
                         pass
-                    if progress["seen"]:
+                    if progress["visible"]:
                         raise
                     continue
 
@@ -532,6 +537,8 @@ class OpenAIProvider(ProviderClient):
 
 def _is_stream_transport_error(exc: BaseException) -> bool:
     """True when a compat gateway dropped the chunked HTTP body mid-stream."""
+    if isinstance(exc, ConnectionError):
+        return True
     text = str(exc).lower()
     name = type(exc).__name__.lower()
     markers = (
@@ -652,7 +659,9 @@ def _iter_true_stream_chunks(
         if getattr(choice, "finish_reason", None):
             finish_reason = choice.finish_reason
 
-    tool_calls = _finalize_tool_calls(tool_accum)
+    if finish_reason is None:
+        raise ConnectionError("stream ended without a terminal finish_reason")
+    tool_calls = _finalize_tool_calls(tool_accum) if finish_reason != "length" else []
     reasoning = "".join(reasoning_parts) or None
     yield StreamChunk(
         turn=AssistantTurn(
@@ -717,9 +726,11 @@ def _collect_stream_chunks(
         if getattr(choice, "finish_reason", None):
             finish_reason = choice.finish_reason
 
-    tool_calls = _finalize_tool_calls(tool_accum)
+    if finish_reason is None:
+        raise ConnectionError("stream ended without a terminal finish_reason")
+    tool_calls = _finalize_tool_calls(tool_accum) if finish_reason != "length" else []
     text, tool_calls = _maybe_salvage_tool_calls(
-        "".join(text_parts) or None, tool_calls, tools=tools
+        "".join(text_parts) or None, tool_calls, tools=tools if finish_reason != "length" else None
     )
     if text is None and tool_calls:
         # Salvaged textual tool calls must not have leaked as ASSISTANT_DELTA fodder.

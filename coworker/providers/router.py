@@ -131,6 +131,9 @@ class ProviderRouter(ProviderClient):
         opencode_session_id = settings.pop(_OPENCODE_SESSION_SETTING, None)
         if isinstance(client, OpenAIProvider) and opencode_session_id:
             settings[_OPENCODE_SESSION_SETTING] = opencode_session_id
+        override = self.model_profile(model).structured_tools_streaming
+        if isinstance(client, OpenAIProvider) and override is not None:
+            settings["_structured_tools_streaming_override"] = override
         return client.stream(
             model=self._bare(model), messages=messages, tools=tools, **settings
         )

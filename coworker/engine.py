@@ -248,6 +248,10 @@ class TurnEngine:
         self._compaction_blocked = False
         self._compaction_diagnostic: dict = {}
         self.audit_context: dict[str, Any] = {}
+        self.checkpoint_sink = None
+        self.segment_iterations = 50
+        self._runtime = self._restored_runtime()
+
         existing_system = bool(
             self.messages and self.messages[0].get("role") == "system"
         )
@@ -515,6 +519,7 @@ class TurnEngine:
         # literal "/skill …" line for the transcript, while `content` carries the model-facing
         # framing. `ts` (unix seconds, stamped on every appended message) is the same kind of
         # sidecar.
+        self._runtime = {"iterations": 0, "model_calls": 0, "recovery_retries": 0, "tool_calls": 0, "inflight": []}
         self._cancel.clear()
         self._owning_loop = asyncio.get_running_loop()
         self._activate_plan(
@@ -573,6 +578,8 @@ class TurnEngine:
             return None
         had_history = any(m.get("role") != "system" for m in self.messages)
         self.model = model
+        self._last_context_tokens = None
+        self._last_request_estimate = None
         if not had_history:
             return None
         from .providers.matrix import model_labels
@@ -599,15 +606,41 @@ class TurnEngine:
             for p in msg["content"]
         )
 
+    def _restored_runtime(self):
+        for message in reversed(self.messages):
+            if message.get("role") == "notice" and isinstance(message.get("runtime"), dict):
+                return dict(message["runtime"])
+            if message.get("role") == "user" and not message.get("_continuation"):
+                break
+        return {"iterations": 0, "model_calls": 0, "recovery_retries": 0, "tool_calls": 0, "inflight": []}
+
+    async def _checkpoint(self, reason="segment"):
+        self._append_notice("checkpoint")
+        self.messages[-1]["runtime"] = dict(self._runtime)
+        self.messages[-1]["reason"] = reason
+        if self.checkpoint_sink is not None:
+            await asyncio.to_thread(self.checkpoint_sink)
+
+    async def _pause(self, status, text):
+        await self._checkpoint(status)
+        self._append_notice(status, text)
+        if self.checkpoint_sink is not None:
+            await asyncio.to_thread(self.checkpoint_sink)
+        return Event(EventType.TURN_END, {"status": status, "text": text, **self._runtime})
+
+    def _continue_message(self, reason):
+        self.messages.append({"role": "user", "content": reason, "ts": time.time(),
+                              "_continuation": True, "_display": {"kind": "continuation"}})
+
     def _tail_is_retriable_error(self) -> bool:
         """True when the history tail is an error notice, looking through any model_switch
         notices appended after it (a switch must not consume the retry)."""
         for message in reversed(self.messages):
             if message.get("role") != "notice":
                 return False
-            if message.get("kind") == "model_switch":
+            if message.get("kind") in {"model_switch", "checkpoint"}:
                 continue
-            return message.get("kind") == "error"
+            return message.get("kind") in {"error", "budget_paused", "truncated", "blocked"}
         return False
 
     def _append_notice(self, kind: str, text: Optional[str] = None) -> None:
@@ -627,6 +660,12 @@ class TurnEngine:
         is the intended recovery path (owner-hit 2026-07-23)."""
         if not self._tail_is_retriable_error():
             return
+        if any(m.get("kind") in {"budget_paused", "truncated", "blocked"}
+               for m in self.messages[-2:]):
+            self._runtime["iterations"] = 0
+            self._runtime["recovery_retries"] = 0
+        if self._last_turn_plan is None:
+            self._activate_plan(self._resume_plan_input(), origin=TurnOrigin.RESUME)
         self._cancel.clear()
         self._owning_loop = asyncio.get_running_loop()
         # A retry is the same logical turn: reuse the immutable plan exactly.
@@ -655,6 +694,10 @@ class TurnEngine:
         tool-calls (the prompt callbacks find the already-resolved Inbox item and return without
         re-prompting; answered calls are skipped, so nothing double-executes), then run the model
         loop to finish the turn."""
+        if self._tail_is_retriable_error():
+            async for event in self.retry():
+                yield event
+            return
         pending = self._unanswered_trailing_tool_calls()
         if not pending:
             return
@@ -740,7 +783,7 @@ class TurnEngine:
         """
 
         for message in reversed(self.messages):
-            if message.get("role") != "user":
+            if message.get("role") != "user" or message.get("_continuation"):
                 continue
             content = message.get("content")
             if isinstance(content, (str, list)):
@@ -800,6 +843,7 @@ class TurnEngine:
         streamed_reasoning: list[str] = []
         try:
             try:
+                self._runtime["model_calls"] += 1
                 async for chunk in self._astream():
                     if chunk.reasoning_delta:
                         streamed_reasoning.append(chunk.reasoning_delta)
@@ -886,7 +930,10 @@ class TurnEngine:
             self._emergency_finalizing = False
 
     async def _loop(self) -> AsyncIterator[Event]:
-        iterations = 0
+        iterations = int(self._runtime.get("iterations", 0))
+        continuations = 0
+        last_signature = None
+        unchanged = 0
         self._provider_reject_retried = False
         profile = self._current_execution_profile()
         hard_limit = self.max_iterations
@@ -894,18 +941,10 @@ class TurnEngine:
             hard_limit = min(hard_limit, profile.max_iterations)
         while True:
             if iterations >= hard_limit:
-                if self._should_emergency_finalize():
-                    async for event in self._emergency_finalize(iterations):
-                        yield event
-                    return
-                yield Event(
-                    EventType.TURN_END,
-                    {"status": "max_iterations_exceeded", "iterations": iterations},
-                )
+                yield await self._pause("budget_paused", "任务已达到本段总预算，进展已保存；点击继续可原地续跑。")
                 return
-            iterations += 1
-            self._budget_iteration = iterations
-            if iterations == 1:
+            self._budget_iteration = iterations + 1
+            if iterations == 0:
                 self._emit_turn_instrumentation()
             iter_started = time.perf_counter()
             first_visible_delta_ms: Optional[float] = None
@@ -946,6 +985,7 @@ class TurnEngine:
                 )
 
             try:
+                self._runtime["model_calls"] += 1
                 async for chunk in self._astream():
                     if first_provider_delta_ms is None and (
                         chunk.reasoning_delta
@@ -982,35 +1022,24 @@ class TurnEngine:
                 # path) routes into the compaction policy instead of surfacing. The retry
                 # is progress-guarded: each pass moves the boundary forward or gives up,
                 # so a model that keeps overflowing still terminates in the error path.
-                if _compaction.is_context_overflow(exc) and not self._cancel.is_set():
+                if (_compaction.is_context_overflow(exc) and not self._cancel.is_set()
+                        and self._runtime["recovery_retries"] < 2):
                     yield Event(EventType.COMPACTING, {})
                     notice = await self._compact_now(force=True)
-                    if notice:
+                    if notice and not self._compaction_blocked:
+                        self._runtime["recovery_retries"] += 1
                         self._append_notice("compacted", notice)
                         yield Event(EventType.COMPACTED, {"text": notice})
                         continue
-                # D-187: timeout after tool work — salvage once instead of bare ERROR.
-                if (
-                    _compaction.is_provider_timeout(exc)
-                    and self._emergency_finalization_active()
-                    and not self._emergency_finalizing
-                    and not self._cancel.is_set()
-                    and (
-                        bool(streamed)
-                        or bool(streamed_reasoning)
-                        or any(m.get("role") == "tool" for m in self.messages)
-                    )
-                ):
-                    self._emergency_finalizing = True
-                    self._append_notice(
-                        "emergency_finalization",
-                        "模型接口超时；尝试根据已有工具结果写短结论",
-                    )
-                    continue
-                # Same contract as the stop path below: the partial the user watched
-                # arrive survives the failure.
                 if streamed or streamed_reasoning:
                     self.messages.append(_assistant_message(_partial_turn()))
+                from .providers.openai_provider import _is_stream_transport_error
+                if (_is_stream_transport_error(exc) and not self._cancel.is_set()
+                        and self._runtime["recovery_retries"] < 2):
+                    self._runtime["recovery_retries"] += 1
+                    self._continue_message("上次传输中断。保留已展示内容，从断点继续；不要重复已完成的工具或外部写入。")
+                    yield Event(EventType.CONTINUATION, {"reason": "transport", "text": "连接中断，已保留进展并尝试续接。"})
+                    continue
                 friendly = friendly_model_error(self.model, exc)
                 payload = {
                     "error": friendly or str(exc),
@@ -1045,6 +1074,11 @@ class TurnEngine:
                     )
                     return
                 turn = _partial_turn()
+            iterations += 1
+            self._runtime["iterations"] = iterations
+            if turn.finish_reason == "length":
+                # Even syntactically valid calls may have incomplete intended arguments.
+                turn.tool_calls = []
             if turn.usage is not None:
                 # The trigger signal: the prompt-side total that actually occupied the
                 # window on this round-trip (estimate fallback when never reported).
@@ -1104,6 +1138,17 @@ class TurnEngine:
                 if self._steering:
                     self._inject_steering()
                     continue
+                if turn.finish_reason == "length":
+                    if continuations < 2:
+                        continuations += 1
+                        self._continue_message("上次回复达到输出长度上限。不要重复长段思考或已完成内容；从断点继续完成下一步或简洁回答。")
+                        yield Event(EventType.CONTINUATION, {"reason": "length", "text": "回复达到长度上限，正在继续。", "attempt": continuations})
+                        continue
+                    yield await self._pause("truncated", "输出连续达到长度上限，任务尚未完成；进展已保存，可调整输出预算后继续。")
+                    return
+                if turn.finish_reason in {"content_filter", "error"}:
+                    yield await self._pause("blocked", "模型未正常完成输出，进展已保存。请查看模型限制后继续。")
+                    return
                 yield Event(
                     EventType.TURN_END,
                     {"status": "completed", "iterations": iterations},
@@ -1115,6 +1160,18 @@ class TurnEngine:
             async for event in self._handle_tool_calls(turn.tool_calls):
                 yield event
 
+            continuations = 0
+            self._runtime["tool_calls"] += len(turn.tool_calls)
+            signature = json.dumps([(tc.name, tc.arguments) for tc in turn.tool_calls], sort_keys=True, default=str)
+            signature += json.dumps([m.get("content") for m in self.messages if m.get("role") == "tool"][-len(turn.tool_calls):], sort_keys=True, default=str)
+            unchanged = unchanged + 1 if signature == last_signature else 0
+            last_signature = signature
+            if unchanged >= 3:
+                yield await self._pause("blocked", "连续四轮执行相同工具并得到相同结果，未取得进展；已保存状态，请调整指令后继续。")
+                return
+            if iterations % self.segment_iterations == 0:
+                await self._checkpoint()
+                yield Event(EventType.CHECKPOINT, dict(self._runtime))
             yield Event(EventType.ITERATION_END, {"iteration": iterations})
 
             if self._cancel.is_set():
@@ -1466,6 +1523,14 @@ class TurnEngine:
                 {"name": tool_call.name, "arguments": tool_call.arguments},
             )
             self._audit(tool_call, stage="proposed")
+            if not isinstance(tool_call.arguments, dict) or "_raw" in tool_call.arguments:
+                self.messages.append(_tool_error_message(tool_call, "工具参数未形成完整 JSON 对象，未执行；请重新提供完整参数。"))
+                yield Event(EventType.TOOL_FINISHED, {"name": tool_call.name, "status": "failed", "reason": "incomplete_tool_arguments"})
+                continue
+            if tool_call.id in self._runtime.get("inflight", []):
+                self.messages.append(_tool_error_message(tool_call, "此操作在上次中断前已提交，结果未知。请先核对外部状态，禁止直接重复执行。"))
+                yield Event(EventType.TOOL_FINISHED, {"name": tool_call.name, "status": "failed", "reason": "execution_state_unknown"})
+                continue
             plan_guard = self._turn_plan_tool_guard(tool_call.name)
             if plan_guard is not None and not plan_guard[0]:
                 reason = plan_guard[1]
@@ -1542,8 +1607,14 @@ class TurnEngine:
                 continue
             yield Event(EventType.TOOL_STARTED, {"name": tool_call.name})
             self._audit(tool_call, stage="started")
+            self._runtime["inflight"] = [tool_call.id]
+            await self._checkpoint("tool_started")
             result, status = await asyncio.to_thread(self._execute_sync, tool_call)
-            yield self._record_result(tool_call, result, status)
+            event = self._record_result(tool_call, result, status)
+            self._runtime["inflight"] = []
+            await self._checkpoint("tool_finished")
+            yield event
+
 
     def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
         """Explicit user policy supplements, never replaces, permission checks."""
@@ -2059,6 +2130,8 @@ class TurnEngine:
             "ts",
             "reasoning",
             "usage",
+            "finish_reason",
+            "_continuation",
         )
         # Auto-compaction (OPE-27): everything before the boundary is represented by the
         # compacted block. Outbound-only — the canonical history stays intact — and the
@@ -2257,6 +2330,7 @@ def _assistant_message(turn: AssistantTurn, model: Optional[str] = None) -> dict
     message: dict[str, Any] = {
         "role": "assistant",
         "content": turn.text or "",
+        "finish_reason": turn.finish_reason,
         "ts": time.time(),
     }
     if turn.usage is not None:

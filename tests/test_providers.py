@@ -1041,29 +1041,24 @@ def test_stream_no_retry_after_reasoning_progress():
     assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
 
 
-def test_stream_no_retry_after_structured_tool_progress():
-    import pytest
-
+def test_stream_retries_uncommitted_structured_tool_fragments():
     client = _FakeClient(_response(content="x"))
     client.chat.completions = _transport_after_first_delta(kind="structured_tool")
     provider = OpenAIProvider(client=client)
-    with pytest.raises(RuntimeError, match="incomplete chunked read"):
-        list(provider.stream(model="gpt-5.5", messages=[]))
-    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
+    chunks = list(provider.stream(model="gpt-5.5", messages=[]))
+    assert chunks[-1].turn.text == "fallback-should-not-run"
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 2
 
 
-def test_stream_no_retry_after_textual_tool_candidate_progress():
-    import pytest
-
+def test_buffered_textual_tool_fragments_can_retry_without_visible_duplicates():
     tools = [{"type": "function", "function": {"name": "get_weather"}}]
     client = _FakeClient(_response(content="x"))
-    client.chat.completions = _transport_after_first_delta(
-        kind="textual_tool_candidate"
-    )
+    client.chat.completions = _transport_after_first_delta(kind="textual_tool_candidate")
     provider = OpenAIProvider(client=client)
-    with pytest.raises(RuntimeError, match="incomplete chunked read"):
-        list(provider.stream(model="ollama:x", messages=[], tools=tools))
-    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 1
+    chunks = list(provider.stream(model="ollama:x", messages=[], tools=tools))
+    assert chunks[-1].turn.text == "fallback-should-not-run"
+    assert not any(chunk.text_delta for chunk in chunks)
+    assert sum(1 for c in client.chat.completions.calls if c.get("stream")) == 2
 
 
 def test_sdk_client_kwargs_stream_owns_retry_with_explicit_timeout():

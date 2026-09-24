@@ -1138,6 +1138,7 @@ export const interfaceMessagesZh = {
   "proposed plan": "建议的计划",
   "Plan approved": "计划已批准",
   "Sent back with feedback": "已附反馈退回",
+  "Continue task": "继续任务",
   "Retry": "重试",
   "Write a file": "写入文件",
   "Edit a file": "编辑文件",

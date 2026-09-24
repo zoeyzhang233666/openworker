@@ -26,6 +26,10 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
   }
   for (const m of messages || []) {
     if (m.role === "user") {
+      if (typeof m._display === "object" && m._display?.kind === "continuation") {
+        items.push({ kind: "notice", tone: "info", text: "已保留进展并续接任务。" });
+        continue;
+      }
       // Connector message → structured card; the framed `content` stays for the model, but display
       // renders from the source sidecar.
       if (m.source?.connector) {
@@ -67,6 +71,11 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
         });
       }
     } else if (m.role === "notice") {
+      if (m.kind === "checkpoint") continue;
+      if (["budget_paused", "truncated", "blocked"].includes(m.kind)) {
+        items.push({ kind: "notice", tone: "warn", text: m.text, retriable: true, resumable: true });
+        continue;
+      }
       // Persisted markers (engine `_append_notice`): error/interrupted/model-switch survive
       // reload exactly like the live view rendered them. An error notice is retriable —
       // the Transcript only offers the button when it's the transcript tail.

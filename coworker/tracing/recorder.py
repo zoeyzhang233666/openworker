@@ -73,7 +73,7 @@ class TurnTraceRecorder:
             self.outcomes[normalized] = self.outcomes.get(normalized, 0) + 1
         elif event.type is EventType.TURN_END:
             raw = str(data.get("status") or "completed")
-            self.status = raw if raw in {"completed", "max_iterations_exceeded"} else "failed"
+            self.status = raw if raw in {"completed", "max_iterations_exceeded", "budget_paused", "truncated", "blocked"} else "failed"
         elif event.type is EventType.ERROR:
             self.status = "failed"
         elif event.type is EventType.INTERRUPTED:

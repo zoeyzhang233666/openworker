@@ -29,6 +29,8 @@ class EventType(str, Enum):
     TOOL_FINISHED = "tool_finished"
     ITERATION_END = "iteration_end"
     TURN_END = "turn_end"
+    CHECKPOINT = "checkpoint"
+    CONTINUATION = "continuation"
     ERROR = "error"
     INTERRUPTED = "interrupted"
     COMPACTING = "compacting"  # compaction started — surfaces show a transient signal

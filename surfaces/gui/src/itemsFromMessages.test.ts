@@ -108,3 +108,14 @@ describe("itemsFromMessages reasoning", () => {
     expect(items[2]).toEqual({ kind: "assistant", text: "", reasoning: "stopped mid-thought" });
   });
 });
+
+
+describe("runtime continuation", () => {
+  it("hides checkpoints and exposes a resumable pause after reload", () => {
+    const items = itemsFromMessages([
+      { role: "notice", kind: "checkpoint", runtime: { iterations: 150 } },
+      { role: "notice", kind: "budget_paused", text: "进展已保存" },
+    ] as any);
+    expect(items).toEqual([{ kind: "notice", tone: "warn", text: "进展已保存", retriable: true, resumable: true }]);
+  });
+});

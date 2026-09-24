@@ -22,6 +22,8 @@ export type EventType =
   | "model_changed"
   | "compacting"
   | "compacted"
+  | "continuation"
+  | "checkpoint"
   | "memory_saved"
   | "turn_done";
 
@@ -161,7 +163,7 @@ export type Item =
       questions?: GroupedQuestion[];
       resolved?: string;
     }
-  | { kind: "notice"; tone: "info" | "warn"; text: string; retriable?: boolean }
+  | { kind: "notice"; tone: "info" | "warn"; text: string; retriable?: boolean; resumable?: boolean }
   | {
       kind: "memory";
       id: number;

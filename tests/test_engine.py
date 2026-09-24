@@ -163,7 +163,7 @@ def test_max_iterations_rail(tmp_path):
     events = _collect(engine, "loop forever")
     end = events[-1]
     assert end.type == EventType.TURN_END
-    assert end.data["status"] == "max_iterations_exceeded"
+    assert end.data["status"] == "budget_paused"
     assert provider.calls == 3
 
 

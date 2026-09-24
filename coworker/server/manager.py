@@ -619,6 +619,7 @@ class SessionManager:
             from ..compaction import CompactionState
 
             engine.compaction_state = CompactionState.from_dict(record.compaction)
+        engine.checkpoint_sink = lambda: self.save(session_id, engine)
         engine.compaction_settings = self.compaction_settings
         self._engines[session_id] = engine
         if is_new_session:
@@ -4524,7 +4525,8 @@ class SessionManager:
                     force=True,
                 )
             origin = _delivery_turn_origin(source)
-            async for event in engine.run(
+            events = engine.retry() if (message.strip().lower() in {"继续", "继续任务", "continue", "/continue"}
+                                        and engine._tail_is_retriable_error()) else engine.run(
                 message,
                 source=source,
                 origin=origin,
@@ -4533,7 +4535,8 @@ class SessionManager:
                     if source
                     else "background"
                 ),
-            ):
+            )
+            async for event in events:
                 # Stream every event to any socket viewing this session, so a background turn
                 # (channel delivery, self-wake, durable resume) is seen live — not just on reselect.
                 await self.broadcast_session(
@@ -4556,6 +4559,9 @@ class SessionManager:
                         draft_text = candidate
                         if wecom_stream:
                             await _wecom_push(candidate, force=True)
+                elif etype == "turn_end" and data.get("status") != "completed":
+                    final_text = (final_text + "\n\n" + str(data.get("text") or "任务尚未完成。"))
+                    final_text += "\n可回复“继续”原地续跑。"
                 elif etype == "tool_started":
                     tool_name = str(data.get("name") or "工具")
                     if not draft_text.strip():
@@ -5357,13 +5363,17 @@ class SessionManager:
             f"{task.instructions}"
         )
         try:
-            async for _event in engine.run(
-                opening, trace_source_kind="automation"
-            ):
-                pass
+            terminal_status = "failed"
+            async for _event in engine.run(opening, trace_source_kind="automation"):
+                if _event.type.value == "turn_end":
+                    terminal_status = _event.data.get("status", "failed")
+                elif _event.type.value in {"error", "interrupted"}:
+                    terminal_status = _event.type.value
             run.result_text = _last_assistant_text(engine.messages)
             run.artifacts = _recent_files(task.workspace, since=run.started_at)
-            run.status = "ok"
+            run.status = "ok" if terminal_status == "completed" else "error"
+            if terminal_status != "completed":
+                run.error = "任务尚未完成：" + terminal_status
             if task.notify_on_completion:
                 await self._notify_task_done(task, run)
         except Exception as exc:

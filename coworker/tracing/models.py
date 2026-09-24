@@ -42,4 +42,5 @@ class TurnTrace(BaseModel):
         "denied",
         "interrupted",
         "max_iterations_exceeded",
+        "budget_paused", "truncated", "blocked",
     ] = "completed"

@@ -55,6 +55,7 @@ _NO_QUOTA = (
 # tool-using turns). ChemClaw surfaces this in Chinese — first-party errors are zh-CN.
 _STREAM_TRANSPORT = (
     "incomplete chunked read",
+    "stream ended without a terminal finish_reason",
     "peer closed connection",
     "remoteprotocolerror",
     "connection error",
