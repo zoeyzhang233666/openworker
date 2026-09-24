@@ -231,7 +231,7 @@ class SessionManager:
         self.channel_delivery = ChannelDeliveryCoordinator(
             self._run_channel_delivery,
             max_concurrency=int(os.environ.get("CHEMCLAW_CHANNEL_CONCURRENCY", "10")),
-            turn_timeout=float(os.environ.get("CHEMCLAW_CHANNEL_TURN_TIMEOUT", "300")),
+            turn_timeout=float(os.environ.get("CHEMCLAW_CHANNEL_TURN_TIMEOUT", "0")),
             is_waiting_for_human=lambda sid: bool(self.inbox.pending(sid)),
             on_timeout=self._channel_timeout_grace,
         )

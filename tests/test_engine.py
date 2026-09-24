@@ -637,27 +637,20 @@ def _market_engine(tmp_path, turns, *, answer="化工现货"):
     return engine, calls
 
 
-def test_turn_plan_allowlist_guard_blocks_undeclared_capability_tool(tmp_path):
-    engine, calls = _market_engine(
-        tmp_path,
-        [
-            _tool_turn("web_search", {"query": "CAS 67-56-1"}),
-            _text_turn("未使用未声明的网页替代源"),
-        ],
-    )
-
+def test_turn_plan_does_not_reject_available_tools_by_business_category(tmp_path):
+    engine, calls = _market_engine(tmp_path, [
+        _tool_turn("web_search", {"query": "CAS 67-56-1"}), _text_turn("已核对来源")])
     events = _collect(engine, "查询 CAS 67-56-1")
+    assert calls.get("web_search") == 1
+    assert events[-1].data["status"] == "completed"
 
-    assert calls.get("web_search", 0) == 0
-    denied = [
-        event
-        for event in events
-        if event.type is EventType.TOOL_FINISHED
-        and event.data.get("name") == "web_search"
-    ]
-    assert denied and denied[0].data["status"] == "denied"
-    assert denied[0].data["outcome"]["status"] == "denied"
-    assert "Scenario/Capability" in denied[0].data["reason"]
+
+def test_explicit_no_search_is_enforced_before_tool_execution(tmp_path):
+    engine, calls = _market_engine(tmp_path, [
+        _tool_turn("web_search", {"query": "CAS 67-56-1"}), _text_turn("遵守限制")])
+    events = _collect(engine, "不要搜索，解释 CAS")
+    assert not calls.get("web_search")
+    assert any(e.type is EventType.TOOL_FINISHED and e.data.get("status") == "denied" for e in events)
 
 
 def test_market_execution_no_longer_denies_price_tool_before_clarification(tmp_path):

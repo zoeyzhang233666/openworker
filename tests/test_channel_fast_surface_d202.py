@@ -51,46 +51,15 @@ def _wecom_source() -> dict:
     }
 
 
-def test_channel_weekly_report_uses_report_channel_profile() -> None:
-    plan = _planner().plan("生成液化气的市场周报", source=_wecom_source())
-    assert plan.scenario_resolution is not None
-    assert plan.scenario_resolution.scenario_id == "chemical_market_report"
-    assert plan.prompt_profile is PromptProfile.REPORT_CHANNEL
-    assert plan.execution_profile is not None
-    assert plan.execution_profile.max_iterations == 6
-    allowed = set(plan.execution_profile.allowed_tool_names or ())
-    assert "write_file" in allowed
-    assert "run_shell" not in allowed
-    assert "load_skill" not in allowed
-    assert "start_subagent" not in allowed
-
-
-def test_desktop_weekly_report_stays_summary_only() -> None:
-    plan = _planner().plan("生成液化气的市场周报")
-    assert plan.prompt_profile is PromptProfile.REPORT_SUMMARY
-    assert plan.execution_profile is not None
-    assert plan.execution_profile.max_iterations == 3
-    allowed = set(plan.execution_profile.allowed_tool_names or ())
-    assert "write_file" not in allowed
-
-
-def test_channel_general_question_not_full_agent() -> None:
-    plan = _planner().plan("帮我查一下甲醇现货价格", source=_wecom_source())
-    assert plan.decision is not None
-    assert plan.decision.route is RequestRoute.VERIFIED
-    assert "run_shell" not in set(plan.execution_profile.allowed_tool_names or ())
-
-
-def test_channel_bare_citric_acid_chart_projects_spot_mcp() -> None:
-    plan = _planner().plan("给我柠檬酸价格走势图", source=_wecom_source())
-    assert plan.decision is not None
-    assert plan.decision.route is RequestRoute.VERIFIED
-    allowed = set(plan.execution_profile.allowed_tool_names or ())
-    assert "mcp__chem-data-hub__get_price_trend" in allowed
-    assert "run_shell" not in allowed
-    assert "load_skill" not in allowed
-    assert plan.market_selection is not None
-    assert plan.market_selection.intent.kind.value == "chemical_spot"
+@pytest.mark.parametrize("text", ["生成液化气的市场周报", "帮我查一下甲醇现货价格", "给我柠檬酸价格走势图"])
+def test_channel_and_desktop_share_general_execution(text):
+    desktop = _planner().plan(text)
+    channel = _planner().plan(text, source=_wecom_source())
+    assert desktop.execution_profile == channel.execution_profile
+    assert channel.execution_profile.max_iterations == 150
+    assert channel.execution_profile.allowed_tool_names is None
+    assert channel.skill_names is None
+    assert set(channel.capability_plan.selected_tool_names) == set(TOOLS)
 
 
 def test_resolve_lpg_alias() -> None:
@@ -116,7 +85,7 @@ def test_project_price_trend_compresses_payload() -> None:
     assert "note" in projected
 
 
-def test_engine_blocks_shell_on_channel(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_channel_defers_shell_to_permission_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     from coworker.engine import TurnEngine
     from coworker.tools import ToolRegistry
 
@@ -133,7 +102,6 @@ def test_engine_blocks_shell_on_channel(monkeypatch: pytest.MonkeyPatch) -> None
         guard = engine._channel_delivery_tool_guard(
             ToolCall(id="1", name="run_shell", arguments={"command": "python x.py"})
         )
-        assert guard is not None
-        assert guard[0] is False
+        assert guard is None
     finally:
         reset_current_channel_target(token)

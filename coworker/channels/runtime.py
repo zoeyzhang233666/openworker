@@ -41,14 +41,14 @@ class ChannelDeliveryCoordinator:
         runner: Callable[[str, Any], Awaitable[None]],
         *,
         max_concurrency: int = 10,
-        turn_timeout: float = 300.0,
+        turn_timeout: float | None = None,
         timeout_grace_seconds: float = 15.0,
         is_waiting_for_human: Optional[Callable[[str], bool]] = None,
         on_timeout: Optional[Callable[[str, Any], Awaitable[None]]] = None,
     ) -> None:
         self._runner = runner
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
-        self.turn_timeout = max(0.01, turn_timeout)
+        self.turn_timeout = max(0.01, turn_timeout) if turn_timeout else None
         self.timeout_grace_seconds = max(0.0, timeout_grace_seconds)
         self._is_waiting_for_human = is_waiting_for_human or (lambda _sid: False)
         self._on_timeout = on_timeout

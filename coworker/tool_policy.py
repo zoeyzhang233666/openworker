@@ -167,6 +167,7 @@ _LOCAL_SKILL = frozenset({"search_skills", "load_skill", "save_skill"})
 
 _LOCAL_PRODUCT_CONTROL = frozenset(
     {
+        "search_tools", "load_tools",
         "ask_user",
         "propose_plan",
         "request_directory",

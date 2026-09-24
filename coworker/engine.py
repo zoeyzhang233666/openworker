@@ -130,7 +130,7 @@ class TurnEngine:
         model: str,
         instructions: Optional[str] = None,
         approver: Optional[Approver] = None,
-        max_iterations: int = 12,
+        max_iterations: int = 150,
         model_settings: Optional[dict[str, Any]] = None,
         messages: Optional[list[dict[str, Any]]] = None,
         audit_sink: Optional[Callable[[dict[str, Any]], None]] = None,
@@ -331,13 +331,6 @@ class TurnEngine:
             self._resolved_market_scope = None
             self._last_resolved_market_scope = None
             return None
-        if self._legacy_prompt_session:
-            plan = TurnPlan.legacy()
-            self._active_turn_plan = plan
-            self._last_turn_plan = plan
-            self._resolved_market_scope = None
-            self._last_resolved_market_scope = None
-            return plan
         try:
             plan = self.turn_planner.plan(
                 user_input,
@@ -358,26 +351,8 @@ class TurnEngine:
             plan = TurnPlan.legacy()
         self._active_turn_plan = plan
         self._last_turn_plan = plan
-        selection = plan.market_selection
-        inherited = self._inherited_market_selection
-        merged = merge_inherited_market_selection(inherited, selection)
-        if merged is not None and merged is not selection:
-            plan = self._apply_market_selection_to_plan(plan, merged)
-            self._active_turn_plan = plan
-            self._last_turn_plan = plan
-            selection = merged
-        scope = selection.intent.scope if selection is not None else None
-        # Dual-scope (CN_SPOT_FUTURES) keeps resolved scope None so tools_for_scope
-        # returns the union; single-scope inherits the locked scope.
-        if (
-            selection is not None
-            and selection.intent.kind.value == "cn_spot_futures"
-        ):
-            scope = None
-        elif scope is None and inherited is not None and inherited.intent.scope is not None:
-            scope = inherited.intent.scope
-        self._resolved_market_scope = scope
-        self._last_resolved_market_scope = scope
+        self._resolved_market_scope = None
+        self._last_resolved_market_scope = None
         return plan
 
     def _apply_market_selection_to_plan(
@@ -454,13 +429,7 @@ class TurnEngine:
         tools = None
         try:
             if not self._emergency_finalizing:
-                tools = project_provider_visible_schemas(
-                    self.registry,
-                    tool_projection_enabled=self.tool_projection_enabled,
-                    profile=profile,
-                    tool_policy=policy,
-                    mandatory_tool_names=self.mandatory_tool_names,
-                )
+                tools = self._provider_tools()
         except Exception:
             tools = None
         tools_enabled = tools is not None
@@ -1173,10 +1142,16 @@ class TurnEngine:
     def _provider_tools(self):
         if self._emergency_finalizing:
             return None
-        return project_provider_visible_schemas(
-            self.registry, tool_projection_enabled=self.tool_projection_enabled,
-            profile=self._current_execution_profile(), tool_policy=self._current_tool_policy(),
-            mandatory_tool_names=self.mandatory_tool_names)
+        from .tool_policy import tool_allowed_under_policy
+        from .tool_discovery import ToolDiscovery
+        if not hasattr(self, "_tool_discovery"):
+            self._tool_discovery = ToolDiscovery(
+                self.registry, lambda: self._current_tool_policy(),
+                lambda: min(12000, max(1024, self._model_profile().context_window // 10)),
+            )
+        schemas = self._tool_discovery.schemas()
+        return [schema for schema in schemas if tool_allowed_under_policy(
+            schema["function"]["name"], self._current_tool_policy() or TurnToolPolicy())] or None
 
     def _context_budget(self):
         from .context_budget import budget_request
@@ -1571,44 +1546,14 @@ class TurnEngine:
             yield self._record_result(tool_call, result, status)
 
     def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
-        """D-169 allowlist guard; PermissionEngine remains the final authority."""
-        plan = self._active_turn_plan
-        if plan is None or not plan.scenario_projection_applied:
-            return None
-        if (
-            plan.market_selection is not None
-            and plan.market_selection.intent.is_market
-        ):
-            # D-197: market plans use projection as model guidance, not a second
-            # execution-denial layer. Correct live MCP calls must not be rejected
-            # because a durable/stale plan captured a different provider name.
-            return None
-        profile = plan.execution_profile
-        allowed = set(profile.allowed_tool_names or ()) if profile is not None else set()
-        allowed.update(self.mandatory_tool_names)
-        if tool_name in allowed:
-            return True, "turn plan capability matched"
-        return False, "该工具未被本轮 Scenario/Capability 计划授权"
+        """Explicit user policy supplements, never replaces, permission checks."""
+        from .tool_policy import tool_allowed_under_policy
+        if not tool_allowed_under_policy(tool_name, self._current_tool_policy() or TurnToolPolicy()):
+            return False, "该工具不符合用户本轮明确的工具或联网限制"
+        return None
 
     def _channel_delivery_tool_guard(self, tool_call: ToolCall) -> tuple[bool, str] | None:
-        """D-202: messaging Channels must not run shell or parse huge outbound clips."""
-        if not current_channel_target():
-            return None
-        if tool_call.name in {"run_shell", "run_terminal_cmd"}:
-            return (
-                False,
-                "企业微信/Channel 不支持 Shell；请使用已提供的结构化行情工具与预聚合摘要。",
-            )
-        if tool_call.name in CHANNEL_DENIED_TOOLS:
-            return False, f"Channel 快速交付面不支持 {tool_call.name}。"
-        args = tool_call.arguments or {}
-        if tool_call.name in {"read_file", "read_file_lines", "grep"}:
-            path = str(args.get("path") or args.get("file") or "").replace("\\", "/")
-            if "outbound-clip" in path or "/._chemclaw/outbound-clip/" in path:
-                return (
-                    False,
-                    "Channel 不支持读取 outbound 原始大回包；请直接使用工具返回的 summary。",
-                )
+        # Channel identity/delivery is handled outside the common executor.
         return None
 
     def _should_project_market_tool_result(self, tool_name: str) -> bool:
