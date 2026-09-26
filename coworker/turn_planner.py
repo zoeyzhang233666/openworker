@@ -7,35 +7,25 @@ the same route, prompt profile, skill menu and provider-visible tool policy.
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Iterable
 
 from .capabilities import CapabilityPlan, CapabilityResolver
-from .channels.delivery import (
-    CHANNEL_DENIED_TOOLS,
-    is_channel_user_source,
-)
 from .config import Config
 from .execution_profile import ExecutionProfile, RequestRoute
-from .market_intent import MarketToolSelection, resolve_market_tools
-from .mcp_intent import mentions_mcp, referenced_mcp_tools
+from .market_intent import MarketToolSelection
 from .request_router import (
     RequestRouter,
     RouteDecision,
     RouterContext,
-    decision_to_execution_profile,
 )
 from .scenarios import (
     ScenarioResolution,
     ScenarioResolver,
     TurnPlanPreview,
-    builtin_scenario_registry,
-    text_has_deep_research_intent,
 )
 from .tool_policy import TurnToolPolicy, filter_tool_names
-from .tool_projection import select_agent_tool_names, select_verified_tool_names
 from .tools.registry import ToolDescriptor
 
 
@@ -63,34 +53,6 @@ class TurnOrigin(str, Enum):
     SELF_WAKE = "self_wake"
     BACKGROUND = "background"
     SUBAGENT_COMPLETE = "subagent_complete"
-
-
-_PROMPT_PROFILE_BY_ROUTE = {
-    RequestRoute.FAST_CHAT: PromptProfile.FAST,
-    RequestRoute.KNOWLEDGE: PromptProfile.KNOWLEDGE,
-    RequestRoute.VERIFIED: PromptProfile.VERIFIED,
-    RequestRoute.AGENT: PromptProfile.AGENT,
-    RequestRoute.DEEP_RESEARCH: PromptProfile.DEEP_RESEARCH,
-}
-
-_SUBAGENT_CONTROL_TOOL_NAMES = (
-    "start_subagent",
-    "background_task_status",
-    "background_task_output",
-    "background_task_send",
-    "background_task_stop",
-    "background_task_gather",
-)
-
-# Parent synthesis surface for allow_subagent research scenarios (D-184).
-# Quote/MCP market tools stay on research children — not merged back to parent.
-_RESEARCH_PARENT_SYNTHESIS_TOOL_NAMES = (
-    "read_file",
-    "list_files",
-    "write_file",
-    "edit_file",
-    "todo_write",
-)
 
 
 @dataclass(frozen=True)

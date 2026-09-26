@@ -84,10 +84,11 @@ def test_no_tool_turn(tmp_path):
     events = _collect(engine, "hi")
     assert _types(events) == [
         EventType.TURN_START,
+        EventType.MODEL_REQUEST,
         EventType.ASSISTANT_MESSAGE,
         EventType.TURN_END,
     ]
-    assert events[1].data["text"] == "all done"
+    assert events[2].data["text"] == "all done"
     assert events[-1].data["status"] == "completed"
 
 
@@ -101,11 +102,13 @@ def test_tool_turn_order_and_execution(tmp_path):
     assert EventType.PERMISSION_REQUIRED not in _types(events)
     assert _types(events) == [
         EventType.TURN_START,
+        EventType.MODEL_REQUEST,
         EventType.ASSISTANT_MESSAGE,
         EventType.TOOL_PROPOSED,
         EventType.TOOL_STARTED,
         EventType.TOOL_FINISHED,
         EventType.ITERATION_END,
+        EventType.MODEL_REQUEST,
         EventType.ASSISTANT_MESSAGE,
         EventType.TURN_END,
     ]
@@ -380,7 +383,7 @@ def test_empty_stream_surfaces_error_instead_of_blank_assistant(tmp_path):
     assert EventType.ERROR in _types(events)
     assert EventType.ASSISTANT_MESSAGE not in _types(events)
     assert events[-1].type == EventType.ERROR
-    assert "empty" in events[-1].data["error"].lower()
+    assert events[-1].data["error_type"] == "EmptyModelResponse"
     assert any(
         m.get("role") == "notice" and m.get("kind") == "error" for m in engine.messages
     )

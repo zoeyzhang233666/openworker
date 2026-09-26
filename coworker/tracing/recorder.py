@@ -35,6 +35,9 @@ class TurnTraceRecorder:
         self.started_at = _now()
         self._started = time.perf_counter()
         self.model_calls = 0
+        self._has_request_events = False
+        self.recovery_retries = 0
+        self.current_context_tokens = 0
         self.tool_calls = 0
         self.web_calls = 0
         self.subagent_calls = 0
@@ -47,13 +50,20 @@ class TurnTraceRecorder:
 
     def observe(self, event: Event) -> None:
         data = event.data or {}
-        if event.type is EventType.ASSISTANT_MESSAGE:
+        if event.type is EventType.MODEL_REQUEST:
+            self._has_request_events = True
             self.model_calls += 1
+        elif event.type is EventType.CONTINUATION:
+            self.recovery_retries += 1
+        elif event.type is EventType.ASSISTANT_MESSAGE:
+            if not self._has_request_events:
+                self.model_calls += 1
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
             prompt = (_usage_int(usage, "input") + _usage_int(usage, "cache_read")
                       + _usage_int(usage, "cache_write")) if "input" in usage else _usage_int(
                           usage, "input_tokens", "prompt_tokens", "context_tokens")
             output = _usage_int(usage, "output", "output_tokens", "completion_tokens")
+            self.current_context_tokens = prompt
             self.input_tokens += prompt
             self.output_tokens += output
             self.total_tokens += _usage_int(usage, "total_tokens") or prompt + output
@@ -90,7 +100,7 @@ class TurnTraceRecorder:
         )
         status = self.status
         if status == "running":
-            status = "completed"
+            status = "failed"
         if self.outcomes.get("denied") and not self.outcomes.get("success") and status == "completed":
             status = "denied"
         if not self.total_tokens:
@@ -115,6 +125,8 @@ class TurnTraceRecorder:
             invoked_tool_names=tuple(dict.fromkeys(self.invoked_tools)),
             model=self.model,
             model_calls=self.model_calls,
+            recovery_retries=self.recovery_retries,
+            current_context_tokens=self.current_context_tokens,
             tool_calls=self.tool_calls,
             web_calls=self.web_calls,
             subagent_calls=self.subagent_calls,

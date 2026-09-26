@@ -249,6 +249,11 @@ def tool_allowed_under_policy(name: str, policy: TurnToolPolicy) -> bool:
     if policy.no_tools:
         return False
     scope, usage = classify_tool(name)
+    if (policy.no_search or policy.no_external_network) and name in {
+        "run_shell", "run_terminal_cmd", "start_subagent", "explore"
+    }:
+        # These executors do not yet propagate the user's per-turn network policy.
+        return False
     if policy.no_search and usage is UsageClass.SEARCH:
         return False
     if policy.no_external_network:

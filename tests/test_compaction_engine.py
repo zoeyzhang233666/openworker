@@ -307,6 +307,7 @@ def test_set_compaction_settings_validates_and_round_trips(tmp_path):
     assert payload["compaction_model"] == "gpt-4o-mini"
     assert payload["compaction_timeout_seconds"] == 75
     assert payload["compaction_summary_input_tokens"] == 12_000
+    assert mgr.set_compaction_settings(threshold_pct=0.99)["ok"]
 
 
 def test_compaction_state_survives_save_and_rebuild(tmp_path):

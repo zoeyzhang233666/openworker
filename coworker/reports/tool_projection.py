@@ -1,4 +1,4 @@
-"""Engine-side projection of large chem MCP payloads (D-202)."""
+"""Tool-layer summary of chemical MCP payloads."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def project_market_tool_result(
         "product_name": summary.product_name or product,
         "summary": summary.to_dict(),
         "note": (
-            "结构化摘要已由 ChemClaw 预先计算；禁止用 shell 或 read_file 解析原始大回包。"
+            "结构化摘要已由 ChemClaw 预先计算；需核对时按页读取 raw_result 或工具结果回读文件。"
             "若 observations=0，如实说明缺口并尝试已映射的规范品名。"
         ),
     }

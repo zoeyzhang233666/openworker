@@ -1350,3 +1350,30 @@ def test_stream_reasoning_content_sidecar_on_final_turn():
     provider = OpenAIProvider(client=_StreamClient(chunks))
     final = list(provider.stream(model="deepseek-v4-pro", messages=[]))[-1].turn
     assert final.extras == {"_openai": {"reasoning_content": "think"}}
+
+
+def test_clean_eof_without_terminal_reason_is_transport_failure():
+    import pytest
+    from coworker.providers.openai_provider import _iter_true_stream_chunks
+    client = _FakeClient(iter([_chunk(content="partial")]))
+    chunks = _iter_true_stream_chunks(client, {"model": "test"})
+    assert next(chunks).text_delta == "partial"
+    with pytest.raises(ConnectionError, match="finish_reason"):
+        next(chunks)
+
+
+def test_explicit_stream_capability_override_is_internal():
+    client = _FakeClient(iter([_chunk(content="hello"), _chunk(finish="stop")]))
+    provider = OpenAIProvider(client=client, base_url="https://unknown.test/v1")
+    stream = provider.stream(model="unknown", messages=[], tools=_TOOLS,
+                             _structured_tools_streaming_override=True)
+    assert next(stream).text_delta == "hello"
+    assert list(stream)[-1].turn.text == "hello"
+    assert "_structured_tools_streaming_override" not in client.chat.completions.calls[0]
+
+
+def test_unsupported_required_tool_parameter_does_not_silently_remove_tools():
+    import pytest
+    from coworker.providers.openai_provider import _param_fix_retry
+    with pytest.raises(RuntimeError):
+        _param_fix_retry({"model": "x", "messages": [], "tools": _TOOLS}, RuntimeError("Unsupported parameter: 'tools'"))

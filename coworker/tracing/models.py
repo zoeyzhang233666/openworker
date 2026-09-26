@@ -29,6 +29,8 @@ class TurnTrace(BaseModel):
     tool_calls: int = Field(default=0, ge=0)
     web_calls: int = Field(default=0, ge=0)
     subagent_calls: int = Field(default=0, ge=0)
+    recovery_retries: int = Field(default=0, ge=0)
+    current_context_tokens: int = Field(default=0, ge=0)
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     total_tokens: int = Field(default=0, ge=0)

@@ -3089,7 +3089,7 @@ class SessionManager:
         summary_input_tokens: Any = None,
     ) -> dict[str, Any]:
         """Persist the auto-compaction overrides (OPE-27). Threshold is a percentage of
-        the model's context window (10–95); the cap is an absolute token ceiling; model
+        the model's context window (10–99); the cap is an absolute token ceiling; model
         pins the summarizer ('' → the session's own model). Engines read these live via
         `compaction_settings()`, so changes apply to running sessions immediately."""
         if threshold_pct is not None:
@@ -3097,10 +3097,10 @@ class SessionManager:
                 pct = float(threshold_pct)
             except (TypeError, ValueError):
                 return {"ok": False, "error": "compaction_threshold_pct must be a number"}
-            if not 0.10 <= pct <= 0.95:
+            if not 0.10 <= pct <= 0.99:
                 return {
                     "ok": False,
-                    "error": "compaction_threshold_pct must be between 0.10 and 0.95",
+                    "error": "compaction_threshold_pct must be between 0.10 and 0.99",
                 }
             self._prefs["compaction_threshold_pct"] = pct
         if cap_tokens is not None:
@@ -4525,8 +4525,9 @@ class SessionManager:
                     force=True,
                 )
             origin = _delivery_turn_origin(source)
-            events = engine.retry() if (message.strip().lower() in {"继续", "继续任务", "continue", "/continue"}
-                                        and engine._tail_is_retriable_error()) else engine.run(
+            continue_requested = bool((source or {}).get("_resume_request")) or (
+                isinstance(message, str) and message.strip().lower() in {"继续", "继续任务", "continue", "/continue"})
+            events = engine.retry() if (continue_requested and engine._tail_is_retriable_error()) else engine.run(
                 message,
                 source=source,
                 origin=origin,
@@ -4841,6 +4842,9 @@ class SessionManager:
             )
             message = build_user_content(framed, prompt_attachments)
         source = dict(payload.get("source") or {})
+        source["_resume_request"] = isinstance(message, str) and message.strip().lower() in {
+            "继续", "继续任务", "continue", "/continue"
+        }
         # D-195/D-203: Channel delivery guidance (chart auto-delivery + HTML link default).
         connector_name = str(source.get("connector") or "").strip().lower()
         if connector_name in {"wecom", "weixin", "feishu", "dingtalk", "telegram", "slack"}:
@@ -5586,10 +5590,15 @@ class SessionManager:
             record = self.session_store.load(run.session_id)
             run.result_text = _last_assistant_text(record.messages) if record else None
             run.artifacts = _recent_files(task.workspace, since=run.started_at)
-            run.status = "ok"
+            tail = next((m for m in reversed(record.messages if record else [])
+                         if m.get("kind") not in {"model_switch", "checkpoint"}), {})
+            incomplete = tail.get("kind") in {"budget_paused", "truncated", "blocked", "error", "interrupted"}
+            run.status = "error" if incomplete else "ok"
+            if incomplete:
+                run.error = "任务尚未完成：" + str(tail.get("kind"))
             run.finished_at = _epoch()
             self.task_store.add_run(run)
-            task.last_run, task.last_status = run.finished_at, "ok"
+            task.last_run, task.last_status = run.finished_at, run.status
             task.run_count += 1
             self.task_store.save(task)
         return {"ok": True, "run": run.to_dict()}

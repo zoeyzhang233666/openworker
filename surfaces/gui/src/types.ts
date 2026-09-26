@@ -24,6 +24,7 @@ export type EventType =
   | "compacted"
   | "continuation"
   | "checkpoint"
+  | "model_request"
   | "memory_saved"
   | "turn_done";
 

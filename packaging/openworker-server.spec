@@ -39,6 +39,13 @@ INCLUDE_EXPERIMENTAL = os.environ.get("COWORKER_EXPERIMENTAL") == "1"
 
 hiddenimports = []
 datas = []
+# Source identity is captured at build time, not guessed from the installed folder.
+import runpy
+from pathlib import Path
+from PyInstaller.config import CONF
+_stamp = Path(CONF["workpath"]) / "chemclaw-build" / "build-info.json"
+runpy.run_path(str(Path(ROOT) / "coworker" / "build_info.py"))["write_build_stamp"](_stamp, Path(ROOT))
+datas.append((str(_stamp), "."))
 binaries = []
 
 for pkg in ("coworker", "aisuite", "mcp", "ddgs", "croniter", "docstring_parser"):

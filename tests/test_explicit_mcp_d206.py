@@ -49,7 +49,7 @@ def test_same_planner_test_then_news_preserves_tools():
     for text in ['测试chem-biz-scope这个mcp能否正常使用', QUESTION]:
         assert p.plan(text).execution_profile.allowed_tool_names is None
     # The explicit MCP guard does not leak into later normal quote turns.
-    assert p.plan('柠檬酸价格走势图').decision.route is RequestRoute.VERIFIED
+    assert p.plan('柠檬酸价格走势图').decision.route is RequestRoute.AGENT
 
 
 def test_server_reference_is_exact_namespace():
@@ -64,12 +64,12 @@ def test_configured_but_unconnected_server_does_not_invent_tools():
     assert tuple(p._available_tool_names()) == ('web_search',)
 
 
-def test_explicit_channel_request_keeps_mcp_without_privileged_tools():
+def test_explicit_channel_request_keeps_discoverable_tools_with_common_permissions():
     plan = planner().plan(QUESTION, source={'connector': 'wecom', 'target': 'wecom:default:user', 'kind': 'dm'})
-    allowed = set(plan.execution_profile.allowed_tool_names)
+    allowed = set(plan.capability_plan.selected_tool_names)
     assert set(BIZ) <= allowed
-    assert not (CHANNEL_DENIED_TOOLS & allowed)
-    assert plan.execution_profile.max_iterations <= 4
+    assert CHANNEL_DENIED_TOOLS <= allowed
+    assert plan.execution_profile.max_iterations == 150
 
 
 @pytest.mark.parametrize('suffix', ['，不要使用任何工具', '，不要联网'])
@@ -179,6 +179,7 @@ def test_real_engine_outbound_schemas_keep_mcp_across_turns(tmp_path, monkeypatc
     assert len(provider.calls) == 2
     for call in provider.calls:
         names = {schema['function']['name'] for schema in call['tools']}
-        assert BIZ[1] in names
-        assert 'web_search' in names
+        assert 'search_tools' in names
+        assert engine._tool_discovery.search(BIZ[1])['tools'][0]['name'] == BIZ[1]
+        assert engine.registry.get('web_search') is not None
         assert '不把未测试计入成功' in call['messages'][0]['content']

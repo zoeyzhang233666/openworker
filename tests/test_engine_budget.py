@@ -37,7 +37,7 @@ class RecordingProvider(ProviderClient):
                 ToolCall(
                     id=f"c{self.calls}",
                     name=self._tool_name,
-                    arguments={"path": "a.txt"},
+                    arguments={"path": f"a{self.calls}.txt"},
                 )
             ],
             finish_reason="tool_calls",
@@ -92,7 +92,7 @@ def test_legacy_path_inert_without_execution_profile(tmp_path):
     assert engine.execution_profile is None
     assert engine.target_iterations is None
     assert provider.calls == 3
-    assert events[-1].data["status"] == "max_iterations_exceeded"
+    assert events[-1].data["status"] == "budget_paused"
     joined = "\n".join(str(m) for batch in provider.outbound for m in batch)
     assert "Iteration budget notice" not in joined
     assert "convergence phase" not in joined
@@ -140,12 +140,12 @@ def test_agent_profile_soft_target_injects_phases_without_early_hard_stop(tmp_pa
         execution_profile=profile,
     )
     events = _collect(engine)
-    # Soft target is NOT hard stop: run all 6 tool iterations, then one EF call.
-    assert provider.calls == 7
+    # Soft target does not stop execution; the configured hard budget pauses.
+    assert provider.calls == 6
     end = events[-1]
-    assert end.data["status"] == "max_iterations_exceeded"
+    assert end.data["status"] == "budget_paused"
     assert end.data["iterations"] == 6
-    assert end.data["best_effort_finalized"] is True
+    assert "best_effort_finalized" not in end.data
     # Converge starts at int(3*0.75)=2; deliver at max(3, 3-4)=2 → both notices appear
     # before hard ceiling.
     noticed = [
@@ -171,11 +171,11 @@ def test_deep_profile_soft_target_phases(tmp_path):
         execution_profile=profile,
     )
     events = _collect(engine)
-    assert provider.calls == 8  # 7 hard + 1 emergency finalization
+    assert provider.calls == 7  # 7 successful iterations, then pause
     end = events[-1]
-    assert end.data["status"] == "max_iterations_exceeded"
+    assert end.data["status"] == "budget_paused"
     assert end.data["iterations"] == 7
-    assert end.data["best_effort_finalized"] is True
+    assert "best_effort_finalized" not in end.data
     assert any(
         "Iteration budget notice" in str(m)
         for batch in provider.outbound
@@ -196,11 +196,11 @@ def test_verified_profile_hard_budget_independent(tmp_path):
         execution_profile=profile,
     )
     events = _collect(engine)
-    assert provider.calls == 4  # 3 hard + 1 emergency finalization
+    assert provider.calls == 3  # the configured budget pauses without an extra model call
     end = events[-1]
-    assert end.data["status"] == "max_iterations_exceeded"
+    assert end.data["status"] == "budget_paused"
     assert end.data["iterations"] == 3
-    assert end.data["best_effort_finalized"] is True
+    assert "best_effort_finalized" not in end.data
     # VERIFIED has no soft-target phase guidance
     assert not any(
         "Iteration budget notice" in str(m)

@@ -23,13 +23,6 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Mapping, Optional
 _log = logging.getLogger(__name__)
 
 from . import compaction as _compaction
-from .connectors.context import current_channel_target
-from .channels.delivery import CHANNEL_DENIED_TOOLS
-from .reports.tool_projection import (
-    project_market_tool_result,
-    rewrite_price_tool_arguments,
-    should_project_market_tool,
-)
 from .events import Event, EventType
 from .execution_profile import (
     ExecutionProfile,
@@ -40,13 +33,11 @@ from .execution_profile import (
 from .market_intent import (
     MarketScope,
     MarketToolSelection,
-    merge_inherited_market_selection,
 )
 from .permissions import Mode, PermissionEngine
 from .providers import AssistantTurn, ProviderClient, ToolCall
 from .providers.errors import friendly_model_error
 from .tool_policy import TurnToolPolicy
-from .tool_projection import project_provider_visible_schemas
 from .tools import ToolRegistry
 from .tools.outcome import normalize_tool_outcome
 from .tracing import TurnTrace, TurnTraceRecorder
@@ -615,6 +606,8 @@ class TurnEngine:
         return {"iterations": 0, "model_calls": 0, "recovery_retries": 0, "tool_calls": 0, "inflight": []}
 
     async def _checkpoint(self, reason="segment"):
+        if hasattr(self, "_tool_discovery"):
+            self._runtime["loaded_tools"] = list(self._tool_discovery.loaded)
         self._append_notice("checkpoint")
         self.messages[-1]["runtime"] = dict(self._runtime)
         self.messages[-1]["reason"] = reason
@@ -660,8 +653,9 @@ class TurnEngine:
         is the intended recovery path (owner-hit 2026-07-23)."""
         if not self._tail_is_retriable_error():
             return
-        if any(m.get("kind") in {"budget_paused", "truncated", "blocked"}
-               for m in self.messages[-2:]):
+        terminal = next((m for m in reversed(self.messages)
+                         if m.get("kind") not in {"model_switch", "checkpoint"}), {})
+        if terminal.get("kind") in {"budget_paused", "truncated", "blocked"}:
             self._runtime["iterations"] = 0
             self._runtime["recovery_retries"] = 0
         if self._last_turn_plan is None:
@@ -794,10 +788,15 @@ class TurnEngine:
         """The tool-calls of the last assistant message that don't yet have a tool result —
         i.e. the prompt we suspended on (+ any after it). Reconstructed from the persisted thread.
         """
-        answered = {
-            m.get("tool_call_id") for m in self.messages if m.get("role") == "tool"
-        }
+        # Call IDs are scoped to one assistant response on some compatible APIs.
+        # Results from older responses must not answer a new call with a reused ID.
+        answered = set()
         for msg in reversed(self.messages):
+            if msg.get("role") == "tool":
+                answered.add(msg.get("tool_call_id"))
+                continue
+            if msg.get("role") == "assistant" and not msg.get("tool_calls"):
+                return []
             if msg.get("role") == "user":
                 return []
             if msg.get("role") == "assistant" and msg.get("tool_calls"):
@@ -844,6 +843,7 @@ class TurnEngine:
         try:
             try:
                 self._runtime["model_calls"] += 1
+                yield Event(EventType.MODEL_REQUEST, {"attempt": self._runtime["model_calls"]})
                 async for chunk in self._astream():
                     if chunk.reasoning_delta:
                         streamed_reasoning.append(chunk.reasoning_delta)
@@ -986,6 +986,7 @@ class TurnEngine:
 
             try:
                 self._runtime["model_calls"] += 1
+                yield Event(EventType.MODEL_REQUEST, {"attempt": self._runtime["model_calls"]})
                 async for chunk in self._astream():
                     if first_provider_delta_ms is None and (
                         chunk.reasoning_delta
@@ -1034,8 +1035,8 @@ class TurnEngine:
                 if streamed or streamed_reasoning:
                     self.messages.append(_assistant_message(_partial_turn()))
                 from .providers.openai_provider import _is_stream_transport_error
-                if (_is_stream_transport_error(exc) and not self._cancel.is_set()
-                        and self._runtime["recovery_retries"] < 2):
+                if (_is_stream_transport_error(exc) and (streamed or streamed_reasoning)
+                        and not self._cancel.is_set() and self._runtime["recovery_retries"] < 2):
                     self._runtime["recovery_retries"] += 1
                     self._continue_message("上次传输中断。保留已展示内容，从断点继续；不要重复已完成的工具或外部写入。")
                     yield Event(EventType.CONTINUATION, {"reason": "transport", "text": "连接中断，已保留进展并尝试续接。"})
@@ -1058,22 +1059,12 @@ class TurnEngine:
                 yield Event(EventType.INTERRUPTED, {"iterations": iterations})
                 return
             if turn is None:
-                # Compat gateways with a wrong base_url (missing /v1) often close the
-                # stream with zero chunks. Persisting a blank assistant looks like
-                # "chat returned nothing"; surface it as a retriable provider error.
-                if not streamed and not streamed_reasoning:
-                    msg = (
-                        f"Model {self.model} returned an empty response. "
-                        "For OpenAI-compatible gateways, confirm the base URL ends "
-                        "with /v1 and that the selected model supports streaming."
-                    )
-                    self._append_notice("error", msg)
-                    yield Event(
-                        EventType.ERROR,
-                        {"error": msg, "error_type": "EmptyModelResponse"},
-                    )
-                    return
-                turn = _partial_turn()
+                if streamed or streamed_reasoning:
+                    self.messages.append(_assistant_message(_partial_turn()))
+                msg = f"模型 {self.model} 未返回完整响应终态；已保留收到的内容，请重试或检查模型接口。"
+                self._append_notice("error", msg)
+                yield Event(EventType.ERROR, {"error": msg, "error_type": "EmptyModelResponse"})
+                return
             iterations += 1
             self._runtime["iterations"] = iterations
             if turn.finish_reason == "length":
@@ -1206,6 +1197,8 @@ class TurnEngine:
                 self.registry, lambda: self._current_tool_policy(),
                 lambda: min(12000, max(1024, self._model_profile().context_window // 10)),
             )
+            if self._runtime.get("loaded_tools"):
+                self._tool_discovery.load(self._runtime["loaded_tools"])
         schemas = self._tool_discovery.schemas()
         return [schema for schema in schemas if tool_allowed_under_policy(
             schema["function"]["name"], self._current_tool_policy() or TurnToolPolicy())] or None
@@ -1213,6 +1206,11 @@ class TurnEngine:
     def _context_budget(self):
         from .context_budget import budget_request
         cfg = self._compaction_config()
+        key = self._model_profile().key
+        if getattr(self, "_budget_profile_key", key) != key:
+            self._last_context_tokens = None
+            self._last_request_estimate = None
+        self._budget_profile_key = key
         return budget_request(self._outbound_messages(), self._provider_tools(),
             window=int(cfg["context_window"]), max_output=int(self.model_settings.get("max_tokens") or cfg["max_output_tokens"]),
             threshold=float(cfg["threshold_pct"]), cap=int(cfg["cap_tokens"]),
@@ -1231,12 +1229,32 @@ class TurnEngine:
         self._last_context_tokens = None
         self._last_request_estimate = None
         after = self._context_budget()
+        # Bound retained user quotations and deterministic state against the complete
+        # next request, not just the span passed to the summarizer. Pin the first ask.
+        while after.estimated_input > after.target and len(state.user_messages) > 1:
+            state.user_messages.pop(1)
+            state.user_messages_dropped += 1
+            after = self._context_budget()
+        from .context_budget import estimate
+        for field in ("working_state", "summary_text"):
+            value = getattr(state, field)
+            excess = after.estimated_input - after.target + 150
+            if excess <= 0:
+                break
+            tokens = estimate(value)
+            if tokens > 300:
+                remaining = max(300, tokens - excess - 150)
+                chars = max(200, int(len(value) * remaining / tokens))
+                if chars < len(value):
+                    setattr(state, field, value[:chars // 2] + "\n[节选；完整历史见回读文件]\n" + value[-chars // 2:])
+                    state.trimmed = True
+                    after = self._context_budget()
         # Boundary progress alone is not evidence of a smaller request.
         if after.estimated_input >= before.estimated_input:
             self.compaction_state = previous
             self._compaction_blocked = True
             return None
-        self._compaction_blocked = after.estimated_input >= after.trigger
+        self._compaction_blocked = after.estimated_input > after.target
         self._compaction_diagnostic = {
             "reason": reason, "before_tokens": before.estimated_input,
             "after_tokens": after.estimated_input, "target_tokens": after.target,
@@ -1260,7 +1278,16 @@ class TurnEngine:
             state.transcript_path = str(path)
         except OSError:
             state.transcript_path = ""
+        after = self._context_budget()
+        self._compaction_blocked = after.estimated_input > after.target
+        self._compaction_diagnostic.update(after_tokens=after.estimated_input,
+                                          target_met=not self._compaction_blocked,
+                                          fixed_tokens=after.fixed_tokens,
+                                          budget_blocked=self._compaction_blocked)
+        state.diagnostics.update(self._compaction_diagnostic)
         emit_instrumentation("compaction", self._compaction_diagnostic)
+        if self._compaction_blocked:
+            return "可压缩历史已处理，但仍无法腾出足够上下文空间。"
         return "上下文已自动精简以继续" if state.trimmed else "上下文已自动压缩（较早轮次已摘要）"
 
     async def _compact_now(self, *, force: bool = False) -> Optional[str]:
@@ -1595,11 +1622,16 @@ class TurnEngine:
             for tool_call in concurrent:
                 yield Event(EventType.TOOL_STARTED, {"name": tool_call.name})
                 self._audit(tool_call, stage="started")
+            self._runtime["inflight"] = [tc.id for tc in concurrent]
+            await self._checkpoint("tools_started")
             outcomes = await asyncio.gather(
                 *[asyncio.to_thread(self._execute_sync, tc) for tc in concurrent]
             )
             for tool_call, (result, status) in zip(concurrent, outcomes):
-                yield self._record_result(tool_call, result, status)
+                event = self._record_result(tool_call, result, status)
+                self._runtime["inflight"] = [i for i in self._runtime["inflight"] if i != tool_call.id]
+                await self._checkpoint("tool_finished")
+                yield event
 
         for tool_call in serial:
             if self._cancel.is_set():
@@ -1627,41 +1659,11 @@ class TurnEngine:
         # Channel identity/delivery is handled outside the common executor.
         return None
 
-    def _should_project_market_tool_result(self, tool_name: str) -> bool:
-        if not should_project_market_tool(tool_name):
-            return False
-        plan = self._active_turn_plan
-        if plan is None:
-            return False
-        if plan.prompt_profile in {
-            PromptProfile.REPORT_SUMMARY,
-            PromptProfile.REPORT_CHANNEL,
-        }:
-            return True
-        resolution = plan.scenario_resolution
-        return (
-            resolution is not None
-            and resolution.scenario_id == "chemical_market_report"
-        )
-
-    def _prepare_tool_execution(
-        self, tool_call: ToolCall
-    ) -> ToolCall:
-        args = dict(tool_call.arguments or {})
-        if should_project_market_tool(tool_call.name):
-            args = rewrite_price_tool_arguments(args)
-        if args != (tool_call.arguments or {}):
-            return ToolCall(id=tool_call.id, name=tool_call.name, arguments=args)
+    def _prepare_tool_execution(self, tool_call: ToolCall) -> ToolCall:
         return tool_call
 
     def _project_tool_result(self, tool_call: ToolCall, result: Any) -> Any:
-        if not self._should_project_market_tool_result(tool_call.name):
-            return result
-        return project_market_tool_result(
-            result,
-            tool_name=tool_call.name,
-            arguments=tool_call.arguments,
-        )
+        return result
 
     def _interrupted_tool(self, tool_call: ToolCall) -> Event:
         """The stop-path answer for a call that will not run: a tool-error result in the

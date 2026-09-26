@@ -41,7 +41,10 @@ def budget_request(messages: list[dict], tools: list[dict] | None, *, window: in
     history = estimate(messages)
     current = history + schema
     if last_actual is not None and last_estimate is not None:
-        current = max(current, last_actual + current - last_estimate)
+        # Provider usage already measures the whole prior request (including cache).
+        # Keeping an estimate floor would repeatedly compact CJK sessions even when
+        # the provider reports ample space. Estimate only the newly changed content.
+        current = max(1, last_actual + current - last_estimate)
     fixed = schema + estimate([m for m in messages if m.get("role") == "system"])
     return ContextBudget(window, output, safety, limit, trigger,
                          max(1, min(limit // 2, trigger // 2)), history, schema, fixed, current)

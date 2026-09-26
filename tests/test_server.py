@@ -13,6 +13,7 @@ from coworker.providers import (
 )
 from coworker.server import SessionManager, create_app
 from coworker.sessions import SessionRecord
+from coworker.permissions import Mode
 
 
 class ScriptedProvider(ProviderClient):
@@ -37,7 +38,7 @@ def _tool(name, args, call_id="call_1"):
 
 
 def _client(tmp_path, turns):
-    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider(turns))
+    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider(turns), mode=Mode.INTERACTIVE)
     return TestClient(create_app(manager))
 
 
@@ -678,7 +679,7 @@ def test_ws_session_persisted_while_parked_on_approval(tmp_path):
     """A crash mid-turn must not eat the conversation: by the time the engine parks on an
     approval, the session (user message + assistant tool call) is already on disk."""
     manager = SessionManager(
-        workspace=tmp_path,
+        workspace=tmp_path, mode=Mode.INTERACTIVE,
         provider=ScriptedProvider(
             [_tool("write_file", {"path": "x.py", "content": "1\n"}), _text("done")]
         ),

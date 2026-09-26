@@ -30,6 +30,7 @@ class EventType(str, Enum):
     ITERATION_END = "iteration_end"
     TURN_END = "turn_end"
     CHECKPOINT = "checkpoint"
+    MODEL_REQUEST = "model_request"
     CONTINUATION = "continuation"
     ERROR = "error"
     INTERRUPTED = "interrupted"

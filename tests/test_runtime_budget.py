@@ -81,3 +81,15 @@ def test_summary_bad_request_breaker_and_safe_diagnostics(tmp_path):
     assert engine.compaction_state.diagnostics["summary_failure"]["param"] == "reasoning_effort"
     assert "secret" not in str(engine.compaction_state.diagnostics)
     assert engine.compaction_state.transcript_path
+
+
+def test_actual_usage_calibrates_overestimated_history_without_subtracting_cache():
+    messages = [{"role": "user", "content": "中文" * 1000}]
+    args = dict(window=128000, max_output=8192, threshold=.8, cap=1000000)
+    estimated = budget_request(messages, None, **args)
+    calibrated = budget_request(messages, None, last_actual=1000,
+                                last_estimate=estimated.estimated_input, **args)
+    assert calibrated.estimated_input == 1000
+    new = budget_request(messages + [{"role": "user", "content": "next"}], None,
+                         last_actual=1000, last_estimate=estimated.estimated_input, **args)
+    assert new.estimated_input > 1000

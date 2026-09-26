@@ -39,6 +39,7 @@ const openWebSocket = (url: string): WebSocket => {
 
 export interface Health {
   status: string;
+  build?: { runtime_revision: string; source_commit: string; source_dirty: boolean | null; built_at?: string };
   default_workspace: string | null;
   model: string;
   /** Global default permission mode (prefs); seeds Composer before WS `ready`. */

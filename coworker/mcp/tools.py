@@ -160,9 +160,18 @@ def build_callables(
             _server: str = server.name,
             **kwargs: Any,
         ) -> Any:
+            from ..reports.tool_projection import rewrite_price_tool_arguments, should_project_market_tool, project_market_tool_result
+            project = should_project_market_tool(_remote)
+            if project:
+                kwargs = rewrite_price_tool_arguments(kwargs)
             future = asyncio.run_coroutine_threadsafe(call_async(_remote, kwargs), loop)
             try:
-                return future.result(_timeout)
+                result = future.result(_timeout)
+                if project:
+                    summarized = project_market_tool_result(result, tool_name=_remote, arguments=kwargs)
+                    if isinstance(summarized, dict) and not summarized.get("error"):
+                        return {**summarized, "raw_result": result}
+                return result
             except TimeoutError:
                 if future.done():
                     # A response may race with the local wait deadline.

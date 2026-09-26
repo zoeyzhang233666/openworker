@@ -96,3 +96,34 @@ def test_deliver_to_session_mounts_mcp_on_first_turn(tmp_path, monkeypatch):
     engine = manager._engines.get("s-new")
     assert engine is not None
     assert "mcp__chem-data-hub__get_price_trend" in engine.registry.names()
+
+
+def test_delivery_accepts_content_parts_after_resume_detection(tmp_path):
+    manager = SessionManager(workspace=tmp_path, data_dir=tmp_path / "data", provider=ScriptedProvider())
+    asyncio.run(manager.deliver_to_session("parts", [{"type": "text", "text": "hello"}]))
+    assert any(m.get("content") == "ok" for m in manager._engines["parts"].messages)
+
+
+def test_channel_continue_survives_delivery_guidance_suffix(tmp_path):
+    from coworker.providers import ToolCall
+    class PausingProvider(ScriptedProvider):
+        def __init__(self):
+            self.calls = 0
+        def complete(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return AssistantTurn(tool_calls=[ToolCall("read", "read_file", {"path": "data.txt"})])
+            return AssistantTurn(text="done", finish_reason="stop")
+    (tmp_path / "data.txt").write_text("data", encoding="utf-8")
+    provider = PausingProvider()
+    manager = SessionManager(workspace=tmp_path, data_dir=tmp_path / "state", provider=provider)
+    e = manager.get_engine("resume")
+    e.max_iterations = 1
+    async def run():
+        await manager.deliver_to_session("resume", "read data")
+        assert e.messages[-1]["kind"] == "budget_paused"
+        await manager.deliver_to_session("resume", "继续 + 交付约定", source={"_resume_request": True})
+    asyncio.run(run())
+    assert sum(m.get("role") == "user" for m in e.messages) == 1
+    assert e._runtime["model_calls"] == 2  # manager may also request a session title
+    assert any(m.get("content") == "done" for m in e.messages)

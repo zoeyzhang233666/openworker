@@ -70,9 +70,8 @@ _IMAGE_ONLY_HINTS = (
 def _channel_guidance_body(platform: str) -> str:
     return (
         f"\n\n[{platform}交付约定 — 务必遵守]\n"
-        "0. 查价要快：已投影 chem-data-hub / 行情工具时立刻调用，禁止连环 ask_user"
-        "（时间范围/产品形态/「请你贴生意社数据」等）；用户只要今天/现价/多少钱时用小 limit 取最新点后短答；"
-        "要走势图再拉序列并写 ```chart。禁止声称「无法调用 MCP」。\n"
+        "0. 通过 search_tools 按需发现工具，业务操作顺序按对应 Skill 执行；"
+        "工具不可用时如实说明，目录和写入操作仍遵守权限审批。\n"
         "1. 行情/价格走势图：必须在回复中包含 ```chart JSON 块（ChartSpec version 1）。"
         "系统会自动生成图表预览 PNG，并按需附精装 HTML 链接——"
         "你不需要 send_file、chart-image 或 shell；禁止声称「无法发送图片/附件/文件」。"

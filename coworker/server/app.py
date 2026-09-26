@@ -7,6 +7,8 @@ proxy so any OpenAI-format client can use the runtime as a backend.
 
 from __future__ import annotations
 
+from ..build_info import build_identity
+
 import asyncio
 import base64
 import binascii
@@ -246,6 +248,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         return {
             "status": "ok",
             "default_workspace": manager.default_workspace,
+            "build": build_identity(),
             "model": manager.model,
             # Composer seeds from this before WS `ready` (MCP/engine setup can lag).
             "mode": manager.mode.value,

@@ -110,3 +110,18 @@ def test_no_progress_pauses_with_specific_reason(tmp_path):
     events = _collect(e, "task")
     assert events[-1].data["status"] == "blocked"
     assert "相同结果" in events[-1].data["text"]
+
+
+def test_resume_scopes_reused_call_ids_to_latest_response(tmp_path):
+    import json
+    def message(value):
+        return {"role": "assistant", "content": "", "tool_calls": [{"id": "same", "type": "function",
+            "function": {"name": "record", "arguments": json.dumps({"value": value})}}]}
+    history = [{"role": "user", "content": "continue task"}, message(1),
+               {"role": "tool", "tool_call_id": "same", "content": "done"}, message(2)]
+    e, executed = engine(tmp_path, [AssistantTurn(text="done", finish_reason="stop")], messages=history)
+    async def resume():
+        return [event async for event in e.resume()]
+    events = asyncio.run(resume())
+    assert executed == [2]
+    assert events[-1].data["status"] == "completed"

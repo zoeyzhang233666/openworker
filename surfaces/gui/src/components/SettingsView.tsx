@@ -2,6 +2,7 @@ import { ModelProfileCard } from "./ModelProfileCard";
 import { useEffect, useRef, useState } from "react";
 import {
   getSettings,
+  getHealth,
   getTrustedWorkspaces,
   setCompactionSettings,
   setContextBar,
@@ -144,6 +145,7 @@ export function SettingsView({
                   not under General. */}
               <div className="mt-6">
                 <TokenSavingsCard />
+                <BuildIdentityCard />
                 <CompactionCard />
                 <FilestoreCard />
               </div>
@@ -933,11 +935,24 @@ function TokenSavingsCard() {
 // Long sessions are summarized automatically when they approach the model's context
 // limit, so work continues instead of hitting a raw provider error. Two spec'd
 // overrides (trigger % + token cap) and the summarizer-model pin — nothing more.
+function BuildIdentityCard() {
+  const { locale } = useI18n();
+  const [build, setBuild] = useState<Awaited<ReturnType<typeof getHealth>>["build"]>();
+  useEffect(() => { getHealth().then((h) => setBuild(h.build)).catch(() => {}); }, []);
+  if (!build) return null;
+  return <div className={CARD + " p-4 text-xs text-muted"}>
+    {locale === "zh-CN" ? "ChemClaw 运行版本" : "ChemClaw runtime"}: {build.runtime_revision}
+    <div>{build.source_commit}{build.source_dirty ? (locale === "zh-CN" ? "（包含未提交改动）" : " (modified)") : ""}</div>
+    {build.built_at && <div>{build.built_at}</div>}
+  </div>;
+}
+
 function CompactionCard() {
   const { t } = useI18n();
   const [cfg, setCfg] = useState<CompactionSettings | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [labels, setLabels] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     getSettings()
@@ -961,8 +976,14 @@ function CompactionCard() {
 
   const save = async (patch: Partial<CompactionSettings>) => {
     setCfg((p) => (p ? { ...p, ...patch } : p));
-    const result = await setCompactionSettings(patch);
-    if (!result.ok) throw new Error(result.error || "保存压缩设置失败");
+    setSaveError("");
+    try {
+      const result = await setCompactionSettings(patch);
+      if (!result.ok) throw new Error(result.error || "保存压缩设置失败");
+      window.dispatchEvent(new Event("chemclaw-compaction-settings"));
+    } catch (error) {
+      setSaveError(String(error));
+    }
   };
 
   if (!cfg) return null;
@@ -982,14 +1003,14 @@ function CompactionCard() {
           <input
             type="number"
             min={10}
-            max={95}
+            max={99}
             value={Math.round(cfg.compaction_threshold_pct * 100)}
             data-testid="compaction-threshold"
             className="w-16 px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
             onChange={(e) =>
               save({
                 compaction_threshold_pct:
-                  Math.max(10, Math.min(Number(e.target.value) || 80, 95)) / 100,
+                  Math.max(10, Math.min(Number(e.target.value) || 80, 99)) / 100,
               })
             }
           />
@@ -1044,6 +1065,7 @@ function CompactionCard() {
           "The summary is written by this model. For better reliability, choose a stable non-reasoning model that returns normal text. A provider-prefixed model uses that provider's endpoint; the default follows the session model.",
         )}
       </div>
+      {saveError && <p role="alert" className="text-danger text-xs">{saveError}</p>}
       <ModelProfileCard models={models} />
     </div>
   );

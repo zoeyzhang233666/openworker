@@ -9,6 +9,12 @@ export function ModelProfileCard({ models }: { models: string[] }) {
   const [profile, setProfile] = useState<ModelProfile | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setRevision((v) => v + 1);
+    window.addEventListener("chemclaw-compaction-settings", refresh);
+    return () => window.removeEventListener("chemclaw-compaction-settings", refresh);
+  }, []);
   const selected = model || models[0] || "";
   useEffect(() => {
     let active = true;
@@ -16,7 +22,7 @@ export function ModelProfileCard({ models }: { models: string[] }) {
     if (selected) getModelProfile(selected).then(p => { if (active) { setProfile(p); setError(""); } })
       .catch(e => { if (active) setError(String(e.message)); });
     return () => { active = false; };
-  }, [selected]);
+  }, [selected, revision]);
   async function save(reset = false) {
     if (!profile) return;
     setBusy(true);
