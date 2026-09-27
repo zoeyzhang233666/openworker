@@ -613,19 +613,20 @@ class SessionManager:
             )
         if record is not None and record.grants:
             self._apply_grants(engine, record.grants)
-        # Auto-compaction (OPE-27): restore the persisted view boundary and wire the live
-        # Settings getter — post-construction, so build_engine's signature stays put.
+        self._configure_engine_persistence(session_id, engine, record)
+        self._engines[session_id] = engine
+        if is_new_session:
+            self._emit_session_created(session_id, agent_name)
+        return engine
+
+    def _configure_engine_persistence(self, session_id, engine, record):
+        """One checkpoint/compaction contract for desktop, channels and children."""
         if record is not None and record.compaction:
             from ..compaction import CompactionState
 
             engine.compaction_state = CompactionState.from_dict(record.compaction)
         engine.checkpoint_sink = lambda: self.save(session_id, engine)
         engine.compaction_settings = self.compaction_settings
-        self._engines[session_id] = engine
-        if is_new_session:
-            self._emit_session_created(session_id, agent_name)
-        return engine
-
     def _build_subagent_engine(
         self, record: BackgroundTaskRecord, profile: SubagentProfile
     ) -> TurnEngine:
@@ -639,20 +640,16 @@ class SessionManager:
         if agent.needs_workspace and not workspace:
             raise ValueError(f"subagent profile '{profile.id}' requires a workspace")
         parent_engine = self._engines.get(record.owner_session_id)
-        # Shared-workspace profiles (research/worker) inherit the parent session mode so
-        # "完全访问" (auto) propagates; interactive parents still require Inbox approval.
-        if parent_engine is not None and profile.isolation == "shared_workspace":
-            mode = parent_engine.permissions.mode
+        from ..subagents.readonly import RETIRED_MESSAGE, verified_readonly
+        if not profile.enabled:
+            raise ValueError(RETIRED_MESSAGE)
+        mode = Mode.PLAN
+        overrides = parent_engine.permissions.risk_overrides if parent_engine else None
         inherited_mcp_tools: list[Any] = []
-        if parent_engine is not None and profile.mcp_servers:
-            wanted_servers = set(profile.mcp_servers)
+        if parent_engine is not None and profile.id == "research":
             for descriptor in parent_engine.registry.descriptors():
-                if descriptor.category != "mcp":
-                    continue
-                if not (wanted_servers & set(descriptor.capabilities)):
-                    continue
                 spec = parent_engine.registry.get(descriptor.name)
-                if spec is not None:
+                if verified_readonly(descriptor.name, spec, overrides):
                     inherited_mcp_tools.append(spec.func)
         tool_allowlist = (
             None
@@ -678,6 +675,8 @@ class SessionManager:
             user_rules=lambda: self.memory_settings.user_rules,
             on_memory_saved=self._memory_saved_notifier(child_session_id),
             messages=stored.messages if stored else None,
+            roots=([dict(r) if isinstance(r, dict) else r for r in parent_engine.permissions.roots]
+                   if parent_engine else None),
             extra_tools=inherited_mcp_tools or None,
             secrets=self.secrets,
             task_store=None,
@@ -720,6 +719,17 @@ class SessionManager:
         inherited = restore_market_selection_from_metadata(record.metadata)
         if inherited is not None:
             engine._inherited_market_selection = inherited
+        from ..tool_policy import TurnToolPolicy
+        policy = parent_engine._current_tool_policy() if parent_engine else None
+        if policy is None:
+            policy = TurnToolPolicy(**{k: record.metadata.get(k) == "true" for k in
+                                      ("no_tools", "no_search", "no_external_network")})
+        engine.inherited_tool_policy = policy
+        engine.permissions.risk_overrides = overrides or engine.permissions.risk_overrides
+        engine.readonly_tool_guard = lambda name: verified_readonly(
+            name, engine.registry.get(name), engine.permissions.risk_overrides)
+        engine.registry.retain({n for n in engine.registry.names() if engine.readonly_tool_guard(n)})
+        self._configure_engine_persistence(child_session_id, engine, stored)
         self._engines[child_session_id] = engine
         return engine
 

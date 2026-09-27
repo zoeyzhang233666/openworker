@@ -103,9 +103,9 @@ def test_explore_flags_partial_report_on_iteration_rail(tmp_path):
         )
     )
     result = reg.execute("explore", {"task": "endless"})
-    assert "max_iterations" in result.get(
+    assert "blocked" in result.get(
         "error", ""
-    ) or "max_iterations" in result.get("note", "")
+    ) or "blocked" in result.get("note", "")
 
 
 def test_code_engine_registers_explore_chat_does_not(tmp_path):

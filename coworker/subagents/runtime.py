@@ -136,6 +136,9 @@ class SubagentRuntime:
         if record.kind != "agent" or not record.profile_id:
             raise ValueError(f"task {record.id} is not an agent task")
         profile = self.profiles.require(record.profile_id)
+        if not profile.enabled:
+            from .readonly import RETIRED_MESSAGE
+            raise ValueError(RETIRED_MESSAGE)
         return TurnEngineTaskAdapter(
             record,
             profile,
@@ -157,6 +160,9 @@ class SubagentRuntime:
         metadata: dict[str, str] | None = None,
     ) -> BackgroundTaskRecord:
         profile = self.profiles.require(profile_id)
+        if not profile.enabled:
+            from .readonly import RETIRED_MESSAGE
+            raise ValueError(RETIRED_MESSAGE)
         if profile.agent_id == "code" and not workspace:
             raise ValueError(f"subagent profile '{profile_id}' requires a workspace")
         child_session_id = f"__subagent__{uuid.uuid4().hex}"

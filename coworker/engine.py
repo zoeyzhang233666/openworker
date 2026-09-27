@@ -297,9 +297,13 @@ class TurnEngine:
         return self.execution_profile
 
     def _current_tool_policy(self) -> Optional[TurnToolPolicy]:
-        if self._active_turn_plan is not None:
-            return self._active_turn_plan.tool_policy
-        return self.turn_tool_policy
+        own = (self._active_turn_plan.tool_policy if self._active_turn_plan is not None
+               else self.turn_tool_policy) or TurnToolPolicy()
+        inherited = getattr(self, "inherited_tool_policy", None)
+        if inherited is None:
+            return own
+        return TurnToolPolicy(**{k: getattr(own, k) or getattr(inherited, k)
+                                 for k in ("no_tools", "no_search", "no_external_network")})
 
     def _current_route_decision(self) -> Optional[Any]:
         if self._active_turn_plan is not None:
@@ -1651,6 +1655,9 @@ class TurnEngine:
     def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
         """Explicit user policy supplements, never replaces, permission checks."""
         from .tool_policy import tool_allowed_under_policy
+        guard = getattr(self, "readonly_tool_guard", None)
+        if guard is not None and not guard(tool_name):
+            return False, "此工具未确认只读，小助手未执行；请交由主助手按既有权限处理。"
         if not tool_allowed_under_policy(tool_name, self._current_tool_policy() or TurnToolPolicy()):
             return False, "该工具不符合用户本轮明确的工具或联网限制"
         return None

@@ -47,23 +47,12 @@ def _runtime(tmp_path):
 
 def test_builtin_profiles_are_declarative_and_readonly_profiles_are_narrow():
     registry = builtin_subagent_profiles()
-    assert [p.id for p in registry.list()] == ["explore", "research", "worker"]
-    explore = registry.require("explore")
-    assert explore.mode == "plan" and explore.isolation == "read_only"
-    assert "grep" in explore.tool_allowlist and "run_shell" not in explore.tool_allowlist
-    research = registry.require("research")
-    assert research.mode == "interactive" and research.isolation == "shared_workspace"
-    assert {
-        "grep",
-        "read_file",
-        "list_files",
-        "write_file",
-        "lookup_cn_futures_ohlc",
-        "web_search",
-    } <= set(research.tool_allowlist)
-    assert "start_subagent" in research.disallowed_tools
-    worker = registry.require("worker")
-    assert worker.mode == "interactive" and worker.allow_nested is False
+    assert [p.id for p in registry.list()] == ["explore", "research"]
+    for profile in registry.list():
+        assert profile.mode == "plan" and profile.isolation == "read_only"
+        assert profile.max_turns == 300 and not profile.allow_nested
+    assert not registry.require("worker").enabled
+    assert not registry.require("market_report").enabled
 
 
 def test_runtime_foreground_and_followup_reuse_one_engine(tmp_path):
@@ -205,41 +194,8 @@ def test_session_manager_builds_narrow_child_and_persists_followup(tmp_path):
     manager.background_tasks.close()
 
 
-def test_worker_profile_keeps_permission_engine_as_final_authority(tmp_path):
-    from coworker.background_tasks.models import BackgroundTaskRecord
-    from coworker.server.manager import SessionManager
 
-    manager = SessionManager(
-        workspace=tmp_path,
-        data_dir=tmp_path / "state",
-        provider=ScriptedProvider([]),
-    )
-    record = BackgroundTaskRecord(
-        id="agent-worker",
-        kind="agent",
-        status="queued",
-        owner_session_id="parent",
-        description="worker",
-        workspace=str(tmp_path),
-        profile_id="worker",
-        child_session_id="__subagent__worker",
-        created_at=1.0,
-        updated_at=1.0,
-    )
-    worker = manager._build_subagent_engine(
-        record, manager.subagent_runtime.profiles.require("worker")
-    )
-    write = worker.registry.get("write_file")
-    assert write is not None
-    decision = worker.permissions.evaluate(
-        "write_file", {"path": "a.txt", "content": "x"}, write.metadata
-    )
-    assert decision.allowed is False and decision.needs_user is True
-    assert "start_subagent" not in worker.registry.names()
-    manager.background_tasks.close()
-
-
-def test_research_profile_inherits_only_declared_live_mcp_servers(tmp_path):
+def test_research_profile_excludes_unverified_mcp_servers(tmp_path):
     import aisuite as ai
 
     from coworker.background_tasks.models import BackgroundTaskRecord
@@ -285,61 +241,13 @@ def test_research_profile_inherits_only_declared_live_mcp_servers(tmp_path):
     child = manager._build_subagent_engine(
         record, manager.subagent_runtime.profiles.require("research")
     )
-    assert "mcp__chem_data_hub__price" in child.registry.names()
+    assert "mcp__chem_data_hub__price" not in child.registry.names()
     assert "mcp__other_server__secret" not in child.registry.names()
     assert "lookup_cn_futures_ohlc" in child.registry.names()
-    assert "write_file" in child.registry.names()
+    assert "write_file" not in child.registry.names()
     assert "start_subagent" not in child.registry.names()
     manager.background_tasks.close()
 
-
-def test_research_child_inherits_parent_permission_mode(tmp_path):
-    from coworker.background_tasks.models import BackgroundTaskRecord
-    from coworker.permissions import Mode
-    from coworker.server.manager import SessionManager
-
-    manager = SessionManager(
-        workspace=tmp_path,
-        data_dir=tmp_path / "state",
-        provider=ScriptedProvider([]),
-    )
-    parent = manager.get_engine("parent", workspace=str(tmp_path), agent="cowork")
-    parent.permissions.mode = Mode.AUTO
-    record = BackgroundTaskRecord(
-        id="agent-research-mode",
-        kind="agent",
-        status="queued",
-        owner_session_id="parent",
-        description="research",
-        workspace=str(tmp_path),
-        profile_id="research",
-        child_session_id="__subagent__research_mode",
-        created_at=1.0,
-        updated_at=1.0,
-    )
-    child = manager._build_subagent_engine(
-        record, manager.subagent_runtime.profiles.require("research")
-    )
-    assert child.permissions.mode is Mode.AUTO
-    write = child.registry.get("write_file")
-    assert write is not None
-    decision = child.permissions.evaluate(
-        "write_file", {"path": "report.md", "content": "ok"}, write.metadata
-    )
-    assert decision.allowed is True and decision.needs_user is False
-
-    parent.permissions.mode = Mode.INTERACTIVE
-    child_ask = manager._build_subagent_engine(
-        record.model_copy(update={"child_session_id": "__subagent__research_mode2"}),
-        manager.subagent_runtime.profiles.require("research"),
-    )
-    ask = child_ask.permissions.evaluate(
-        "write_file",
-        {"path": "report.md", "content": "ok"},
-        child_ask.registry.get("write_file").metadata,
-    )
-    assert ask.allowed is False and ask.needs_user is True
-    manager.background_tasks.close()
 
 
 def test_research_child_inherits_parent_dual_market_scope(tmp_path):
@@ -405,7 +313,7 @@ def test_research_child_inherits_parent_dual_market_scope(tmp_path):
     child._activate_plan("研究上游成本与期现关系")
     spot = "mcp__chem_data_hub__get_price_trend"
     futures = "lookup_cn_futures_ohlc"
-    assert child._turn_plan_tool_guard(spot) is None
+    assert child._turn_plan_tool_guard(spot)[0] is False
     assert child._turn_plan_tool_guard(futures) is None
     manager.background_tasks.close()
 
@@ -466,7 +374,6 @@ def test_background_task_rest_contract_and_owner_guard(tmp_path):
     assert {p["id"] for p in profiles.json()["profiles"]} == {
         "explore",
         "research",
-        "worker",
     }
 
     started = client.post(

@@ -435,9 +435,14 @@ def build_engine(
         eng = box[0] if box else None
         if eng is None:
             return {}
-        return snapshot_market_selection_metadata(
+        metadata = snapshot_market_selection_metadata(
             current_market_selection_from_engine(eng)
         )
+        policy = eng._current_tool_policy()
+        if policy:
+            metadata.update({k: str(getattr(policy, k)).lower() for k in
+                             ("no_tools", "no_search", "no_external_network")})
+        return metadata
 
     registry = ToolRegistry()
     registry.register_all(agent.build_tools(context))

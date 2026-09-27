@@ -2,6 +2,8 @@
 
 ## 当前状态
 
+- **现有能力加固（2026-09-27，进行中）**：已批准只读小助手、五路并发与共享 300/15 预算方案。第一步只读约束、旧写入型停用、主子检查点/压缩设置共用已实现，子智能体/后台定向 **34 passed**。共享预算与完整回归尚未完成，安装版未替换。见 [实施记录](../superpowers/plans/2026-09-27-chemclaw-stability.md) / [问题台账](stability-audit-2026-09-27.md)。
+
 - **运行内核整改（2026-09-26，源码与离线验收完成）**：通用引擎＋工作流 Skill、按需工具发现、渠道等价权限、完整上下文预算与模型能力配置、50 轮检查点/150 默认预算续跑、断流与截断恢复已落地。后端组合 **398 passed**，扩展组 **125 passed**，GUI **103 passed**，TypeScript 通过（组别有重叠，非全仓通过）。提供构建来源标识；现有安装版未替换，真实摘要 400/断流来源及生产长任务表现仍待部署验收。详见 [验收记录](runtime-renewal-validation-2026-09-26.md) 与 [实施计划](../superpowers/plans/2026-09-24-chemclaw-runtime-renewal.md)。
 
 - **D-206：显式 MCP 请求保留工具 + 超时诊断（2026-09-15）**：修复中文紧邻 `mcp` 未识别、新闻复合任务因行情投影丢失用户点名 MCP。桌面显式 MCP/服务器名请求保留已注册工具，Channel 仅补 MCP 并保持禁 shell/Skill/子智能体；预览对齐实际工具面。多事件新闻不因泛“价格波动”单独落现货。`query_scope` / `count_scope` / `progress_snapshot` 等待上限 120 秒（环境覆盖优先）；客户端超时取消未完成等待，中文错误区分客户端与传输/服务端，不推断数据库索引。定向与 MCP/权限/提示组合 **232 passed，1 deselected**；含真实引擎两轮出站 schema 验证。**源码已修复，未重启运行中程序、未重打/安装正式包，GUI 生效仍需加载新版 sidecar。** 规格：[design](../superpowers/specs/2026-09-15-chemclaw-explicit-mcp-design.md) / [plan](../superpowers/plans/2026-09-15-chemclaw-explicit-mcp.md)。服务端查询性能未宣称修复。

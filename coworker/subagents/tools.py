@@ -35,12 +35,15 @@ def subagent_tools(
         description: Optional[str] = None,
     ) -> dict:
         """把有界任务委派给已注册的子智能体 Profile。默认 profile 为 research（网页/化工/行情）。
-        只读代码探索传 profile=\"explore\"；共享工作区执行传 profile=\"worker\"。
+        只读代码探索传 profile=\"explore\"；只读资料研究传 profile=\"research\"。
         task 与 description 用简体中文书写。background=true 时继续本侧工作，整批完成后运行时
         会注入汇合通知；其间只用 background_task_gather/status/output 短窥。background=false
         会等待最终报告。Profile 由平台定义，不能额外提权。"""
         try:
             profile_spec = runtime.profiles.require(profile)
+            if not profile_spec.enabled:
+                from .readonly import RETIRED_MESSAGE
+                raise ValueError(RETIRED_MESSAGE)
         except ValueError as exc:
             return {"error": str(exc)}
         if background and not profile_spec.background:

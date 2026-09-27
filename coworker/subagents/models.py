@@ -20,7 +20,7 @@ class SubagentProfile(_FrozenModel):
     mode: Literal["plan", "interactive"] = "plan"
     model: str | None = None
     effort: Literal["none", "low", "medium", "high", "xhigh"] | None = None
-    max_turns: int = Field(default=16, ge=1, le=150)
+    max_turns: int = Field(default=300, ge=1, le=300)
     tool_allowlist: tuple[str, ...] | None = None
     disallowed_tools: tuple[str, ...] = ()
     skills: tuple[str, ...] = ()
@@ -28,6 +28,7 @@ class SubagentProfile(_FrozenModel):
     background: bool = True
     isolation: Literal["read_only", "shared_workspace"] = "read_only"
     allow_nested: bool = False
+    enabled: bool = True
     instructions: str
 
     @model_validator(mode="after")
