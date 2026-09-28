@@ -151,6 +151,10 @@ _NARRATION_GUIDANCE = """\
 # runs low-risk tools concurrently when requested in the same assistant turn).
 _TOOL_BATCHING_GUIDANCE = """\
 工具效率：
+`web_search` 检索公开网页，`web_fetch` 读取网页正文，是基础联网工具，不依赖 Skill。\
+需要近期信息、来源核验或补充 MCP 未覆盖的数据时，直接使用本轮可用的联网工具；\
+不要因为没有加载搜索 Skill 就声称不能联网。用户明确禁止搜索或联网时遵守该限制。\
+MCP 与网页可以互补；标明来源、日期和不确定性，不能把不同市场口径的数据混作同一事实。
 多个彼此独立的只读搜索、查询或文件读取，应在同一次助手工具调用回合中一并请求，\
 而不是拆成多次模型迭代串行。
 仅当后一次调用真正依赖前一次结果时，才串行。
@@ -230,12 +234,13 @@ interval `1d`）。即使只问今天/本周/单点报价，若用户**同时**�
 `1mo`。「最近一年」未点名周/月/年线时表示 `range=1y` + 日线。CN 工具无周/月/年 K；不要把日线\
 重采样成假的高周期——说明后画日线。Yahoo 无年线；若用户要年线，用 `1mo` 并给够 `range`，并说明\
 是月线而非真年线。仅当用户明确要求时才用分钟/周/月工具。
-- 市场口径优先于产品别名。明确「现货」或无期现歧义的化工品查价 = 化工现货，必须用已投影的 \
-chem-data-hub `get_price_trend`；禁止用网页、Yahoo 或期货价替代。若该 MCP 能力缺失或无行，按不可用/无现货\
-数据报告。同时存在货与期货的裸品种（如甲醇、原油）须先 `ask_user` 澄清，再做任何行情调用。
+- 图表须保留数据的品种、现货/期货口径、地区、单位、日期与来源。MCP 数据不足时可用 \
+`web_search` / `web_fetch` 补查公开资料；不能以期货价冒充现货价，不能编造缺失时间序列。\
+口径确有歧义且影响答案时才澄清；专业来源选择和操作步骤可参考对应工作流 Skill。
 - 中国大陆 A 股（茅台、600519、上证/深证）：调用 `lookup_cn_stock_quote` / \
 `lookup_cn_stock_ohlc` / `lookup_cn_stock_financials` / `lookup_cn_stock_feature`。仅当用户要\
-分时/分钟时用 `lookup_cn_stock_minute`。CN 结构化失败时禁止用 Yahoo 或 web_search 补同一行情。
+分时/分钟时用 `lookup_cn_stock_minute`。结构化数据不足时可核对公开网页，注明交易所、日期和来源；\
+不能用 Yahoo 的其他市场报价冒充对应大陆行情。
 - 仅当用户明确要期货/合约（如甲醇期货、液化气期货、MA2509/PG）时才用国内期货：调用 \
 `lookup_cn_futures_quote` / `lookup_cn_futures_ohlc` / `lookup_cn_futures_l1`；理论保证金用 \
 `calculate_cn_futures_margin`（非期货公司占用）。仅当用户要分时/分钟时用 \

@@ -50,21 +50,20 @@ def test_inline_guidance_routes_mainland_cn_away_from_yahoo():
     assert "lookup_cn_futures_ohlc" in sys_msg
     assert "lookup_cn_option_market" in sys_msg
     assert "lookup_yahoo_ohlc" in sys_msg
-    lowered = sys_msg.lower()
-    assert "mainland" in lowered or "a-share" in lowered or "A股" in sys_msg
-    assert "do not use yahoo" in lowered or "never use yahoo" in lowered
+    assert "中国大陆 A 股" in sys_msg
+    assert "不能用 Yahoo 的其他市场报价冒充对应大陆行情" in sys_msg
+    assert "结构化数据不足时可核对公开网页" in sys_msg
 
 
 def test_inline_guidance_defaults_unspecified_period_to_daily():
     eng = build_engine(agent=chat_agent(), provider=_Stub())
     sys_msg = eng.messages[0]["content"]
-    assert "Default bar interval" in sys_msg
-    assert "daily" in sys_msg.lower()
-    assert "never `lookup_cn_*_minute`" in sys_msg
-    assert "never Yahoo" in sys_msg
-    assert "`interval=1wk` or `1mo`" in sys_msg
+    assert "调用日线 OHLC 工具" in sys_msg
+    assert "禁止 `lookup_cn_*_minute`" in sys_msg
+    assert "禁止 Yahoo `interval=1wk`" in sys_msg
+    assert "`1mo`" in sys_msg
     assert "(or ≥12 monthly points)" not in sys_msg
-    assert "only if the user asked for intraday/minutes" in sys_msg
+    assert "仅当用户明确要求时才用分钟/周/月工具" in sys_msg
     assert "action=daily" in sys_msg
 
 
