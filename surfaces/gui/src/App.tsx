@@ -51,6 +51,7 @@ import {
   openFolderGateOnNewSession,
 } from "./folderGatePolicy";
 import { baseName } from "./paths";
+import { useSessionModel } from "./useSessionModel";
 import { itemsFromMessages } from "./itemsFromMessages";
 import {
   eventImpliesRunning,
@@ -215,7 +216,6 @@ export function App() {
   const [workspaceTrustRequest, setWorkspaceTrustRequest] =
     useState<WorkspaceCommandTrust | null>(null);
   const [agent, setAgent] = useState("cowork");
-  const [model, setModel] = useState("gpt-5.6-sol");
   const [models, setModels] = useState<string[]>([]);
   const [modelLabels, setModelLabels] = useState<Record<string, string>>({});
   // {full model id → context window in tokens} from the curated matrix (verified only);
@@ -257,6 +257,7 @@ export function App() {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [projects, setProjects] = useState<RecentWorkspace[]>([]);
   const [sessionId, setSessionId] = useState<string>(newId());
+  const { model, setDefaultModel, selectModel, acceptSessionModel } = useSessionModel(sessionId);
   // Bumps on every real session switch so a slow getSessionMessages can't overwrite a newer select.
   const selectGenerationRef = useRef(0);
   const sessionIdRef = useRef(sessionId);
@@ -554,8 +555,8 @@ export function App() {
         .then(async (h) => {
           if (cancelled) return;
           // Unauthenticated health only returns {status:"ok"} — don't wipe the model chip.
-          if (h.model) setModel(h.model);
-          // Mirror setModel: seed Composer before WS ready (MCP/engine setup can lag).
+          if (h.model) setDefaultModel(h.model);
+          // Seed Composer defaults before WS ready (MCP/engine setup can lag).
           const seededMode = modeFromHealth(h);
           if (seededMode) setMode(seededMode);
           // First-run setup wizard (desktop): show until the user completes/dismisses it.
@@ -617,7 +618,7 @@ export function App() {
         setContextBar(s.context_bar === true);
         // Only accept an explicit boolean — a 401/error body must not clear readiness.
         if (typeof s.model_ready === "boolean") setModelReady(s.model_ready);
-        if (s.model) setModel(s.model);
+        if (s.model) setDefaultModel(s.model);
         if (s.surfaces) setSurfaces(s.surfaces);
       })
       .catch(() => {});
@@ -695,7 +696,10 @@ export function App() {
       switch (ev.type) {
         case "ready":
           setConnected(true);
-          if (d.model) setModel(d.model);
+          if (d.model) {
+            const pending = acceptSessionModel(boundSessionId, d.model);
+            if (pending && !d.running) sessionRef.current?.setModel(pending);
+          }
           // Authority after reconnect; boot already seeded from health to avoid interactive→auto flash.
           if (d.mode) setMode(resolvePermissionMode(d.mode));
           if (d.command_trust?.required) setWorkspaceTrustRequest(d.command_trust);
@@ -860,13 +864,14 @@ export function App() {
               { kind: "notice", tone: "warn", text: t("Stopped: max iterations reached.") },
             ]);
           break;
+        case "model_selected":
         case "model_changed":
           // Mid-session switch (server-applied): update the header fact and drop the
           // persisted marker into the live transcript (replay renders it from history).
-          if (d.model) setModel(d.model);
-          setItems((p) => [
+          if (d.model) acceptSessionModel(boundSessionId, d.model);
+          if (d.text) setItems((p) => [
             ...p,
-            { kind: "notice", tone: "info", text: d.text || t("Model switched") },
+            { kind: "notice", tone: "info", text: d.text },
           ]);
           break;
         case "compacting":
@@ -1191,7 +1196,7 @@ export function App() {
   };
   const changeModel = (m: string) => {
     if (running) return; // the server refuses mid-turn rebinds — don't let the header lie
-    setModel(m);
+    selectModel(sessionId, m);
     sessionRef.current?.setModel(m);
   };
 
@@ -1618,7 +1623,7 @@ export function App() {
         <Onboarding
           onDone={(next) => {
             setOnboarding(false);
-            getHealth().then((h) => setModel(h.model)).catch(() => {});
+            getHealth().then((h) => setDefaultModel(h.model)).catch(() => {});
             loadSettings(); // pick up a model connected during setup (clears the composer chip)
             if (next === "gallery") {
               // The specialists tip: land on Settings ▸ Personas, where the Gallery link lives.

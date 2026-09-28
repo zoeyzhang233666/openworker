@@ -969,7 +969,7 @@ def test_ws_first_message_binds_then_midsession_switch_persists_notice(tmp_path)
     assert engine.model == "kimi:kimi-k2.6"
     # The marker is persisted between the turns; the provider never sees it.
     messages = client.get("/v1/sessions/model-per-msg/messages").json()["messages"]
-    notices = [m for m in messages if m["role"] == "notice"]
+    notices = [m for m in messages if m["role"] == "notice" and m.get("kind") != "checkpoint"]
     assert [n["kind"] for n in notices] == ["model_switch"]
     assert all(m.get("role") != "notice" for m in engine._outbound_messages())
 

@@ -20,6 +20,7 @@ export type EventType =
   | "input_rejected"
   | "interrupted"
   | "model_changed"
+  | "model_selected"
   | "compacting"
   | "compacted"
   | "continuation"

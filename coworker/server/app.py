@@ -2086,13 +2086,17 @@ def create_app(manager: SessionManager) -> FastAPI:
             # old lock existed to prevent.
             if not model or manager.is_running(session_id):
                 return
+            previous_model = engine.model
             notice = engine.switch_model(model)
-            if notice is None:  # same model, or first bind on a fresh session
+            if engine.model == previous_model:
                 return
+            # A fresh session has no switch notice, but the user's choice must
+            # survive reconnect/restart even before its first question.
             manager.persist_session(session_id)
             await manager.broadcast_session(
                 session_id,
-                {"type": "model_changed", "data": {"model": model, "text": notice}},
+                {"type": "model_changed" if notice else "model_selected",
+                 "data": {"model": model, "text": notice}},
             )
 
         def _resolve_pending(resolution: str) -> None:
