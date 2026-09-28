@@ -78,11 +78,11 @@ def subagent_tools(
             return {"error": f"unknown task: {task_id}"}
         return record.model_dump()
 
-    def background_task_output(task_id: str, cursor: int = 0) -> dict:
-        """读取后台任务自 cursor 起的增量输出。用于短窥进展，不要当作主等待手段。"""
+    def background_task_output(task_id: str, cursor: int = 0, offset: int = 0) -> dict:
+        """分段读取结果，传入上次 next_cursor 和 next_offset 继续，直到 truncated=false。"""
         try:
             return runtime.task_manager.read_output(
-                task_id, owner_session_id=owner_session_id, cursor=cursor
+                task_id, owner_session_id=owner_session_id, cursor=cursor, offset=offset
             ).model_dump()
         except ValueError as exc:
             return {"error": str(exc)}
@@ -132,6 +132,9 @@ def subagent_tools(
                 reports.append(
                     {
                         "task": record.model_dump(),
+                        "next_cursor": page.next_cursor,
+                        "next_offset": page.next_offset,
+                        "truncated": page.truncated,
                         "report": "".join(
                             c.text for c in page.chunks if c.stream == "assistant"
                         ),
@@ -180,11 +183,11 @@ def explore_tool(
             workspace=workspace,
             parent_trace_id=(parent_trace_id() if parent_trace_id is not None else None),
         )
-        if not result.report:
-            return {"error": result.error or f"explorer stopped: {result.status}"}
-        payload = {"report": result.report}
-        if result.status != "completed":
-            payload["note"] = f"explorer stopped early ({result.status})"
+        payload = result.model_dump()
+        if result.status in {"queued", "running", "waiting_user"}:
+            payload["note"] = "本次等待已结束，小助手仍在工作；可用任务编号查询进度和分段读取结果。"
+        elif result.status != "completed":
+            payload["note"] = "小助手尚未完成，已有内容是部分结果；请根据状态处理。"
         return payload
 
     return ai.tool(

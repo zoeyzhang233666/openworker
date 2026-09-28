@@ -850,6 +850,8 @@ export function App() {
           setItems((p) => [...p, { kind: "notice", tone: "info", text: d.text }]);
           break;
         case "turn_end":
+          if (d.status === "waiting_children")
+            setItems((p) => [...p, { kind: "notice", tone: "info", text: d.text }]);
           if (["budget_paused", "truncated", "blocked"].includes(d.status))
             setItems((p) => [...p, { kind: "notice", tone: "warn", text: d.text, retriable: true, resumable: true }]);
           if (d.status === "max_iterations_exceeded")

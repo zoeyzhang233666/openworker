@@ -36,7 +36,7 @@ user. Make it self-contained: answer the task directly, reference code as path:l
 key snippets, and note anything surprising you found along the way. If you couldn't find \
 something, say what you searched so the caller doesn't repeat the same searches."""
 
-_CHILD_MAX_ITERATIONS = 10
+_CHILD_MAX_ITERATIONS = 300
 
 
 def build_explorer_engine(

@@ -851,6 +851,10 @@ export interface TurnTrace {
 export type BackgroundTaskStatus =
   | "queued"
   | "running"
+  | "waiting_user"
+  | "budget_paused"
+  | "truncated"
+  | "blocked"
   | "completed"
   | "failed"
   | "cancelled"
@@ -877,6 +881,9 @@ export interface BackgroundTask {
   output_size: number;
   exit_code?: number | null;
   error?: string | null;
+  reason?: string | null;
+  resumable?: boolean;
+  team_budget?: { id: string; segment: number; used: number; limit: number; remaining: number; reserve: number };
   metadata: Record<string, string>;
 }
 
@@ -894,6 +901,7 @@ export interface BackgroundTaskOutput {
   task_id: string;
   chunks: BackgroundTaskOutputChunk[];
   next_cursor: number;
+  next_offset?: number;
   truncated: boolean;
 }
 
@@ -940,10 +948,13 @@ export async function getBackgroundTaskOutput(
   sessionId: string,
   taskId: string,
   maxChars = 100_000,
+  cursor = 0,
+  offset = 0,
 ): Promise<BackgroundTaskOutput> {
   const q = new URLSearchParams({
     session_id: sessionId,
-    cursor: "0",
+    cursor: String(cursor),
+    offset: String(offset),
     max_chars: String(maxChars),
   });
   const res = await fetch(

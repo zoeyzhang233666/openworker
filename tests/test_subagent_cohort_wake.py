@@ -78,6 +78,23 @@ def test_format_message_mentions_short_gather():
     assert "cancelled" in msg
 
 
+def test_fast_children_wait_until_entire_batch_is_registered(tmp_path):
+    tracker = DelegationCohortTracker(tmp_path / "cohorts.json")
+    tracker.register("s", "a", parent_trace_id="t", require_seal=True)
+    assert tracker.on_terminal("a", status="completed") is None
+    tracker.register("s", "b", parent_trace_id="t", require_seal=True)
+    assert tracker.on_terminal("b", status="budget_paused") is None
+    ready = tracker.seal("s", "t")
+    assert len(ready) == 1 and len(ready[0].members) == 2
+    assert tracker.seal("s", "t") == []
+    assert tracker.on_terminal("a", status="completed") is None
+    reloaded = DelegationCohortTracker(tmp_path / "cohorts.json")
+    assert reloaded.on_terminal("b", status="budget_paused") is None
+    reloaded.register("s", "b", parent_trace_id="retry", require_seal=True, new_run=True)
+    assert reloaded.on_terminal("b", status="completed") is None
+    assert len(reloaded.seal("s", "retry")) == 1
+
+
 def test_session_manager_handler_delivers_once(tmp_path):
     delivered: list[tuple] = []
     resumed = {"n": 0}

@@ -6,6 +6,12 @@
  * user/server-provided content are deliberately absent.
  */
 export const interfaceMessagesZh = {
+  "Team budget: {used}/{limit} rounds": "全队预算：已用 {used}/{limit} 轮",
+  "Read next part": "继续阅读下一段",
+  "Waiting for your response": "等待你处理",
+  "Task budget paused": "本段预算已用完，等待继续",
+  "Output incomplete": "输出未完成",
+  "Task blocked": "任务遇到阻塞",
   "New session": "新对话",
   "What should we produce?": "我们要完成什么？",
   "Search chats": "搜索对话",

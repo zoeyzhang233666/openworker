@@ -241,6 +241,8 @@ class TurnEngine:
         self.audit_context: dict[str, Any] = {}
         self.checkpoint_sink = None
         self.segment_iterations = 50
+        self.task_budget = None
+        self.prepare_task_run = None
         self._runtime = self._restored_runtime()
 
         existing_system = bool(
@@ -514,8 +516,14 @@ class TurnEngine:
         # literal "/skill …" line for the transcript, while `content` carries the model-facing
         # framing. `ts` (unix seconds, stamped on every appended message) is the same kind of
         # sidecar.
+        if self.prepare_task_run is not None:
+            self.prepare_task_run(source, origin)
         self._runtime = {"iterations": 0, "model_calls": 0, "recovery_retries": 0, "tool_calls": 0, "inflight": []}
-        self._cancel.clear()
+        if self.task_budget is not None:
+            self._runtime["task_group"] = self.task_budget.group
+        # Background resumes can use a different asyncio loop. Event.clear() keeps
+        # the old loop binding and can turn the next stream into an empty response.
+        self._cancel = asyncio.Event()
         self._owning_loop = asyncio.get_running_loop()
         self._activate_plan(
             user_input,
@@ -541,6 +549,8 @@ class TurnEngine:
             if display is not None:
                 message["_display"] = display
             self.messages.append(message)
+            if self.task_budget is not None:
+                await self._checkpoint("turn_started")
             data: dict[str, Any] = {"input": user_input}
             if source is not None:
                 data["source"] = source
@@ -610,6 +620,9 @@ class TurnEngine:
         return {"iterations": 0, "model_calls": 0, "recovery_retries": 0, "tool_calls": 0, "inflight": []}
 
     async def _checkpoint(self, reason="segment"):
+        if self.task_budget is not None:
+            self._runtime["task_group"] = self.task_budget.group
+            self._runtime["team_budget"] = self.task_budget.snapshot()
         if hasattr(self, "_tool_discovery"):
             self._runtime["loaded_tools"] = list(self._tool_discovery.loaded)
         self._append_notice("checkpoint")
@@ -649,7 +662,7 @@ class TurnEngine:
             notice["text"] = text
         self.messages.append(notice)
 
-    async def retry(self) -> AsyncIterator[Event]:
+    async def retry(self, *, renew_budget=True) -> AsyncIterator[Event]:
         """Re-run the model loop after a provider error — no new user message; the failed
         turn's input is already the tail of history. Guarded on the tail being an error
         notice so a stray retry frame can't re-answer a completed turn. Trailing
@@ -660,11 +673,17 @@ class TurnEngine:
         terminal = next((m for m in reversed(self.messages)
                          if m.get("kind") not in {"model_switch", "checkpoint"}), {})
         if terminal.get("kind") in {"budget_paused", "truncated", "blocked"}:
+            if renew_budget and self.task_budget is not None and self.task_budget.parent:
+                expected = self._runtime.get("team_budget", {}).get("segment", self.task_budget.snapshot()["segment"])
+                self.task_budget.store.continue_segment(self.task_budget, expected)
+                resume_children = getattr(self, "resume_task_children", None)
+                if resume_children is not None:
+                    resume_children()
             self._runtime["iterations"] = 0
             self._runtime["recovery_retries"] = 0
         if self._last_turn_plan is None:
             self._activate_plan(self._resume_plan_input(), origin=TurnOrigin.RESUME)
-        self._cancel.clear()
+        self._cancel = asyncio.Event()
         self._owning_loop = asyncio.get_running_loop()
         # A retry is the same logical turn: reuse the immutable plan exactly.
         self._active_turn_plan = self._last_turn_plan
@@ -678,6 +697,13 @@ class TurnEngine:
             )
             recorder.observe(start_event)
             yield start_event
+            # A restarted turn may contain committed calls whose result was not saved.
+            # Reuse the execution ledger guard before issuing another model request.
+            pending = self._unanswered_trailing_tool_calls()
+            if pending:
+                async for event in self._handle_tool_calls(pending):
+                    recorder.observe(event)
+                    yield self._decorate_trace_event(event, recorder)
             async for event in self._loop():
                 recorder.observe(event)
                 yield self._decorate_trace_event(event, recorder)
@@ -693,13 +719,13 @@ class TurnEngine:
         re-prompting; answered calls are skipped, so nothing double-executes), then run the model
         loop to finish the turn."""
         if self._tail_is_retriable_error():
-            async for event in self.retry():
+            async for event in self.retry(renew_budget=False):
                 yield event
             return
         pending = self._unanswered_trailing_tool_calls()
         if not pending:
             return
-        self._cancel.clear()
+        self._cancel = asyncio.Event()
         self._owning_loop = asyncio.get_running_loop()
         self._activate_plan(
             self._resume_plan_input(),
@@ -944,7 +970,11 @@ class TurnEngine:
         if profile is not None:
             hard_limit = min(hard_limit, profile.max_iterations)
         while True:
-            if iterations >= hard_limit:
+            if self.task_budget is not None and self.task_budget.snapshot()["stopped"]:
+                self._append_notice("interrupted")
+                yield Event(EventType.INTERRUPTED, {"iterations": iterations})
+                return
+            if self.task_budget is None and iterations >= hard_limit:
                 yield await self._pause("budget_paused", "任务已达到本段总预算，进展已保存；点击继续可原地续跑。")
                 return
             self._budget_iteration = iterations + 1
@@ -988,7 +1018,12 @@ class TurnEngine:
                     reasoning="".join(streamed_reasoning) or None,
                 )
 
+            budget_token = None
             try:
+                budget_token = self.task_budget.acquire() if self.task_budget is not None else None
+                if self.task_budget is not None and budget_token is None:
+                    yield await self._pause("budget_paused", "本任务共享预算已暂停，进展已保存；请在主任务中明确继续。")
+                    return
                 self._runtime["model_calls"] += 1
                 yield Event(EventType.MODEL_REQUEST, {"attempt": self._runtime["model_calls"]})
                 async for chunk in self._astream():
@@ -1055,6 +1090,10 @@ class TurnEngine:
                 self._append_notice("error", friendly or str(exc))
                 yield Event(EventType.ERROR, payload)
                 return
+            finally:
+                if self.task_budget is not None and budget_token is not None:
+                    self.task_budget.settle(budget_token, success=turn is not None,
+                                            usage=turn.usage.as_dict() if turn and turn.usage else None)
             if self._cancel.is_set() and turn is None:
                 # Stopped mid-stream: persist exactly what the user watched arrive.
                 if streamed or streamed_reasoning:
@@ -1144,9 +1183,16 @@ class TurnEngine:
                 if turn.finish_reason in {"content_filter", "error"}:
                     yield await self._pause("blocked", "模型未正常完成输出，进展已保存。请查看模型限制后继续。")
                     return
+                pending_status = getattr(self, "child_pending_status", lambda: None)()
+                if pending_status:
+                    status, text = pending_status
+                    yield await self._pause(status, text)
+                    return
+                await self._checkpoint("completed")
                 yield Event(
                     EventType.TURN_END,
-                    {"status": "completed", "iterations": iterations},
+                    {"status": "completed", "iterations": iterations,
+                     "team_budget": self.task_budget.snapshot() if self.task_budget else None},
                 )
                 return
 
@@ -1154,6 +1200,9 @@ class TurnEngine:
             self._note_tool_signatures(turn.tool_calls)
             async for event in self._handle_tool_calls(turn.tool_calls):
                 yield event
+            batch_finished = getattr(self, "on_child_batch_finished", None)
+            if batch_finished is not None:
+                batch_finished()
 
             continuations = 0
             self._runtime["tool_calls"] += len(turn.tool_calls)
@@ -1194,6 +1243,9 @@ class TurnEngine:
     def _provider_tools(self):
         if self._emergency_finalizing:
             return None
+        refresh = getattr(self, "refresh_tool_registry", None)
+        if refresh is not None:
+            refresh()
         from .tool_policy import tool_allowed_under_policy
         from .tool_discovery import ToolDiscovery
         if not hasattr(self, "_tool_discovery"):
@@ -1493,6 +1545,7 @@ class TurnEngine:
         )
         provider = self.provider
         structured_tools_streaming = self.structured_tools_true_streaming_enabled
+        cancel = self._cancel  # keep a stopped producer bound to its own run
 
         def produce():
             try:
@@ -1508,7 +1561,7 @@ class TurnEngine:
                 ):
                     # User pressed Stop: drop the stream between chunks (reading the
                     # asyncio.Event's flag from a thread is safe; we only read).
-                    if self._cancel.is_set():
+                    if cancel.is_set():
                         break
                     loop.call_soon_threadsafe(queue.put_nowait, ("chunk", chunk))
             except Exception as exc:  # surfaced to the awaiting consumer
@@ -1521,7 +1574,7 @@ class TurnEngine:
             # Race the queue against Stop so a stalled stream (no chunks arriving —
             # the pre-first-token wait, a wedged connection) can't hold the turn.
             get_task = asyncio.ensure_future(queue.get())
-            cancel_task = asyncio.ensure_future(self._cancel.wait())
+            cancel_task = asyncio.ensure_future(cancel.wait())
             done, _ = await asyncio.wait(
                 {get_task, cancel_task}, return_when=asyncio.FIRST_COMPLETED
             )
@@ -1655,6 +1708,12 @@ class TurnEngine:
     def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
         """Explicit user policy supplements, never replaces, permission checks."""
         from .tool_policy import tool_allowed_under_policy
+        if self.task_budget is not None and self.task_budget.parent and self.task_budget.summarizing:
+            summary_tools = {"read_file", "list_files", "grep", "write_file", "edit_file", "replace_in_file",
+                             "send_file", "send_message", "ask_user", "background_task_output",
+                             "background_task_status", "background_task_gather", "load_tools", "search_tools"}
+            if tool_name not in summary_tools:
+                return False, "剩余额度留给汇总与交付，不能启动新研究；请基于已有结果整理回答。"
         guard = getattr(self, "readonly_tool_guard", None)
         if guard is not None and not guard(tool_name):
             return False, "此工具未确认只读，小助手未执行；请交由主助手按既有权限处理。"
@@ -2321,6 +2380,11 @@ class TurnEngine:
         canonical history. Completely inert when no ExecutionProfile is attached or
         budget_guidance_enabled is false.
         """
+        if self.task_budget is not None:
+            budget = self.task_budget.snapshot()
+            if self.task_budget.summarizing:
+                return f"本任务只剩 {budget['remaining']} 轮汇总额度。不要启动新研究；回读已有结果、说明缺口并完成交付。"
+            return f"主助手和小助手共用本段预算，累计已用 {budget['used']} 轮，总额度 {budget['limit']} 轮。最终 {budget['reserve']} 轮留给主助手汇总。"
         profile = self._current_execution_profile()
         if profile is None or not profile.budget_guidance_enabled:
             return ""

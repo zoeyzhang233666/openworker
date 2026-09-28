@@ -10,11 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field
 TaskKind = Literal["agent", "shell"]
 TaskChangeKind = Literal["created", "status", "output"]
 TaskStatus = Literal[
-    "queued", "running", "completed", "failed", "cancelled", "interrupted"
+    "queued", "running", "waiting_user", "budget_paused", "truncated", "blocked",
+    "completed", "failed", "cancelled", "interrupted"
 ]
 TERMINAL_TASK_STATUSES = frozenset(
     {"completed", "failed", "cancelled", "interrupted"}
 )
+PAUSED_TASK_STATUSES = frozenset({"budget_paused", "truncated", "blocked"})
+SETTLED_TASK_STATUSES = TERMINAL_TASK_STATUSES | PAUSED_TASK_STATUSES
 
 
 class _FrozenModel(BaseModel):
@@ -56,6 +59,8 @@ class BackgroundTaskRecord(_FrozenModel):
     output_size: int = 0
     exit_code: int | None = None
     error: str | None = None
+    reason: str | None = None
+    resumable: bool = False
     metadata: dict[str, str] = Field(default_factory=dict)
 
 
@@ -73,14 +78,16 @@ class TaskOutputPage(_FrozenModel):
     task_id: str
     chunks: tuple[TaskOutputChunk, ...] = ()
     next_cursor: int = 0
+    next_offset: int = 0
     truncated: bool = False
 
 
 class AgentRunResult(_FrozenModel):
     version: Literal[1] = 1
     report: str = ""
-    status: Literal["completed", "failed", "cancelled"] = "completed"
+    status: TaskStatus = "completed"
     error: str | None = None
+    reason: str | None = None
 
 
 class BackgroundTaskChange(_FrozenModel):

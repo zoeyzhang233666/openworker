@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 import logging
 import os
 import re
@@ -330,6 +331,8 @@ class SessionManager:
         # adapters over the existing TurnEngine; the adapter factory also rehydrates a
         # completed/interrupted Agent task when a later message arrives after restart.
         self.background_tasks = BackgroundTaskManager(self.background_task_store)
+        from ..task_budget import TaskBudgetStore
+        self.task_budgets = TaskBudgetStore(base / "task-budgets.sqlite")
         self.delegation_cohorts = DelegationCohortTracker(
             base / "delegation_cohorts.json"
         )
@@ -338,6 +341,7 @@ class SessionManager:
             engine_factory=self._build_subagent_engine,
             engine_saver=self._save_subagent_engine,
             cohort_tracker=self.delegation_cohorts,
+            task_context=self._child_task_context,
         )
         self.background_tasks.agent_adapter_factory = (
             self.subagent_runtime.adapter_for_record
@@ -614,6 +618,14 @@ class SessionManager:
         if record is not None and record.grants:
             self._apply_grants(engine, record.grants)
         self._configure_engine_persistence(session_id, engine, record)
+        group = engine._runtime.get("task_group")
+        if group:
+            engine.task_budget = self.task_budgets.bind(group, session_id, session_id, parent=True)
+        engine.prepare_task_run = lambda source, origin: self._prepare_task_budget(session_id, engine, source)
+        engine._interrupt_hooks.append(lambda: self._stop_task_children(session_id, engine))
+        engine.resume_task_children = lambda: self._resume_task_children(session_id, engine)
+        engine.child_pending_status = lambda: self._child_pending_status(session_id, engine)
+        engine.on_child_batch_finished = lambda: self._seal_child_batch(session_id, engine.active_trace_id)
         self._engines[session_id] = engine
         if is_new_session:
             self._emit_session_created(session_id, agent_name)
@@ -627,6 +639,90 @@ class SessionManager:
             engine.compaction_state = CompactionState.from_dict(record.compaction)
         engine.checkpoint_sink = lambda: self.save(session_id, engine)
         engine.compaction_settings = self.compaction_settings
+        # Persisted progress is inert until the user explicitly continues. Existing
+        # Inbox approvals retain their durable resume path.
+        if record is not None and engine.messages:
+            tail = next((m for m in reversed(engine.messages) if m.get("kind") != "model_switch"), {})
+            if (tail.get("kind") == "checkpoint" and
+                    tail.get("reason") in {"turn_started", "tool_started", "tools_started", "tool_finished", "segment"}):
+                engine._append_notice("blocked", "应用上次运行时任务尚未完成，进度已恢复；点击继续后才会接着工作。已提交但结果未知的操作会先核对，不自动重做。")
+
+    def _prepare_task_budget(self, session_id, engine, source):
+        if (source or {}).get("kind") == "subagent_cohort_complete":
+            group = (source or {}).get("task_group")
+            if group:
+                if engine.task_budget and engine.task_budget.group != group:
+                    raise ValueError("旧任务结果已保存，不会串入当前任务")
+                engine.task_budget = self.task_budgets.bind(group, session_id, session_id, parent=True)
+                if engine.task_budget.snapshot()["stopped"]:
+                    raise ValueError("任务已停止，结果仅保存，不自动续跑")
+                return
+        tail = next((m for m in reversed(engine.messages)
+                     if m.get("kind") not in {"model_switch", "checkpoint"}), {})
+        if engine.task_budget is not None and tail.get("kind") in {"budget_paused", "truncated", "blocked", "waiting_children", "error"}:
+            # Steering, a regular message or a notification must not replenish a
+            # paused task's allowance. Only the explicit retry/continue path can.
+            return
+        engine.task_budget = self.task_budgets.create(session_id)
+
+    def _child_task_context(self, session_id):
+        engine = self._engines.get(session_id) or self.get_engine(session_id)
+        if engine.task_budget is None:
+            engine.task_budget = self.task_budgets.create(session_id)
+            engine._runtime["task_group"] = engine.task_budget.group
+            engine._append_notice("checkpoint")
+            engine.messages[-1]["runtime"] = dict(engine._runtime)
+            self.save(session_id, engine)
+        if engine.task_budget.summarizing or engine.task_budget.snapshot()["stopped"]:
+            raise ValueError("任务已进入汇总或暂停阶段，不能启动新的小助手")
+        policy = engine._current_tool_policy()
+        roots = [{"path": str(r["path"]), "writable": False} if isinstance(r, dict)
+                 else {"path": str(getattr(r, "path", r)), "writable": False}
+                 for r in engine.permissions.roots]
+        inherited_settings = {k: v for k, v in engine.model_settings.items()
+                              if k in {"max_tokens", "max_completion_tokens", "reasoning_effort"}}
+        result = {"task_group": engine.task_budget.group, "roots": json.dumps(roots), "model": engine.model,
+                  "model_settings": json.dumps(inherited_settings)}
+        if policy:
+            result.update({k: str(getattr(policy, k)).lower() for k in
+                           ("no_tools", "no_search", "no_external_network")})
+        return result
+
+    def _stop_task_children(self, session_id, engine):
+        if engine.task_budget is None:
+            return
+        group = engine.task_budget.group
+        self.task_budgets.stop(group)
+        for task in self.background_tasks.list(owner_session_id=session_id, limit=500):
+            if task.metadata.get("task_group") == group and task.status not in TERMINAL_TASK_STATUSES:
+                self.background_tasks.stop(task.id, owner_session_id=session_id, mode="immediate")
+
+    def _resume_task_children(self, session_id, engine):
+        from ..background_tasks.models import PAUSED_TASK_STATUSES
+        if engine.task_budget is None or engine.task_budget.summarizing:
+            return
+        tasks = [t for t in self.background_tasks.list(owner_session_id=session_id, limit=500)
+                 if t.metadata.get("task_group") == engine.task_budget.group and
+                 t.status in PAUSED_TASK_STATUSES | {"interrupted"}]
+        trace = f"resume-{uuid.uuid4().hex}"
+        for task in tasks:
+            self.delegation_cohorts.register(session_id, task.id, parent_trace_id=trace,
+                profile_id=task.profile_id, description=task.description, require_seal=True, new_run=True)
+        for task in tasks:
+            self.background_tasks.send_message(task.id, "继续", owner_session_id=session_id)
+        self._seal_child_batch(session_id, trace)
+
+    def _child_pending_status(self, session_id, engine):
+        if engine.task_budget is None:
+            return None
+        states = {t.status for t in self.background_tasks.list(owner_session_id=session_id, limit=500)
+                  if t.metadata.get("task_group") == engine.task_budget.group}
+        if states & {"queued", "running", "waiting_user"}:
+            return "waiting_children", "小助手仍在研究或等待处理，当前是阶段进展，整个任务尚未完成。"
+        if states & {"budget_paused", "blocked", "truncated", "interrupted"}:
+            return "budget_paused", "部分小助手已暂停，已有结果已保存；请在主任务中点击继续。"
+        return None
+
     def _build_subagent_engine(
         self, record: BackgroundTaskRecord, profile: SubagentProfile
     ) -> TurnEngine:
@@ -634,12 +730,14 @@ class SessionManager:
         child_session_id = record.child_session_id or record.id
         stored = self.session_store.load(child_session_id)
         agent = get_agent(profile.agent_id)
-        model = record.model or profile.model or (stored.model if stored else self.model)
+        model = record.model or profile.model or (stored.model if stored else None) or record.metadata.get("model") or self.model
         mode = Mode(profile.mode)
         workspace = record.workspace or (stored.workspace if stored else "")
         if agent.needs_workspace and not workspace:
             raise ValueError(f"subagent profile '{profile.id}' requires a workspace")
         parent_engine = self._engines.get(record.owner_session_id)
+        if parent_engine is None and self.session_store.load(record.owner_session_id) is not None:
+            parent_engine = self.get_engine(record.owner_session_id)
         from ..subagents.readonly import RETIRED_MESSAGE, verified_readonly
         if not profile.enabled:
             raise ValueError(RETIRED_MESSAGE)
@@ -675,8 +773,9 @@ class SessionManager:
             user_rules=lambda: self.memory_settings.user_rules,
             on_memory_saved=self._memory_saved_notifier(child_session_id),
             messages=stored.messages if stored else None,
-            roots=([dict(r) if isinstance(r, dict) else r for r in parent_engine.permissions.roots]
-                   if parent_engine else None),
+            roots=(json.loads(record.metadata["roots"]) if record.metadata.get("roots") else
+                   ([dict(r) if isinstance(r, dict) else r for r in parent_engine.permissions.roots]
+                    if parent_engine else None)),
             extra_tools=inherited_mcp_tools or None,
             secrets=self.secrets,
             task_store=None,
@@ -705,7 +804,8 @@ class SessionManager:
             default_skill_ids=list(profile.skills) or None,
             max_iterations=profile.max_turns,
             model_settings=(
-                {"reasoning_effort": profile.effort} if profile.effort else None
+                {**({"reasoning_effort": profile.effort} if profile.effort else {}),
+                 **json.loads(record.metadata.get("model_settings") or "{}")}
             ),
             enable_subagents=profile.allow_nested,
             tool_allowlist=tool_allowlist,
@@ -720,7 +820,7 @@ class SessionManager:
         if inherited is not None:
             engine._inherited_market_selection = inherited
         from ..tool_policy import TurnToolPolicy
-        policy = parent_engine._current_tool_policy() if parent_engine else None
+        policy = (parent_engine._current_tool_policy() if parent_engine else None) if "no_tools" not in record.metadata else None
         if policy is None:
             policy = TurnToolPolicy(**{k: record.metadata.get(k) == "true" for k in
                                       ("no_tools", "no_search", "no_external_network")})
@@ -729,7 +829,24 @@ class SessionManager:
         engine.readonly_tool_guard = lambda name: verified_readonly(
             name, engine.registry.get(name), engine.permissions.risk_overrides)
         engine.registry.retain({n for n in engine.registry.names() if engine.readonly_tool_guard(n)})
+        if parent_engine is not None and profile.id == "research":
+            def refresh_child_tools():
+                current = self._engines.get(record.owner_session_id)
+                if current is None:
+                    return
+                # Preserve task policy; refresh tool availability and reviewed effects.
+                names = {n for n in engine.registry.names() if not n.startswith("mcp__") and
+                         getattr(engine.registry.get(n).metadata, "category", "") not in {"mcp", "connector"}}
+                engine.registry.retain(names)
+                for name in current.registry.names():
+                    spec = current.registry.get(name)
+                    if verified_readonly(name, spec, engine.permissions.risk_overrides):
+                        engine.registry.register(spec.func, metadata=spec.metadata, schema=spec.schema)
+            engine.refresh_tool_registry = refresh_child_tools
         self._configure_engine_persistence(child_session_id, engine, stored)
+        if record.metadata.get("task_group"):
+            engine.task_budget = self.task_budgets.bind(record.metadata["task_group"],
+                                                       record.owner_session_id, child_session_id)
         self._engines[child_session_id] = engine
         return engine
 
@@ -1758,6 +1875,8 @@ class SessionManager:
         self, record: BackgroundTaskRecord
     ) -> dict[str, Any]:
         data = record.model_dump()
+        if record.metadata.get("task_group"):
+            data["team_budget"] = self.task_budgets.snapshot(record.metadata["task_group"])
         profile = (
             self.subagent_runtime.profiles.get(record.profile_id)
             if record.profile_id
@@ -1907,15 +2026,23 @@ class SessionManager:
         return f"市场报告{labels.get(task.status, task.status)}，已耗时 {elapsed} 秒。"
 
     def _on_background_task_change(self, change: BackgroundTaskChange) -> None:
+        from ..background_tasks.models import SETTLED_TASK_STATUSES
         task = change.task
+        allow_wake = True
+        group = task.metadata.get("task_group")
+        if group:
+            current = self._engines.get(task.owner_session_id)
+            allow_wake = bool(current and current.task_budget and current.task_budget.group == group
+                              and not self.task_budgets.snapshot(group)["stopped"])
         ready = None
         if (
             change.change == "status"
             and task.kind == "agent"
-            and task.status in TERMINAL_TASK_STATUSES
+            and task.status in SETTLED_TASK_STATUSES
         ):
             # Claude/OpenHarness-style completion wake for explicit wake_on(job_id).
-            self.wakes.complete_job(task.id)
+            if allow_wake and task.status in TERMINAL_TASK_STATUSES:
+                self.wakes.complete_job(task.id)
             ready = self.delegation_cohorts.on_terminal(
                 task.id, status=task.status, error=task.error
             )
@@ -1952,28 +2079,48 @@ class SessionManager:
             change.change == "status"
             and task.kind == "agent"
             and task.status in TERMINAL_TASK_STATUSES
+            and allow_wake
         ):
             try:
                 asyncio.run_coroutine_threadsafe(self.resume_due_wakes(), loop)
             except RuntimeError:
                 pass
         if ready is not None:
-            message = format_cohort_synthesis_message(ready)
-            source = {
-                "kind": "subagent_cohort_complete",
-                "cohort_id": ready.cohort_id,
-                "parent_trace_id": ready.parent_trace_id,
-                "task_ids": [m.task_id for m in ready.members],
-            }
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.deliver_to_session(
-                        ready.owner_session_id, message, source=source
-                    ),
-                    loop,
-                )
-            except RuntimeError:
-                pass
+            SessionManager._queue_cohort_result(self, ready, task)
+
+    def _seal_child_batch(self, session_id, trace_id):
+        for ready in self.delegation_cohorts.seal(session_id, trace_id):
+            task = self.background_tasks.get(ready.members[-1].task_id, owner_session_id=session_id)
+            if task is not None:
+                self._queue_cohort_result(ready, task)
+
+    def _queue_cohort_result(self, ready, task):
+        loop = self._background_task_event_loop
+        if loop is None or not loop.is_running():
+            return
+        group = task.metadata.get("task_group")
+        if group:
+            current = self._engines.get(task.owner_session_id)
+            if (self.task_budgets.snapshot(group)["stopped"] or not current or
+                current.task_budget is None or current.task_budget.group != group):
+                return
+        message = format_cohort_synthesis_message(ready)
+        source = {
+            "kind": "subagent_cohort_complete",
+            "task_group": group,
+            "cohort_id": ready.cohort_id,
+            "parent_trace_id": ready.parent_trace_id,
+            "task_ids": [m.task_id for m in ready.members],
+        }
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self.deliver_to_session(
+                    ready.owner_session_id, message, source=source
+                ),
+                loop,
+            )
+        except RuntimeError:
+            pass
 
     def start_background_agent(
         self,
@@ -2039,12 +2186,14 @@ class SessionManager:
         *,
         session_id: str | None = None,
         cursor: int = 0,
+        offset: int = 0,
         max_chars: int = 20_000,
     ) -> dict[str, Any]:
         return self.background_tasks.read_output(
             task_id,
             owner_session_id=session_id,
             cursor=cursor,
+            offset=offset,
             max_chars=max_chars,
         ).model_dump()
 

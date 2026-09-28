@@ -18,13 +18,14 @@ interface Props {
   refreshKey: number;
 }
 
-const ACTIVE_STATUSES = new Set<BackgroundTaskStatus>(["queued", "running"]);
+const ACTIVE_STATUSES = new Set<BackgroundTaskStatus>(["queued", "running", "waiting_user"]);
 
 export function BackgroundTasksSection({ sessionId, refreshKey }: Props) {
   const { t } = useI18n();
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
+  const [page, setPage] = useState({ cursor: 0, offset: 0 });
   const [open, setOpen] = useState(true);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"stop" | "send" | null>(null);
@@ -52,16 +53,17 @@ export function BackgroundTasksSection({ sessionId, refreshKey }: Props) {
   const loadOutput = useCallback(async () => {
     if (!selectedId) return;
     try {
-      setOutput(await getBackgroundTaskOutput(sessionId, selectedId));
+      setOutput(await getBackgroundTaskOutput(sessionId, selectedId, 100_000, page.cursor, page.offset));
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [sessionId, selectedId]);
+  }, [sessionId, selectedId, page.cursor, page.offset]);
 
   useEffect(() => {
     setTasks([]);
     setSelectedId(null);
+    setPage({ cursor: 0, offset: 0 });
     setOutput(null);
     setMessage("");
     setError("");
@@ -153,6 +155,7 @@ export function BackgroundTasksSection({ sessionId, refreshKey }: Props) {
               onBack={() => setSelectedId(null)}
               onStop={() => void stop()}
               onSend={() => void send()}
+              onNext={() => output && setPage({ cursor: output.next_cursor, offset: output.next_offset ?? 0 })}
               t={t}
             />
           ) : (
@@ -161,7 +164,7 @@ export function BackgroundTasksSection({ sessionId, refreshKey }: Props) {
                 <button
                   className="background-task-row"
                   key={task.id}
-                  onClick={() => setSelectedId(task.id)}
+                  onClick={() => { setPage({ cursor: 0, offset: 0 }); setSelectedId(task.id); }}
                 >
                   <span className={`background-task-status ${task.status}`} />
                   <span className="background-task-main">
@@ -197,6 +200,7 @@ function TaskDetail({
   onBack,
   onStop,
   onSend,
+  onNext,
   t,
 }: {
   task: BackgroundTask;
@@ -208,6 +212,7 @@ function TaskDetail({
   onBack: () => void;
   onStop: () => void;
   onSend: () => void;
+  onNext: () => void;
   t: (key: MessageKey, vars?: Record<string, string | number>) => string;
 }) {
   return (
@@ -226,7 +231,9 @@ function TaskDetail({
         <span className={`background-task-status ${task.status}`} />
       </div>
       <div className="background-task-description detail">{task.description}</div>
+      {task.team_budget && <div className="rail-muted">{t("Team budget: {used}/{limit} rounds", { used: task.team_budget.used, limit: task.team_budget.limit })}</div>}
       {task.error && <div className="rail-error">{t("Task failed:")} {task.error}</div>}
+      {task.reason && <div className="rail-muted">{task.reason}</div>}
       <div className="background-task-output" aria-label={t("Task activity")}>
         {!output ? (
           <div className="rail-muted">{t("Loading task activity...")}</div>
@@ -236,7 +243,7 @@ function TaskDetail({
           <div className="rail-muted">{t("No task activity yet.")}</div>
         )}
         {output?.truncated && (
-          <div className="rail-muted">{t("Only the latest available task output is shown.")}</div>
+          <button className="btn sm" onClick={onNext}>{t("Read next part")}</button>
         )}
       </div>
       <div className="background-task-actions">
@@ -314,6 +321,10 @@ function statusLabel(
   const labels: Record<BackgroundTaskStatus, MessageKey> = {
     queued: "Queued",
     running: "Running",
+    waiting_user: "Waiting for your response",
+    budget_paused: "Task budget paused",
+    truncated: "Output incomplete",
+    blocked: "Task blocked",
     completed: "Completed",
     failed: "Failed",
     cancelled: "Stopped",

@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from ..background_tasks.models import TERMINAL_TASK_STATUSES
+from ..background_tasks.models import SETTLED_TASK_STATUSES as TERMINAL_TASK_STATUSES
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,7 @@ class _Cohort:
     parent_trace_id: str
     members: dict[str, CohortMember] = field(default_factory=dict)
     synthesis_fired: bool = False
+    sealed: bool = True
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -65,6 +66,8 @@ class DelegationCohortTracker:
         parent_trace_id: str | None = None,
         profile_id: str = "",
         description: str = "",
+        require_seal: bool = False,
+        new_run: bool = False,
     ) -> str:
         owner = (owner_session_id or "").strip()
         tid = (task_id or "").strip()
@@ -72,10 +75,14 @@ class DelegationCohortTracker:
             raise ValueError("owner_session_id and task_id are required")
         trace = (parent_trace_id or "").strip()
         with self._lock:
+            if new_run:
+                self._task_index.pop(tid, None)
             existing_cohort_id = self._task_index.get(tid)
             if existing_cohort_id is not None:
                 return existing_cohort_id
             cohort = self._open_cohort(owner, trace)
+            if require_seal:
+                cohort.sealed = False
             cohort.members[tid] = CohortMember(
                 task_id=tid,
                 profile_id=profile_id or "",
@@ -116,7 +123,7 @@ class DelegationCohortTracker:
                 error=error,
             )
             cohort.updated_at = time.time()
-            if not self._all_terminal(cohort):
+            if not cohort.sealed or not self._all_terminal(cohort):
                 self._save()
                 return None
             cohort.synthesis_fired = True
@@ -143,6 +150,22 @@ class DelegationCohortTracker:
             fired = self.on_terminal(task_id, status=status, error=error)
             if fired is not None:
                 ready.append(fired)
+        return ready
+
+    def seal(self, owner, trace):
+        """The parent finished launching this batch; fast children may now notify."""
+        ready = []
+        with self._lock:
+            for cohort in list(self._cohorts.values()):
+                if cohort.owner_session_id != owner or cohort.parent_trace_id != (trace or "") or cohort.synthesis_fired:
+                    continue
+                cohort.sealed = True
+                if self._all_terminal(cohort):
+                    member = next(iter(cohort.members.values()))
+                    result = self.on_terminal(member.task_id, status=member.status, error=member.error)
+                    if result:
+                        ready.append(result)
+            self._save()
         return ready
 
     def _open_cohort(self, owner_session_id: str, parent_trace_id: str) -> _Cohort:
@@ -185,6 +208,7 @@ class DelegationCohortTracker:
                 parent_trace_id=item.get("parent_trace_id") or "",
                 members=members,
                 synthesis_fired=bool(item.get("synthesis_fired")),
+                sealed=bool(item.get("sealed", True)),
                 created_at=float(item.get("created_at") or time.time()),
                 updated_at=float(item.get("updated_at") or time.time()),
             )
@@ -203,6 +227,7 @@ class DelegationCohortTracker:
                     "owner_session_id": c.owner_session_id,
                     "parent_trace_id": c.parent_trace_id,
                     "synthesis_fired": c.synthesis_fired,
+                    "sealed": c.sealed,
                     "created_at": c.created_at,
                     "updated_at": c.updated_at,
                     "members": {
@@ -212,15 +237,15 @@ class DelegationCohortTracker:
                 for c in self._cohorts.values()
             ]
         }
-        self.path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
+        temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(self.path)
 
 
 def format_cohort_synthesis_message(ready: CohortReady) -> str:
     lines = [
         "[子智能体汇合通知]",
-        "同批后台子任务已全部到达终态。请立即综合最终答复，不要再使用长超时的 "
+        "同批后台子任务已完成或暂停。请结合状态汇总，暂停/截断不等于完成；不要再使用长超时的 "
         "`background_task_gather` 等待。",
         "如需报告正文，请用 `background_task_gather(task_ids, timeout_seconds=5)` "
         "或 `background_task_output` 短读。",

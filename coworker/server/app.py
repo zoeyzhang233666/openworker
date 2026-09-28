@@ -781,6 +781,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         task_id: str,
         session_id: str | None = None,
         cursor: int = 0,
+        offset: int = 0,
         max_chars: int = 20_000,
     ) -> dict[str, Any]:
         try:
@@ -789,6 +790,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     task_id,
                     session_id=session_id,
                     cursor=cursor,
+                    offset=offset,
                     max_chars=max_chars,
                 )
             }

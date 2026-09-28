@@ -72,6 +72,10 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
       }
     } else if (m.role === "notice") {
       if (m.kind === "checkpoint") continue;
+      if (m.kind === "waiting_children") {
+        items.push({ kind: "notice", tone: "info", text: m.text });
+        continue;
+      }
       if (["budget_paused", "truncated", "blocked"].includes(m.kind)) {
         items.push({ kind: "notice", tone: "warn", text: m.text, retriable: true, resumable: true });
         continue;

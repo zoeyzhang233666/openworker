@@ -156,58 +156,43 @@ class BackgroundTaskStore:
             task_id=task_id, seq=seq, stream=stream, text=text, created_at=now
         )
 
-    def read_output(
-        self,
-        task_id: str,
-        *,
-        cursor: int = 0,
-        max_chars: int = 20_000,
-        max_chunks: int = 200,
-    ) -> TaskOutputPage:
-        cursor = max(0, int(cursor))
+    def read_output(self, task_id: str, *, cursor: int = 0, offset: int = 0,
+                    max_chars: int = 20_000, max_chunks: int = 200) -> TaskOutputPage:
+        cursor, offset = max(0, int(cursor)), max(0, int(offset))
         max_chars = max(1, min(int(max_chars), 100_000))
         max_chunks = max(1, min(int(max_chunks), 500))
         with self._lock:
             rows = self._conn.execute(
-                """SELECT task_id, seq, stream, text, created_at
-                   FROM background_task_output WHERE task_id = ? AND seq > ?
-                   ORDER BY seq ASC LIMIT ?""",
+                "SELECT task_id, seq, stream, text, created_at FROM background_task_output "
+                "WHERE task_id = ? AND seq > ? ORDER BY seq ASC LIMIT ?",
                 (task_id, cursor, max_chunks + 1),
             ).fetchall()
-        chunks: list[TaskOutputChunk] = []
-        total = 0
+        chunks, remaining, next_cursor, next_offset = [], max_chars, cursor, 0
         truncated = len(rows) > max_chunks
-        for row in rows[:max_chunks]:
-            text = str(row["text"])
-            if chunks and total + len(text) > max_chars:
+        for i, row in enumerate(rows[:max_chunks]):
+            start = offset if i == 0 else 0
+            raw = str(row["text"])
+            text = raw[start:start + remaining]
+            chunks.append(TaskOutputChunk(task_id=task_id, seq=row["seq"], stream=row["stream"],
+                                          text=text, created_at=row["created_at"]))
+            remaining -= len(text)
+            if start + len(text) < len(raw):
+                next_offset = start + len(text)
                 truncated = True
                 break
-            if not chunks and len(text) > max_chars:
-                text = text[-max_chars:]
-                truncated = True
-            chunk = TaskOutputChunk(
-                task_id=row["task_id"],
-                seq=row["seq"],
-                stream=row["stream"],
-                text=text,
-                created_at=row["created_at"],
-            )
-            chunks.append(chunk)
-            total += len(text)
-        next_cursor = chunks[-1].seq if chunks else cursor
-        return TaskOutputPage(
-            task_id=task_id,
-            chunks=tuple(chunks),
-            next_cursor=next_cursor,
-            truncated=truncated,
-        )
+            next_cursor = row["seq"]
+            if not remaining:
+                truncated = i + 1 < len(rows)
+                break
+        return TaskOutputPage(task_id=task_id, chunks=tuple(chunks), next_cursor=next_cursor,
+                              next_offset=next_offset, truncated=truncated)
 
     def reconcile_incomplete(self, *, reason: str = "process restarted") -> int:
         now = time.time()
         changed = 0
         with self._lock:
             rows = self._conn.execute(
-                "SELECT data FROM background_tasks WHERE status IN ('queued', 'running')"
+                "SELECT data FROM background_tasks WHERE status IN ('queued', 'running', 'waiting_user')"
             ).fetchall()
         for row in rows:
             record = BackgroundTaskRecord.model_validate_json(row["data"])

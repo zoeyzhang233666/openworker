@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from .models import (
+    PAUSED_TASK_STATUSES, SETTLED_TASK_STATUSES,
     AgentRunResult,
     BackgroundTaskChange,
     BackgroundTaskRecord,
@@ -56,8 +57,8 @@ FORCE_CANCEL_ERROR = "stop requested; force-cancelled"
 IMMEDIATE_STOP_WAIT_SECONDS = 3.0
 WRAP_UP_GRACE_SECONDS = 90.0
 WRAP_UP_PROMPT = (
-    "【收尾请求】请立即根据已收集的证据，在共享工作区用 write_file/edit_file 写好部分报告"
-    "（标明未完成处），然后结束本任务。不要再开启新的长检索或新工具链。"
+    "【收尾请求】请根据已收集的证据返回部分研究结果、来源和未完成处，交由主助手处理。"
+    "不要写文件、开启新的长检索或新工具链。"
 )
 
 
@@ -161,6 +162,7 @@ class BackgroundTaskManager:
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
         self._active: dict[str, _ActiveRun] = {}
+        self._running_groups: dict[str, set[str]] = {}
         self._agent_adapters: dict[str, AgentTaskAdapter] = {}
         self._abandoned: set[str] = set()
         self._listeners: dict[str, CompletionListener] = {}
@@ -221,10 +223,11 @@ class BackgroundTaskManager:
         *,
         owner_session_id: str | None = None,
         cursor: int = 0,
+        offset: int = 0,
         max_chars: int = 20_000,
     ) -> TaskOutputPage:
         self._require(task_id, owner_session_id)
-        return self.store.read_output(task_id, cursor=cursor, max_chars=max_chars)
+        return self.store.read_output(task_id, cursor=cursor, offset=offset, max_chars=max_chars)
 
     def send_message(
         self, task_id: str, message: str, *, owner_session_id: str | None = None
@@ -236,6 +239,8 @@ class BackgroundTaskManager:
         if not text:
             raise ValueError("message is required")
         with self._lock:
+            if task_id in self._abandoned:
+                raise ValueError("前一次执行尚未确认停止，请等待其退出后继续；不会同时启动同一任务两次。")
             active = self._active.get(task_id)
             if active is not None and not active.future.done():
                 active.adapter.steer(text)
@@ -249,18 +254,18 @@ class BackgroundTaskManager:
                     raise ValueError("agent task cannot be resumed in this process")
                 adapter = self.agent_adapter_factory(record)
                 self._agent_adapters[task_id] = adapter
-        queued = record.model_copy(
-            update={
-                "status": "queued",
-                "updated_at": time.time(),
-                "finished_at": None,
-                "error": None,
-                "exit_code": None,
-            }
-        )
-        self.store.put(queued)
-        self._notify_change("status", queued)
-        return self._submit(queued, text, adapter)
+            queued = record.model_copy(
+                update={
+                    "status": "queued",
+                    "updated_at": time.time(),
+                    "finished_at": None,
+                    "error": None,
+                    "exit_code": None,
+                }
+            )
+            self.store.put(queued)
+            self._notify_change("status", queued)
+            return self._submit(queued, text, adapter)
 
     def stop(
         self,
@@ -367,7 +372,7 @@ class BackgroundTaskManager:
         with self._condition:
             while True:
                 record = self._require(task_id, owner_session_id)
-                if record.status in TERMINAL_TASK_STATUSES:
+                if record.status in SETTLED_TASK_STATUSES:
                     return record
                 remaining = None if deadline is None else deadline - time.monotonic()
                 if remaining is not None and remaining <= 0:
@@ -469,6 +474,27 @@ class BackgroundTaskManager:
         return self._require(record.id, record.owner_session_id)
 
     def _run(
+        self, task_id, message, adapter, cancel,
+    ):
+        record = self._require(task_id, None)
+        group = record.metadata.get("task_group") or record.owner_session_id
+        limited = record.kind == "agent"
+        if limited:
+            with self._condition:
+                while len(self._running_groups.get(group, set())) >= 5 and not cancel.is_set():
+                    self._condition.wait(timeout=0.1)
+                self._running_groups.setdefault(group, set()).add(task_id)
+        try:
+            self._run_task(task_id, message, adapter, cancel)
+        finally:
+            if limited:
+                with self._condition:
+                    self._running_groups[group].discard(task_id)
+                    if not self._running_groups[group]:
+                        del self._running_groups[group]
+                    self._condition.notify_all()
+
+    def _run_task(
         self,
         task_id: str,
         message: str,
@@ -490,6 +516,14 @@ class BackgroundTaskManager:
         self._notify_change("status", running)
 
         def emit(stream: str, text: str) -> None:
+            if stream == "status":
+                with self._lock:
+                    current = self._require(task_id, None)
+                    if current.status in {"running", "waiting_user"} and not cancel.is_set():
+                        updated = current.model_copy(update={"status": text, "updated_at": time.time()})
+                        self.store.put(updated)
+                        self._notify_change("status", updated)
+                return
             if text:
                 self._append_output(task_id, stream=stream, text=str(text))
 
@@ -500,6 +534,9 @@ class BackgroundTaskManager:
         if result.report:
             emit("assistant", result.report)
         with self._condition:
+            active = self._active.get(task_id)
+            if active is not None and active.cancel is not cancel:
+                return  # late result from an older run must not finish the new run
             if task_id in self._abandoned:
                 # stop() already published a terminal cancelled row; keep that authority.
                 self._abandoned.discard(task_id)
@@ -517,6 +554,8 @@ class BackgroundTaskManager:
                     "finished_at": finished,
                     "exit_code": exit_code,
                     "error": result.error,
+                    "reason": result.reason,
+                    "resumable": status in PAUSED_TASK_STATUSES or status == "interrupted",
                 }
             )
             # Publish terminal state and completion callbacks under the lifecycle lock so

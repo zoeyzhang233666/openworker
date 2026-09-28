@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from ..background_tasks.models import TaskStatus
 
 
 class _FrozenModel(BaseModel):
@@ -45,6 +46,10 @@ class ForegroundSubagentResult(_FrozenModel):
     version: Literal[1] = 1
     task_id: str
     profile_id: str
-    status: Literal["completed", "failed", "cancelled", "interrupted"]
+    status: TaskStatus
     report: str = ""
     error: str | None = None
+    reason: str | None = None
+    next_cursor: int = 0
+    next_offset: int = 0
+    truncated: bool = False

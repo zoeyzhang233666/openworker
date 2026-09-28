@@ -10,6 +10,7 @@ from coworker.providers import (
     ToolCall,
 )
 from coworker.server.manager import SessionManager
+from coworker.permissions import Mode
 
 
 class ScriptedProvider(ProviderClient):
@@ -99,6 +100,7 @@ def test_durable_resume_approval_executes_tool(tmp_path):
     target = tmp_path / "scratch_marker.txt"
     mgr = SessionManager(
         workspace=tmp_path,
+        mode=Mode.INTERACTIVE,
         provider=ScriptedProvider(
             [
                 _tool("write_file", {"path": str(target), "content": "ok"}, "call_w"),

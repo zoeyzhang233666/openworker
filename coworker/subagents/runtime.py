@@ -55,6 +55,7 @@ class TurnEngineTaskAdapter(AgentTaskAdapter):
             report = ""
             status = "failed"
             error = None
+            reason = None
             watcher: asyncio.Task[None] | None = None
 
             async def watch_cancel() -> None:
@@ -67,7 +68,7 @@ class TurnEngineTaskAdapter(AgentTaskAdapter):
                     engine.request_interrupt()
                     return AgentRunResult(status="cancelled")
                 watcher = asyncio.create_task(watch_cancel())
-                async for event in engine.run(
+                stream = engine.run(
                     message,
                     source={
                         "kind": "subagent",
@@ -77,17 +78,31 @@ class TurnEngineTaskAdapter(AgentTaskAdapter):
                     origin=TurnOrigin.BACKGROUND,
                     trace_source_kind="subagent",
                     parent_trace_id=self.record.parent_trace_id,
-                ):
+                )
+                if getattr(engine, "_tail_is_retriable_error", lambda: False)():
+                    await stream.aclose()
+                    if str(message).strip().lower() not in {"continue", "resume", "继续"}:
+                        engine.queue_steering(str(message))
+                    stream = engine.retry(renew_budget=False)
+                async for event in stream:
                     if cancel_event.is_set():
                         engine.request_interrupt()
                     if event.type == EventType.ASSISTANT_MESSAGE and event.data.get("text"):
                         report = str(event.data["text"])
                     elif event.type in {EventType.TOOL_STARTED, EventType.TOOL_FINISHED}:
+                        emit("status", "running")
                         name = str(event.data.get("name") or "tool")
                         emit("event", f"{event.type.value}:{name}\n")
                     elif event.type == EventType.TURN_END:
                         raw = str(event.data.get("status") or "failed")
-                        status = "completed" if raw == "completed" else "cancelled" if raw == "interrupted" else "failed"
+                        from ..background_tasks.models import SETTLED_TASK_STATUSES
+                        status = raw if raw in SETTLED_TASK_STATUSES else "failed"
+                        reason = event.data.get("text")
+                    elif event.type == EventType.INTERRUPTED:
+                        status = "interrupted"
+                    elif event.type in {EventType.PERMISSION_REQUIRED, EventType.DIRECTORY_REQUESTED,
+                                       EventType.QUESTION_REQUESTED, EventType.PLAN_PROPOSED}:
+                        emit("status", "waiting_user")
                     elif event.type == EventType.ERROR:
                         error = str(event.data.get("error") or "subagent failed")
             except Exception as exc:
@@ -103,7 +118,7 @@ class TurnEngineTaskAdapter(AgentTaskAdapter):
                 self.engine_saver(self.record, engine)
             if cancel_event.is_set():
                 status = "cancelled"
-            return AgentRunResult(report=report, status=status, error=error)
+            return AgentRunResult(report=report, status=status, error=error, reason=reason)
 
         return asyncio.run(execute())
 
@@ -125,12 +140,14 @@ class SubagentRuntime:
         engine_saver: EngineSaver,
         profiles: SubagentProfileRegistry | None = None,
         cohort_tracker: DelegationCohortTracker | None = None,
+        task_context: Callable[[str], dict[str, str]] | None = None,
     ) -> None:
         self.task_manager = task_manager
         self.engine_factory = engine_factory
         self.engine_saver = engine_saver
         self.profiles = profiles or builtin_subagent_profiles()
         self.cohort_tracker = cohort_tracker
+        self.task_context = task_context
 
     def adapter_for_record(self, record: BackgroundTaskRecord) -> TurnEngineTaskAdapter:
         if record.kind != "agent" or not record.profile_id:
@@ -170,6 +187,7 @@ class SubagentRuntime:
             "agent_id": profile.agent_id,
             "isolation": profile.isolation,
             **(metadata or {}),
+            **(self.task_context(owner_session_id) if self.task_context else {}),
         }
         spec = BackgroundTaskSpec(
             kind="agent",
@@ -194,6 +212,11 @@ class SubagentRuntime:
 
             def bind(self, record: BackgroundTaskRecord) -> None:
                 self.bound_record = record
+                if join_cohort and self_runtime.cohort_tracker is not None:
+                    self_runtime.cohort_tracker.register(record.owner_session_id, record.id,
+                        parent_trace_id=record.parent_trace_id, profile_id=record.profile_id or profile.id,
+                        description=record.description,
+                        require_seal=bool(self_runtime.task_context and record.parent_trace_id))
 
             def _adapter(self, record: BackgroundTaskRecord) -> TurnEngineTaskAdapter:
                 if "value" not in holder:
@@ -231,40 +254,25 @@ class SubagentRuntime:
         record = self.task_manager.start_agent(
             spec, message=task, adapter=LazyAdapter()
         )
-        if join_cohort and self.cohort_tracker is not None:
-            self.cohort_tracker.register(
-                record.owner_session_id,
-                record.id,
-                parent_trace_id=record.parent_trace_id,
-                profile_id=record.profile_id or profile.id,
-                description=record.description,
-            )
         return record
 
     def run_foreground(self, **kwargs) -> ForegroundSubagentResult:
         kwargs = dict(kwargs)
         kwargs["join_cohort"] = False
         task = self.start(**kwargs)
-        profile = self.profiles.require(task.profile_id or "")
-        timeout = max(30.0, float(profile.max_turns * 30))
-        done = self.task_manager.wait(
-            task.id, timeout=timeout, owner_session_id=task.owner_session_id
-        )
-        if done.status not in {"completed", "failed", "cancelled", "interrupted"}:
-            self.task_manager.stop(
-                task.id, owner_session_id=task.owner_session_id, mode="wrap_up"
-            )
-            done = self.task_manager.wait(
-                task.id, timeout=5, owner_session_id=task.owner_session_id
-            )
-        terminal_status = (
-            done.status
-            if done.status in {"completed", "failed", "cancelled", "interrupted"}
-            else "interrupted"
-        )
-        terminal_error = done.error
-        if terminal_status == "interrupted" and not terminal_error:
-            terminal_error = "subagent did not stop before the foreground timeout"
+        # Waiting is a UI convenience, never the task lifetime.
+        done = self.task_manager.wait(task.id, timeout=30, owner_session_id=task.owner_session_id)
+        if (done.status in {"queued", "running", "waiting_user"} and self.cohort_tracker is not None
+                and task.parent_trace_id and self.task_context is not None):
+            # Fast foreground work already returns its report directly. Only an
+            # unfinished wait needs a later synthesis notification.
+            self.cohort_tracker.register(task.owner_session_id, task.id,
+                parent_trace_id=task.parent_trace_id, profile_id=task.profile_id,
+                description=task.description, require_seal=True)
+            latest = self.task_manager.get(task.id)
+            from ..background_tasks.models import SETTLED_TASK_STATUSES
+            if latest is not None and latest.status in SETTLED_TASK_STATUSES:
+                self.cohort_tracker.on_terminal(task.id, status=latest.status, error=latest.error)
         page = self.task_manager.read_output(
             task.id, owner_session_id=task.owner_session_id, max_chars=100_000
         )
@@ -273,8 +281,12 @@ class SubagentRuntime:
         )
         return ForegroundSubagentResult(
             task_id=task.id,
-            profile_id=profile.id,
-            status=terminal_status,
+            profile_id=task.profile_id,
+            status=done.status,
             report=report,
-            error=terminal_error,
+            error=done.error,
+            reason=done.reason,
+            next_cursor=page.next_cursor,
+            next_offset=page.next_offset,
+            truncated=page.truncated,
         )

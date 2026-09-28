@@ -51,6 +51,28 @@ afterEach(() => {
 });
 
 describe("BackgroundTasksSection", () => {
+  it("shows a paused task and reads long results without skipping a partial chunk", async () => {
+    vi.mocked(getBackgroundTasks).mockResolvedValue([{ ...task, status: "budget_paused",
+      reason: "请在主任务中继续", resumable: true,
+      team_budget: { used: 285, limit: 300, remaining: 15, segment: 1, reserved: 0, reserve: 15 },
+    }]);
+    vi.mocked(getBackgroundTaskOutput).mockImplementation(async (_session, _task, _max, cursor, offset) => ({
+      version: 1, task_id: task.id,
+      chunks: [{ version: 1, task_id: task.id, seq: 1, stream: "assistant", created_at: 1,
+        text: offset ? "研究结果后半段" : "研究结果前半段" }],
+      next_cursor: offset ? 1 : 0, next_offset: offset ? 0 : 7, truncated: !offset,
+    }));
+    render(<LocaleProvider><BackgroundTasksSection sessionId="session-1" refreshKey={0} /></LocaleProvider>);
+    fireEvent.click(await screen.findByText("研究子智能体"));
+    expect(await screen.findByText("研究结果前半段")).toBeTruthy();
+    expect(screen.getByText("全队预算：已用 285/300 轮")).toBeTruthy();
+    expect(screen.getByText("请在主任务中继续")).toBeTruthy();
+    expect(screen.queryByText("已完成")).toBeNull();
+    fireEvent.click(screen.getByText("继续阅读下一段"));
+    expect(await screen.findByText("研究结果后半段")).toBeTruthy();
+    expect(getBackgroundTaskOutput).toHaveBeenLastCalledWith("session-1", "task-1", 100_000, 0, 7);
+  });
+
   it("stays hidden when the current session has no background tasks", async () => {
     vi.mocked(getBackgroundTasks).mockResolvedValue([]);
 
