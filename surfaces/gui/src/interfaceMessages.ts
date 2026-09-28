@@ -12,6 +12,7 @@ export const interfaceMessagesZh = {
   "Task budget paused": "本段预算已用完，等待继续",
   "Output incomplete": "输出未完成",
   "Task blocked": "任务遇到阻塞",
+  "Subagents are still working": "小助手仍在工作",
   "New session": "新对话",
   "What should we produce?": "我们要完成什么？",
   "Search chats": "搜索对话",

@@ -2151,6 +2151,9 @@ export interface AutomationRun {
   started_at: number;
   finished_at: number | null;
   status: string;
+  execution_status?: string;
+  reason?: string;
+  resumable?: boolean;
   result_text: string | null;
   artifacts: string[];
   error: string | null;

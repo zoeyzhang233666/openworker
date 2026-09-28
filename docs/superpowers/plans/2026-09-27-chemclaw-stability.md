@@ -19,3 +19,7 @@
 实际回归：`test_task_budget/task_group_integration/background_states/background_tasks/subagent/subagent_readonly/subagent_runtime/subagent_cohort_wake/runtime_budget/runtime_resume/runtime_acceptance/durable_resume/deliver_mcp` 共 **78 passed**；GUI BackgroundTasksSection/itemsFromMessages **11 passed**，`tsc --noEmit` 通过。包括真实引擎 300 轮后暂停并继续、主助手 2 轮＋小助手 35 轮累计 37 轮、重启未知写操作不重做。发现并修复跨 asyncio.run 重用 Event 引起的假空响应；审批测试明确指定交互权限模式，不改变产品默认权限。
 
 仍待：独立 CLI explore 路径、定时任务与全部产品回归、摘要辅助调用计量、上下文拆分、所有上游候选评估及真实服务验收。本段结果不是“所有 bug 已修好”。安装、构建、合并和真实账号操作均未执行。
+
+第三步（2026-09-28）：定时任务接入主/子共同的执行接线、共享预算和检查点。运行记录新增标准状态、原因与可继续标志，旧 ok/error 兼容读取；普通保存、手动执行和后台运行使用同一状态判定。暂停不标成功，未开始的空记录不标完成；审批等待持久化；重启将未完成运行标为等待继续，调度器不会因赶补而重跑该任务。通知先记提交凭据，同一运行的同一状态不重复外发（响应不明时不自动重发）。实际组合 40 passed、新增恢复场景 4 passed；GUI 12 passed、TypeScript 通过。所有测试使用模拟模型/本地数据，未发送真实消息。
+
+全仓初轮离线结果已补齐：205 文件，2052 passed、74 failure、1 collection error、4 skipped；失败正在分为旧合同、环境、真实缺陷逐项处理，尚不满足发布标准。独立 CLI 和第 3—6 阶段仍未结案。

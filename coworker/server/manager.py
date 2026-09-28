@@ -263,6 +263,7 @@ class SessionManager:
         # Automation: scheduled tasks store + the tick scheduler (started in the lifespan).
         # The scheduler also resumes self-wake'd sessions each tick (extra_tick).
         self.task_store = TaskStore(base / "automation.db")
+        self.task_store.reconcile_running()
         self.scheduler = Scheduler(
             self.task_store, self._run_scheduled_task, extra_tick=self.resume_due_wakes
         )
@@ -618,6 +619,13 @@ class SessionManager:
         if record is not None and record.grants:
             self._apply_grants(engine, record.grants)
         self._configure_engine_persistence(session_id, engine, record)
+        self._configure_task_execution(session_id, engine)
+        self._engines[session_id] = engine
+        if is_new_session:
+            self._emit_session_created(session_id, agent_name)
+        return engine
+
+    def _configure_task_execution(self, session_id, engine):
         group = engine._runtime.get("task_group")
         if group:
             engine.task_budget = self.task_budgets.bind(group, session_id, session_id, parent=True)
@@ -626,10 +634,6 @@ class SessionManager:
         engine.resume_task_children = lambda: self._resume_task_children(session_id, engine)
         engine.child_pending_status = lambda: self._child_pending_status(session_id, engine)
         engine.on_child_batch_finished = lambda: self._seal_child_batch(session_id, engine.active_trace_id)
-        self._engines[session_id] = engine
-        if is_new_session:
-            self._emit_session_created(session_id, agent_name)
-        return engine
 
     def _configure_engine_persistence(self, session_id, engine, record):
         """One checkpoint/compaction contract for desktop, channels and children."""
@@ -4172,8 +4176,12 @@ class SessionManager:
             ]
             or None,
             file_storage=self.file_storage(),
+            subagent_runtime=self.subagent_runtime,
+            background_task_manager=self.background_tasks,
         )
         self._seed_task_permissions(engine, task)
+        self._configure_engine_persistence(session_id, engine, self.session_store.load(session_id))
+        self._configure_task_execution(session_id, engine)
         return engine
 
     # -- mirroring inbox items to a bound channel -------------------------------
@@ -4441,6 +4449,18 @@ class SessionManager:
         # finishes — the one shared post-turn moment, so auto-titling hooks in here and
         # can never add latency to the response itself.
         self._maybe_autotitle(session_id)
+        owner = self.task_store.task_for_run_session(session_id)
+        if owner is not None:
+            run_id = session_id[len("__run__"):]
+            result = self.finalize_manual_run(owner.id, run_id)
+            run = self.task_store.find_run(run_id)
+            if result.get("ok") and run is not None and owner.notify_on_completion:
+                from ..task_state import ACTIVE
+                if run.execution_status not in ACTIVE:
+                    try:
+                        asyncio.get_running_loop().create_task(self._notify_task_done(owner, run))
+                    except RuntimeError:
+                        pass
 
     def is_running(self, session_id: str) -> bool:
         return session_id in self._running_sessions
@@ -5516,6 +5536,7 @@ class SessionManager:
         # Register the live engine up-front: a parked approval persists the session
         # mid-run (durable suspend), and resolving from the Inbox must find this engine.
         self._engines[run.session_id] = engine
+        self.mark_running(run.session_id)
         # The first turn is the task itself. The framing matters: instructions often restate the
         # schedule ("every day at 5:32pm…"), so make explicit that the schedule already fired and
         # the job now is to execute, not to (re)schedule.
@@ -5537,10 +5558,17 @@ class SessionManager:
             run.status = "ok" if terminal_status == "completed" else "error"
             if terminal_status != "completed":
                 run.error = "任务尚未完成：" + terminal_status
+            self._set_automation_state(run, engine.messages, run.session_id)
+            self.task_store.add_run(run)
             if task.notify_on_completion:
                 await self._notify_task_done(task, run)
         except Exception as exc:
             run.status, run.error = "error", str(exc)
+            run.execution_status, run.reason = "failed", str(exc)
+        except asyncio.CancelledError:
+            run.status = run.execution_status = "blocked"
+            run.reason, run.resumable = "应用停止，进度已保存；请明确继续。", True
+            raise
         finally:
             run.finished_at = _epoch()
             # Persist the run as a continuable session + keep the live engine for an immediate
@@ -5551,10 +5579,14 @@ class SessionManager:
             except Exception:
                 pass
             self.task_store.add_run(run)
+            self._running_sessions.discard(run.session_id)
         return run
 
     async def _notify_task_done(self, task, run: TaskRun) -> None:
         from ..channels.rich_output import channel_visible_text
+        from ..task_state import ACTIVE
+        if run.execution_status in ACTIVE or not self.task_store.claim_notification(run.run_id, run.execution_status):
+            return
 
         # Scheduled notifications are also plain Channel bubbles. They only carry a short
         # notice, never desktop-only ChartSpec/Mermaid renderer source.
@@ -5569,6 +5601,8 @@ class SessionManager:
                     "id": task.id,
                     "text": summary,
                     "run_id": run.run_id,
+                    "status": run.execution_status,
+                    "reason": run.reason,
                 },
             },
         )
@@ -5585,7 +5619,7 @@ class SessionManager:
                         sender,
                         creds["bot_token"],
                         chat_id,
-                        f"✓ {task.title}\n\n{summary}",
+                        f"{'✓' if run.execution_status == 'completed' else '任务未完成：'} {task.title}\n\n{run.reason or summary}",
                         thread,
                     )
             except Exception:
@@ -5745,22 +5779,28 @@ class SessionManager:
         task = self.task_store.get(task_id)
         if run is None or task is None:
             return {"ok": False, "error": "not found"}
-        if run.status == "running":
+        if run is not None:
             record = self.session_store.load(run.session_id)
             run.result_text = _last_assistant_text(record.messages) if record else None
             run.artifacts = _recent_files(task.workspace, since=run.started_at)
-            tail = next((m for m in reversed(record.messages if record else [])
-                         if m.get("kind") not in {"model_switch", "checkpoint"}), {})
-            incomplete = tail.get("kind") in {"budget_paused", "truncated", "blocked", "error", "interrupted"}
-            run.status = "error" if incomplete else "ok"
-            if incomplete:
-                run.error = "任务尚未完成：" + str(tail.get("kind"))
-            run.finished_at = _epoch()
+            self._set_automation_state(run, record.messages if record else [], run.session_id)
+            from ..task_state import ACTIVE
+            if run.execution_status not in ACTIVE:
+                task.last_run, task.last_status = run.finished_at, run.status
+                if not run.accounted and run.trigger == "manual":
+                    task.run_count += 1
+                    run.accounted = True
             self.task_store.add_run(run)
-            task.last_run, task.last_status = run.finished_at, run.status
-            task.run_count += 1
             self.task_store.save(task)
         return {"ok": True, "run": run.to_dict()}
+
+    def _set_automation_state(self, run, messages, session_id):
+        from ..task_state import ACTIVE, PAUSED, execution_state
+        run.execution_status, run.reason = execution_state(messages, waiting_user=bool(self.inbox.pending(session_id)))
+        run.status = {"completed": "ok", "failed": "error"}.get(run.execution_status, run.execution_status)
+        run.resumable = run.execution_status in PAUSED
+        run.error = run.reason if run.execution_status == "failed" else None
+        run.finished_at = None if run.execution_status in ACTIVE else _epoch()
 
     def save(self, session_id: str, engine: TurnEngine) -> None:
         workspace = self._stable_engine_workspace(engine)
@@ -5784,6 +5824,11 @@ class SessionManager:
                 ),
             )
         )
+        if session_id.startswith("__run__"):
+            run = self.task_store.find_run(session_id[len("__run__"):])
+            if run is not None:
+                self._set_automation_state(run, engine.messages, session_id)
+                self.task_store.add_run(run)
 
     @staticmethod
     def _apply_grants(engine: TurnEngine, grants: dict[str, Any]) -> None:

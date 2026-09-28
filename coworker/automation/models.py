@@ -226,14 +226,23 @@ class TaskRun:
     error: Optional[str] = None
     trigger: str = "schedule"  # schedule | manual | catchup
     session_id: str = ""  # the run's own conversation thread — persisted + continuable
+    execution_status: str = ""
+    reason: str = ""
+    resumable: bool = False
+    notified_states: list[str] = field(default_factory=list)
+    accounted: bool = False
 
     def __post_init__(self) -> None:
         if not self.session_id:
             self.session_id = f"__run__{self.run_id}"
+        if not self.execution_status:
+            self.execution_status = {"ok": "completed", "error": "failed"}.get(self.status, self.status)
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()
 
     @classmethod
     def from_dict(cls, d: dict) -> "TaskRun":
+        d = dict(d)
+        d.setdefault("accounted", d.get("status") not in {None, "running"})
         return cls(**d)

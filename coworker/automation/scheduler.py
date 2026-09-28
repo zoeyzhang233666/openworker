@@ -89,6 +89,10 @@ class Scheduler:
                 logger.exception("scheduler extra_tick (wake resume) failed")
 
     async def run_task(self, task: ScheduledTask, *, trigger: str) -> Optional[TaskRun]:
+        from ..task_state import ACTIVE, PAUSED
+        if trigger != "manual" and any(r.execution_status in ACTIVE | PAUSED for r in self.store.runs(task.id)):
+            logger.info("skipping %s — previous run needs continuation", task.id)
+            return None
         if task.id in self._running_ids:  # skip-on-overlap
             logger.info("skipping %s — previous run still going", task.id)
             return None
@@ -106,7 +110,10 @@ class Scheduler:
         # advance the task (run_count/last_run) → save recomputes next_run.
         fresh = self.store.get(task.id)
         if fresh is not None:
-            fresh.run_count += 1
+            if run is not None and not run.accounted:
+                fresh.run_count += 1
+                run.accounted = True
+                self.store.add_run(run)
             fresh.last_run = run.started_at if run else None
             fresh.last_status = run.status if run else "error"
             self.store.save(fresh)

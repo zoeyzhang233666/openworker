@@ -141,6 +141,10 @@ class TaskStore:
     # -- runs -------------------------------------------------------------------
     def add_run(self, run: TaskRun) -> TaskRun:
         with self._lock:
+            previous = self.find_run(run.run_id)
+            if previous is not None:
+                run.notified_states = list(dict.fromkeys([*previous.notified_states, *run.notified_states]))
+                run.accounted = run.accounted or previous.accounted
             self._conn.execute(
                 "INSERT OR REPLACE INTO task_runs (run_id, task_id, started_at, data) VALUES (?, ?, ?, ?)",
                 (run.run_id, run.task_id, run.started_at, json.dumps(run.to_dict())),
@@ -154,6 +158,28 @@ class TaskStore:
                 "SELECT data FROM task_runs WHERE run_id=?", (run_id,)
             ).fetchone()
         return TaskRun.from_dict(json.loads(row["data"])) if row else None
+
+    def reconcile_running(self) -> None:
+        """Restart records progress but never replays an unfinished automation."""
+        with self._lock:
+            rows = self._conn.execute("SELECT data FROM task_runs").fetchall()
+            for row in rows:
+                run = TaskRun.from_dict(json.loads(row["data"]))
+                if run.execution_status in {"running", "queued", "waiting_user", "waiting_children"}:
+                    run.execution_status = run.status = "blocked"
+                    run.reason = "应用已重启，进度已保留；请打开原任务并明确继续。"
+                    run.resumable = True
+                    self.add_run(run)
+
+    def claim_notification(self, run_id: str, state: str) -> bool:
+        """Claim before send: an uncertain external response must not trigger a resend."""
+        with self._lock:
+            run = self.find_run(run_id)
+            if run is None or state in run.notified_states:
+                return False
+            run.notified_states.append(state)
+            self.add_run(run)
+            return True
 
     def task_for_run_session(self, session_id: str) -> Optional[ScheduledTask]:
         """The owning task of a run session ('__run__<run_id>'), or None. How standing

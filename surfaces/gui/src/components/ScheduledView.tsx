@@ -14,6 +14,7 @@ import { Icon } from "./Icon";
 import { PanelHead } from "./IntegrationsView";
 import { AutomationQuickstart } from "./AutomationQuickstart";
 import { useI18n } from "../i18n";
+import { statusLabel } from "../executionStatus";
 
 // Shared utility strings (the §28 page shell — mirrors IntegrationsView's constants).
 const CARD = "rounded-xl2 border border-line bg-panel";
@@ -195,7 +196,7 @@ export function ScheduledView({ onOpenRun, onRunNow, initialOpenId }: Props) {
                   next: fmt(task.next_run),
                   count: task.run_count,
                 })}
-                {task.last_status ? t(" · last {status}", { status: task.last_status }) : ""}
+                {task.last_status ? t(" · last {status}", { status: statusLabel(task.last_status, t) }) : ""}
               </div>
             </div>
           ))}
@@ -502,7 +503,8 @@ function TaskDetail({
                 {seenMark !== null && r.started_at > seenMark && (
                   <span className="run-new-pill" data-testid="run-new">{t("new")}</span>
                 )}
-                {fmt(r.started_at)} · <span className={"run-" + r.status}>{r.status}</span> · {r.trigger}
+                {fmt(r.started_at)} · <span className={"run-" + r.status}>{statusLabel(r.execution_status || r.status, t)}</span> · {r.trigger}
+                {r.reason && <div>{r.reason}</div>}
                 {r.artifacts.length > 0 && <span className="dim"> · {t("{count} file(s)", { count: r.artifacts.length })}</span>}
               </span>
               <span className="sched-run-go" aria-hidden>

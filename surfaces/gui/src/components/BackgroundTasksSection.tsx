@@ -12,6 +12,7 @@ import {
 import { useI18n, type MessageKey } from "../i18n";
 import { Icon } from "./Icon";
 import { Markdown } from "./Markdown";
+import { statusLabel } from "../executionStatus";
 
 interface Props {
   sessionId: string;
@@ -312,25 +313,6 @@ function taskTitle(
   if (task.profile_id === "explore") return t("Code exploration subagent");
   if (task.profile_id === "worker") return t("Worker subagent");
   return task.profile_title || t("Subagent");
-}
-
-function statusLabel(
-  status: BackgroundTaskStatus,
-  t: (key: MessageKey, vars?: Record<string, string | number>) => string,
-): string {
-  const labels: Record<BackgroundTaskStatus, MessageKey> = {
-    queued: "Queued",
-    running: "Running",
-    waiting_user: "Waiting for your response",
-    budget_paused: "Task budget paused",
-    truncated: "Output incomplete",
-    blocked: "Task blocked",
-    completed: "Completed",
-    failed: "Failed",
-    cancelled: "Stopped",
-    interrupted: "Interrupted",
-  };
-  return t(labels[status]);
 }
 
 function formatDuration(
