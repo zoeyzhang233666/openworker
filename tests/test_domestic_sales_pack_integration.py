@@ -48,7 +48,7 @@ def test_domestic_sales_pack_seeds_with_assets_and_matches_persona(tmp_path: Pat
         source_files = {
             path.relative_to(source): path.read_bytes()
             for path in source.rglob("*")
-            if path.is_file()
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix not in {".pyc", ".pyo"}
         }
         target_files = {
             path.relative_to(target): path.read_bytes()
@@ -66,8 +66,10 @@ def test_domestic_sales_pack_does_not_replace_default_agent(tmp_path: Path) -> N
     assert registry.is_enabled("domestic-sales-lobster") is False
 
 
-def test_domestic_sales_bundle_excludes_generated_python_bytecode() -> None:
-    source = BUNDLED_DIR / "chem-domestic-prospecting"
+def test_domestic_sales_bundle_excludes_generated_python_bytecode(tmp_path) -> None:
+    store = SkillStore(global_dir=tmp_path / "skills", settings_path=tmp_path / "settings.json")
+    seed_bundled_skills(store)
+    source = store.global_dir / "chem-domestic-prospecting"
     generated = [
         path
         for path in source.rglob("*")

@@ -40,7 +40,7 @@ def test_export_engagement_pack_seeds_and_matches_persona(tmp_path: Path) -> Non
         source_files = {
             p.relative_to(source): p.read_bytes()
             for p in source.rglob("*")
-            if p.is_file()
+            if p.is_file() and "__pycache__" not in p.parts and p.suffix not in {".pyc", ".pyo"}
         }
         target_files = {
             p.relative_to(target): p.read_bytes()
@@ -57,11 +57,13 @@ def test_export_engagement_not_default_agent(tmp_path: Path) -> None:
     assert registry.is_enabled("export-engagement-lobster") is False
 
 
-def test_export_engagement_bundle_excludes_bytecode() -> None:
+def test_export_engagement_bundle_excludes_bytecode(tmp_path) -> None:
+    store = SkillStore(global_dir=tmp_path / "skills", settings_path=tmp_path / "settings.json")
+    seed_bundled_skills(store)
     for name in ("chem-sales-engagement", "chem-sales-quality-check"):
         generated = [
             p
-            for p in (BUNDLED_DIR / name).rglob("*")
+            for p in (store.global_dir / name).rglob("*")
             if p.name == "__pycache__" or p.suffix == ".pyc"
         ]
         assert generated == []

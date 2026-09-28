@@ -13,6 +13,7 @@ from typing import Any
 
 from ..skills.base import _parse_skill
 from ..skills.store import SkillStore, _ensure_frontmatter_source, validate_name
+from ..skills.tree import ignore_skill_cache
 from .loading import consent_summary
 from .manifest import ManifestError, load_manifest_file
 from .package_scan import PackageScan, scan_package_dir, unwrap_package_root
@@ -46,7 +47,7 @@ def _install_skill_tree(
     store.global_dir.mkdir(parents=True, exist_ok=True)
     if exists:
         shutil.rmtree(dest)
-    shutil.copytree(src, dest)
+    shutil.copytree(src, dest, ignore=ignore_skill_cache)
     _ensure_frontmatter_source(dest / "SKILL.md", "uploaded")
     return {"name": name, "action": "installed", "path": str(dest)}
 

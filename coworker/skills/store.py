@@ -28,6 +28,7 @@ import aisuite as ai
 
 from ..secrets import state_dir
 from .base import Skill, _parse_skill
+from .tree import is_skill_cache
 
 _MAX_NAME = 64
 GLOBAL_SCOPE = "global"
@@ -357,6 +358,7 @@ class SkillStore:
             and "__MACOSX" not in Path(n).parts
             and Path(n).name != ".DS_Store"
             and not Path(n).name.startswith("._")
+            and not is_skill_cache(Path(n))
         ]
         for entry in names:
             p = Path(entry)

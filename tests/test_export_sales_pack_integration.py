@@ -48,7 +48,7 @@ def test_export_sales_pack_seeds_with_assets_and_matches_persona(tmp_path: Path)
         source_files = {
             path.relative_to(source): path.read_bytes()
             for path in source.rglob("*")
-            if path.is_file()
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix not in {".pyc", ".pyo"}
         }
         target_files = {
             path.relative_to(target): path.read_bytes()
@@ -69,9 +69,11 @@ def test_export_sales_pack_does_not_replace_default_agent(tmp_path: Path) -> Non
     assert registry.is_enabled("export-sales-lobster") is False
 
 
-def test_export_sales_bundle_excludes_generated_python_bytecode() -> None:
+def test_export_sales_bundle_excludes_generated_python_bytecode(tmp_path) -> None:
+    store = SkillStore(global_dir=tmp_path / "skills", settings_path=tmp_path / "settings.json")
+    seed_bundled_skills(store)
     for name in EXPECTED_SKILLS:
-        source = BUNDLED_DIR / name
+        source = store.global_dir / name
         generated = [
             path
             for path in source.rglob("*")

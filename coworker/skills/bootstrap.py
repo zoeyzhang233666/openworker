@@ -8,6 +8,7 @@ from pathlib import Path
 from ..runtime_paths import bundled_skills_dir
 from .base import _parse_skill
 from .store import SkillStore, validate_name
+from .tree import ignore_skill_cache
 
 # Mutable so tests can monkeypatch; defaults to source tree or PyInstaller datas.
 BUNDLED_DIR = bundled_skills_dir()
@@ -72,7 +73,7 @@ def seed_bundled_skills(skill_store: SkillStore | None = None) -> list[str]:
         target = store.global_dir / name
         if (target / "SKILL.md").is_file():
             continue
-        shutil.copytree(skill_dir, target)
+        shutil.copytree(skill_dir, target, ignore=ignore_skill_cache)
         installed.append(name)
     return installed
 
@@ -195,7 +196,7 @@ def sync_managed_lexicon(skill_store: SkillStore | None = None) -> list[str]:
         if needs_sync:
             if installed_managed.exists():
                 shutil.rmtree(installed_managed)
-            shutil.copytree(bundled_managed, installed_managed)
+            shutil.copytree(bundled_managed, installed_managed, ignore=ignore_skill_cache)
             updated.append(name)
 
         if user_before is not None:
