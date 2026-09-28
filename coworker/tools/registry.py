@@ -73,11 +73,12 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def schemas(self) -> list[dict[str, Any]]:
-        return [spec.schema for spec in self._tools.values()]
+        # MCP may attach from the event loop while a tool worker reads the catalog.
+        return [spec.schema for spec in list(self._tools.values())]
 
     def descriptors(self) -> list[ToolDescriptor]:
         out: list[ToolDescriptor] = []
-        for spec in self._tools.values():
+        for spec in list(self._tools.values()):
             metadata = spec.metadata
             raw_capabilities = getattr(metadata, "capabilities", ()) or ()
             out.append(

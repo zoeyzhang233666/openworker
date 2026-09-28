@@ -130,6 +130,7 @@ from ..skills import (
 )
 
 _SCOPES = {s.value for s in Scope}
+MCP_STARTUP_GRACE_SECONDS = 0.25
 
 logger = logging.getLogger("coworker.manager")
 
@@ -225,6 +226,7 @@ class SessionManager:
         # feeds list_mcp's status so the GUI can show "authorizing…" and failures.
         self._mcp_authorizing: set[str] = set()
         self._mcp_errors: dict[str, str] = {}
+        self._mcp_preparations: dict[tuple[str, str], asyncio.Task] = {}
         self.gateway: Optional[Gateway] = None
         self._data_base = base
         self.channel_media = ChannelMediaManager(base / "channel-media")
@@ -1416,38 +1418,52 @@ class SessionManager:
     async def prepare_mcp_tools(
         self, session_id: str, *, workspace: Optional[str] = None, agent: str = "code"
     ) -> list[Any]:
-        """Connect enabled MCP servers (global + workspace) and return their tool callables.
+        """Return fast MCP connections; optional slow services never block a chat.
 
-        Called from the async WS handler before `get_engine`. When an engine already
-        exists but is missing tools for an enabled server, those tools are connected
-        and registered onto the live registry (D-189). Servers that fail to connect
-        are skipped after recording ``_mcp_errors``.
+        Pending connections attach to this session's live registry when ready. The
+        same path serves desktop, channels and scheduled work. No business tool or
+        model request is executed by this background preparation.
         """
+        ws = self.engine_workspace(session_id, workspace=workspace, agent=agent)
+        tasks = []
+        for server in self._session_mcp_servers(session_id, ws, agent):
+            if self._engine_has_mcp_prefix(session_id, server.name):
+                continue
+            key = (session_id, server.name)
+            task = self._mcp_preparations.get(key)
+            if task is None:
+                task = asyncio.create_task(self._prepare_session_mcp(server, session_id, ws, agent))
+                self._mcp_preparations[key] = task
+
+                def finished(done, key=key):
+                    if self._mcp_preparations.get(key) is done:
+                        self._mcp_preparations.pop(key, None)
+                    if not done.cancelled():
+                        done.exception()
+
+                task.add_done_callback(finished)
+            tasks.append(task)
+        if not tasks:
+            return []
+        done, _ = await asyncio.wait(tasks, timeout=MCP_STARTUP_GRACE_SECONDS)
+        return [fn for task in tasks if task in done and not task.cancelled() for fn in task.result()]
+
+    def _session_mcp_servers(self, session_id: str, workspace: Optional[str], agent: str):
+        """Apply the same authorization before connection and before late attachment."""
         from ..connectors.descriptors import get_descriptor
         from ..connectors.tool_defs import (
-            approval_for_tool,
             mcp_tool_defs,
             tool_enabled,
         )
-
         from ..mcp import oauth as mcp_oauth
 
-        engine = self._engines.get(session_id)
-        ws = self.engine_workspace(session_id, workspace=workspace, agent=agent)
-        loop = asyncio.get_running_loop()
-        effective: Optional[set[str]] = None  # computed lazily, once
-        out: list[Any] = []
+        effective: Optional[set[str]] = None
         for server in load_mcp_servers(
-            ws,
+            workspace,
             secrets=self.secrets,
-            workspace_trusted=self._mcp_workspace_trusted(ws),
+            workspace_trusted=self._mcp_workspace_trusted(workspace),
         ):
             if not server.enabled:
-                continue
-            if engine is not None and self._engine_has_mcp_prefix(
-                session_id, server.name
-            ):
-                # Already attached on this session's engine — skip reconnect.
                 continue
             if server.auth == "oauth" and not mcp_oauth.has_tokens(
                 server.name, self.secrets
@@ -1475,48 +1491,53 @@ class SessionManager:
                     for t in mcp_tool_defs(server.name)
                     if tool_enabled(self.secrets, server.name, t.name)
                 ]
-            try:
-                assert_mcp_secrets_resolved(server)
-                conn = await self.mcp.ensure(server)
-            except Exception as exc:
-                if mcp_oauth.is_auth_required(exc):
-                    # Stored tokens no longer refresh (vendor rotated/expired
-                    # them) — the non-interactive connect refused to open a
-                    # browser. Record it so the MCP page shows WHY the server is
-                    # dark; the session just runs without its tools.
-                    self._mcp_errors[server.name] = (
-                        "sign-in required — reconnect this server from its page"
-                    )
-                    logger.info(
-                        "mcp %s needs re-auth; skipped for this session", server.name
-                    )
-                else:
-                    self._mcp_errors[server.name] = self._mcp_error_message(exc)
-                    logger.warning(
-                        "mcp %s connect failed; skipped for this session: %s",
-                        server.name,
-                        self._mcp_errors[server.name],
-                    )
-                continue
-            self._mcp_errors.pop(server.name, None)
+            yield server
+
+    async def _prepare_session_mcp(self, server, session_id, workspace, agent):
+        from ..connectors.descriptors import get_descriptor
+        from ..connectors.tool_defs import approval_for_tool
+        from ..mcp import oauth as mcp_oauth
+
+        try:
+            assert_mcp_secrets_resolved(server)
+            conn = await self.mcp.ensure(server)
+            # Settings/trust may have changed while connecting. A late result is
+            # never permission to re-enable a disabled or reconfigured service.
+            if server not in list(self._session_mcp_servers(session_id, workspace, agent)):
+                return []
             callables = build_callables(
-                server,
-                conn.tools,
-                lambda tool, args, name=server.name: self.mcp.call(name, tool, args),
-                loop,
+                server, conn.tools,
+                lambda tool, args: self.mcp.call(server.name, tool, args),
+                asyncio.get_running_loop(),
             )
-            if backed:
-                # Per-tool approval from the pinned read/write classification
-                # (server-level requires_approval is off for backed servers);
-                # anything unclassified stays approval-gated — fail closed.
+            descriptor = get_descriptor(server.name)
+            if descriptor is not None and descriptor.mcp_url:
                 for fn in callables:
                     fn.__aisuite_tool_metadata__.requires_approval = approval_for_tool(
                         fn.__aisuite_tool_metadata__.name, default=True
                     )
+            # Look up AFTER await: a chat may have started during the connection.
+            engine = self._engines.get(session_id)
             if engine is not None and callables:
                 engine.registry.register_all(callables)
-            out.extend(callables)
-        return out
+            self._mcp_errors.pop(server.name, None)
+            return callables
+        except Exception as exc:
+            self._mcp_errors[server.name] = (
+                "sign-in required — reconnect this server from its page"
+                if mcp_oauth.is_auth_required(exc) else self._mcp_error_message(exc)
+            )
+            logger.warning("mcp %s connect failed; chat remains available: %s",
+                           server.name, self._mcp_errors[server.name])
+            return []
+
+    async def _cancel_mcp_preparations(self) -> None:
+        pending = list(self._mcp_preparations.values())
+        self._mcp_preparations.clear()
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     def configured_mcp_markers(self, workspace: Optional[str] = None) -> list[str]:
         """Configured-but-not-connected MCP server markers for dry-run readiness."""
@@ -1562,6 +1583,8 @@ class SessionManager:
                 status = "disabled"
             elif name in self._mcp_authorizing:
                 status = "authorizing"
+            elif (pending := self.mcp._connecting.get(name)) is not None and not pending.done():
+                status = "connecting"
             elif is_oauth and not mcp_oauth.has_tokens(name, self.secrets):
                 status = "needs_auth"
             elif unresolved:
@@ -1723,6 +1746,7 @@ class SessionManager:
 
     async def reload_mcp(self) -> dict[str, Any]:
         """Drop live MCP connections so new sessions reconnect with fresh config."""
+        await self._cancel_mcp_preparations()
         await self.mcp.aclose()
         return {"ok": True}
 
@@ -4006,6 +4030,7 @@ class SessionManager:
         self.bind_background_task_event_loop(None)
         self._background_task_unsubscribe()
         self.background_tasks.close(wait=False)
+        await self._cancel_mcp_preparations()
         await self.mcp.aclose()
         self.trace_store.close()
         self.audit_store.close()

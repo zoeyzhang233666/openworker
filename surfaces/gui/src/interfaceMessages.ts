@@ -961,6 +961,7 @@ export const interfaceMessagesZh = {
   "reload now": "立即重新加载",
   "No MCP servers configured.": "尚未配置 MCP 服务器。",
   "configured": "已配置",
+  "connecting": "正在连接",
   "misconfigured": "配置不完整",
 
   "Add a server": "添加服务器",

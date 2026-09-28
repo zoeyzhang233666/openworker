@@ -254,9 +254,9 @@ export function McpTab() {
     refresh();
   }, []);
 
-  // While a browser sign-in is in flight, poll so the row flips to connected (or
+  // While sign-in or a background connection is in flight, poll for connected (or
   // surfaces the error) without the user having to touch anything.
-  const authorizing = servers.some((s) => s.status === "authorizing");
+  const authorizing = servers.some((s) => s.status === "authorizing" || s.status === "connecting");
   useEffect(() => {
     if (!authorizing) return;
     const t = window.setInterval(refresh, 2000);

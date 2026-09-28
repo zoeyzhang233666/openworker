@@ -296,7 +296,7 @@ export interface McpServer {
   enabled: boolean;
   transport: string;
   requires_approval: boolean;
-  // "connected" | "configured" | "misconfigured" | "disabled" |
+  // "connected" | "connecting" | "configured" | "misconfigured" | "disabled" |
   // auth:"oauth" → "needs_auth" | "authorizing"
   status: string;
   auth?: "oauth" | null;
