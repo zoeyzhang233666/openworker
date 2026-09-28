@@ -1,0 +1,108 @@
+{
+  "date": "2026-09-28",
+  "source_commit": "36e30db",
+  "authorization": {
+    "model": "deepseek-v4.1-flash",
+    "max_requests_including_retries": 3,
+    "output_limit_per_request": 256
+  },
+  "environment": {
+    "isolated": true,
+    "endpoint": "https://opencode.ai/zen/go/v1",
+    "live_channels": false,
+    "scheduler_started": false,
+    "external_tool_execution": false,
+    "existing_server_restarted": false
+  },
+  "requests": [
+    {
+      "number": 1,
+      "phase": "minimal",
+      "model": "deepseek-v4.1-flash",
+      "output_limit": 256,
+      "stream": true,
+      "tool_count": 0,
+      "body_bytes": 110,
+      "parameter_names": [
+        "max_tokens",
+        "messages",
+        "model",
+        "stream"
+      ],
+      "status": 400,
+      "headers_s": 2.469,
+      "first_body_s": 2.469,
+      "bytes": 195,
+      "body_complete_s": 2.469
+    },
+    {
+      "number": 2,
+      "phase": "engine",
+      "model": "deepseek-v4.1-flash",
+      "output_limit": 256,
+      "stream": true,
+      "tool_count": 8,
+      "body_bytes": 42632,
+      "parameter_names": [
+        "max_tokens",
+        "messages",
+        "model",
+        "stream",
+        "stream_options",
+        "tools"
+      ],
+      "status": 200,
+      "headers_s": 3.469,
+      "first_body_s": 3.469,
+      "bytes": 43819
+    },
+    {
+      "number": 3,
+      "phase": "minimal",
+      "model": "deepseek-v4.1-flash",
+      "output_limit": 256,
+      "stream": true,
+      "tool_count": 0,
+      "body_bytes": 110,
+      "parameter_names": [
+        "max_tokens",
+        "messages",
+        "model",
+        "stream"
+      ],
+      "status": 400,
+      "headers_s": 0.906,
+      "first_body_s": 0.906,
+      "bytes": 195,
+      "error_body": "{\"type\": \"MissingSessionID\", \"code\": null, \"param\": null, \"message\": \"Request is missing x-opencode-session and cannot be routed efficiently. Please see https://opencode.ai/docs/go/#where-can-i-use-it\"}",
+      "body_complete_s": 0.906
+    }
+  ],
+  "successful_engine_run": {
+    "mcp_prepare_s": 0.266,
+    "first_text_s": 8.672,
+    "elapsed_s": 8.75,
+    "usage": {
+      "model": "deepseek-v4.1-flash",
+      "input": 10420,
+      "output": 211,
+      "cache_read": 0,
+      "cache_write": 0
+    },
+    "mcp_still_pending": true
+  },
+  "successful_engine_run_notes": {
+    "reply_received": true,
+    "turn_end_received": true,
+    "tool_started": false,
+    "stream_mode": "compat_buffered"
+  },
+  "excluded_local_harness_runs": 2,
+  "interpretation": [
+    "The isolated real engine answered while the simulated MCP connection remained pending.",
+    "Bare SDK requests omitted the required x-opencode-session header; request 3 confirmed MissingSessionID. These 400 responses are probe limitations, not a new ChemClaw regression.",
+    "Two local harness runs were rejected before network transmission because internal prompt framing exceeded the harness greeting guard. They are excluded from live model results.",
+    "This single successful real run is not a performance benchmark or a guarantee that other provider/transport faults are resolved.",
+    "The existing development server remains on its pre-fix code until separately authorized restart."
+  ]
+}
