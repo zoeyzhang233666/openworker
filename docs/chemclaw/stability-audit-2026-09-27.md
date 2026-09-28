@@ -9,6 +9,7 @@
 | S03 | manager 子引擎没有绑定 checkpoint_sink/compaction_settings/恢复压缩状态 | 主/子复用保存恢复配置 |
 | S04 | research 强制写报告，shared_workspace 继承父 AUTO；未知工具默认 read | 只读能力执行约束及明确工具分类 |
 | S05 | 后台任务只有进程级 8 工作者，没有主任务共享预算 | 任务域预算与五路限制 |
+| S06 | Windows grep 把 `D:` 解析为文件名 `D`，单文件输出缺路径 | 已适配上游 NUL 分隔，UTF-8 解码；搜索回归 9 passed |
 
 ## 功能验收目录
 
@@ -28,9 +29,13 @@
 需要对照整个相关模块，不以 cc2b921 之后 18 个提交代替完整差异。
 沙箱仅评估 Windows/依赖/目录/命令/凭据/渠道/性能/打包，不安装或接入。
 
+| 候选（固定快照 5870585） | 本地影响与处理 | 验收与回退 |
+| --- | --- | --- |
+| `coworker/sandbox/runner/tools_grep.py` 的 `--null` / `--with-filename` | 同样存在 Windows 盘符误解析；仅适配到本地 `tools/search.py`，保留目录权限与工具接口，另指定 UTF-8 | 9 项搜索回归通过；独立提交可回退，无数据迁移 |
+
 ## 测试结果与限制
 
-第一步 34 passed；第二步组合 78 passed、GUI 11 passed、TypeScript 通过（包含重叠用例，不相加作为总数）。205 个 Python 测试文件的离线逐文件回归进行中，外部网络阻断，回环服务可用；尚未结案。上一轮进程中断后保留了 164 个文件的结果：1709 passed、63 failure、1 collection error、4 skipped；其余须补跑，失败须逐项分类处理，不能当作通过。
+第一步 34 passed；第二步组合 78 passed、GUI 11 passed、TypeScript 通过；第三步定时任务组合 40 passed、新增恢复 4 passed、GUI 12 passed（包含重叠用例，不相加作为总数）。全仓初轮 205 个 Python 测试文件已补齐：2052 passed、74 failure、1 collection error、4 skipped。审阅过的测试在 Python 网络审计钩子下执行，外部连接阻断、回环服务可用；这不是任意子进程安全沙箱。结果按文件保存在 `.tmp-stability-offline/results.json` 及日志/XML。失败正逐项分类处理，尚未结案；初轮部分文件运行早于定时任务修复，不能作为最终候选版结果。
 
 新增复现与处理：子引擎在新的事件循环中继续时，旧 asyncio.Event 仍绑定前一循环，导致“未返回完整终态”。现为每次运行创建独立停止信号，并让旧流绑定旧信号；真实小助手 follow-up 回归通过。输出分页原实现可能截去长块开头又越过整块，现使用 cursor+offset 无损回读。快结束子任务提前通知问题通过批次封口和持久化去重处理。
 

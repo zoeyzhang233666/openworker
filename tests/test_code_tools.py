@@ -13,7 +13,7 @@ import pytest
 
 from coworker.tools.files import file_tools
 from coworker.tools.git import git_tools
-from coworker.tools.search import _py_grep, search_tools
+from coworker.tools.search import _parse_rg, _py_grep, search_tools
 from coworker.web.fetch import _html_to_text, make_web_fetch_tool
 
 
@@ -64,6 +64,34 @@ def test_ripgrep_uses_the_same_ignored_dirs_as_the_python_fallback(tmp_path, mon
 def test_grep_rejects_path_escape(tmp_path):
     grep = search_tools(str(tmp_path))[0]
     assert "escapes" in grep(pattern="x", path="../..")["error"]
+
+
+def test_rg_parser_preserves_drive_colons_and_text(tmp_path):
+    # Synthetic Windows paths also exercise the protocol on non-Windows CI.
+    path = r"D:\资料\价格.py"
+    result = _parse_rg(f"{path}\0" + "12:price: 你好\n", tmp_path, 100)
+    assert result["matches"] == [{"file": path, "line": 12, "text": "price: 你好"}]
+
+
+def test_rg_parser_preserves_colon_filenames_and_limits(tmp_path):
+    path = tmp_path / "part:one.py"
+    result = _parse_rg(f"{path}\0" + "3:a:b\n" + f"{path}\0" + "4:c\n", tmp_path, 1)
+    assert result == {"count": 1, "matches": [{"file": "part:one.py", "line": 3, "text": "a:b"}]}
+
+
+def test_ripgrep_single_file_and_chinese_path(tmp_path):
+    import shutil
+
+    if not shutil.which("rg"):
+        pytest.skip("ripgrep executable unavailable; parser is covered separately")
+    folder = tmp_path / "中文资料"
+    folder.mkdir()
+    source = folder / "价格.txt"
+    source.write_text("标题\nprice: 你好\n", encoding="utf-8")
+    result = search_tools(str(tmp_path))[0](pattern="price", path=str(source))
+    assert result == {"engine": "ripgrep", "count": 1, "matches": [
+        {"file": str(source.relative_to(tmp_path)), "line": 2, "text": "price: 你好"},
+    ]}
 
 
 def test_py_grep_fallback_skips_ignored_dirs(tmp_path):

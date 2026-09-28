@@ -102,6 +102,9 @@ def search_tools(workspace: str) -> list:
                 "--line-number",
                 "--no-heading",
                 "--color=never",
+                # Keep paths (including Windows drive letters) separate from line:text.
+                "--with-filename",
+                "--null",
                 "--max-count",
                 str(n),
                 "-e",
@@ -116,7 +119,10 @@ def search_tools(workspace: str) -> list:
                 cmd += ["--glob", f"!**/{ignored}/**"]
             cmd.append(str(base))
             try:
-                out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                out = subprocess.run(
+                    cmd, capture_output=True, text=True, encoding="utf-8",
+                    errors="replace", timeout=30,
+                )
             except Exception as exc:
                 return {"error": f"grep failed: {exc}"}
             if out.returncode not in (0, 1):  # 1 = no matches
@@ -148,9 +154,11 @@ def _rel(path: str, root: Path) -> str:
 def _parse_rg(stdout: str, root: Path, n: int) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     for line in stdout.splitlines():
-        parts = line.split(":", 2)
-        if len(parts) == 3:
-            f, ln, txt = parts
+        # Adapted from upstream 5870585 tools_grep: a drive letter contains ':'.
+        # rg --null separates the filename before parsing line and text.
+        f, separator, rest = line.partition("\0")
+        if separator:
+            ln, _, txt = rest.partition(":")
             matches.append(
                 {
                     "file": _rel(f, root),
