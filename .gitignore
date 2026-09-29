@@ -16,3 +16,6 @@ dist/
 packaging/builtin_mcp.secrets.json
 packaging/builtin_mcp.bundle
 coworker/mcp/builtin_mcp.bundle
+
+# Colleague-facing MCP config carries a live bearer token — never committed
+packaging/chemclaw-mcp-config-*.json

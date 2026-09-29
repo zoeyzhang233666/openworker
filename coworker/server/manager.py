@@ -4804,7 +4804,7 @@ class SessionManager:
                             else {},
                             "preview": data.get("preview"),
                         }
-                        for key in ("symbol", "series_name", "aliases"):
+                        for key in ("symbol", "series_name", "aliases", "chart_id"):
                             if key in data:
                                 row[key] = data[key]
                         chart_tool_results.append(row)

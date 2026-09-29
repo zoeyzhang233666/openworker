@@ -74,13 +74,15 @@ class MarketSeriesAggregator:
                 source_refs=refs,
             )
         groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        mixed_units = len({row["unit"] for row in normalized}) > 1
         for row in normalized:
-            groups[f"{row['region']}｜{row['spec']}"].append(row)
+            key = f"{row['region']}｜{row['spec']}"
+            groups[key + (f"｜{row['unit']}" if mixed_units else "")].append(row)
         latest: list[dict[str, Any]] = []
         changes: list[dict[str, Any]] = []
         extremes: list[dict[str, Any]] = []
         chart_labels: list[str] = []
-        chart_values: list[float] = []
+        chart_groups: list[tuple[str, list[dict[str, Any]]]] = []
         all_dates = [row["date"] for row in normalized if row["date"]]
         for key, series in list(sorted(groups.items()))[:max_series]:
             series.sort(key=lambda item: item["date"] or "")
@@ -92,17 +94,21 @@ class MarketSeriesAggregator:
             changes.append({"series": key, "change_pct": change, "from_date": first["date"], "to_date": last["date"]})
             values = [item["price"] for item in series]
             extremes.append({"series": key, "low": min(values), "high": max(values), "unit": last["unit"]})
-            if not chart_labels:
-                chart_labels = [item["date"] or str(index + 1) for index, item in enumerate(series)]
-                chart_values = [item["price"] for item in series]
+            if last["unit"] == latest[0]["unit"]:
+                chart_groups.append((key, series))
         chart = None
-        if chart_values and latest:
+        if chart_groups and latest:
+            chart_labels = sorted({item["date"] for _, series in chart_groups for item in series if item["date"]})
+            chart_series = []
+            for key, series in chart_groups:
+                values = {item["date"]: item["price"] for item in series if item["date"]}
+                chart_series.append({"name": key, "values": [values.get(label) for label in chart_labels]})
             chart = {
                 "version": 1,
                 "type": "line",
                 "title": product_name or latest[0]["series"],
                 "labels": chart_labels,
-                "series": [{"name": latest[0]["series"], "values": chart_values}],
+                "series": chart_series,
                 "unit": latest[0].get("unit") or "元/吨",
             }
         return MarketSeriesSummary(
@@ -115,6 +121,7 @@ class MarketSeriesAggregator:
             extremes=tuple(extremes),
             chart_spec=chart,
             source_refs=refs,
+            data_gaps=("图中仅展示相同单位的序列，其他单位请分图查看",) if mixed_units else (),
         )
 
     @staticmethod

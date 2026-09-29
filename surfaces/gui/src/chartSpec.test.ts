@@ -10,6 +10,19 @@ const validLine = {
   series: [{ name: "陕西", values: [6100, 6035, null] }],
 };
 
+describe("exact chart result references", () => {
+  it("resolves spot by exact call identity and rejects another result or tool", () => {
+    const source = JSON.stringify({ from_tool: "mcp__prices", chart_id: "spot-2" });
+    const tools = [{ name: "mcp__prices", preview: JSON.stringify({ chart_id: "spot-1", chart_spec: validLine }) }];
+    expect(resolveChartSource(source, tools).ok).toBe(false);
+    tools.push({ name: "mcp__prices", preview: JSON.stringify({ chart_id: "spot-2", chart_spec: validLine }) });
+    const result = resolveChartSource(source, tools);
+    expect(result.ok && result.spec.series[0]?.values).toEqual([6100, 6035, null]);
+    expect(resolveChartSource(source, tools.map(t => ({ ...t, name: "different" }))).ok).toBe(false);
+    expect(resolveChartSource(source, [{ name: "mcp__prices", preview: JSON.stringify({ chart_id: "spot-2", error: "unavailable", chart_spec: validLine }) }]).ok).toBe(false);
+  });
+});
+
 describe("parseChartSpec", () => {
   it("accepts a valid line chart", () => {
     const result = parseChartSpec(JSON.stringify(validLine));

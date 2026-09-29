@@ -1,6 +1,22 @@
 # 回答模式与交付整改实施计划
 
-状态：**第 1 项、第 2 项源码与离线验收已完成，真实性能/质量待验收**。规格：[诊断与设计](../specs/2026-09-29-chemclaw-answer-modes-artifacts-design.md)。本轮一个独立小任务：快速/深度执行模式；不调用真实模型或更换正在运行的程序。
+## 本轮：证据体积与原生图表（2026-09-29，已授权；fast/deep 共用）
+
+1. 只读核对 Alpha 派会话与 trace，核实累计 tokens、缓存及各段耗时；实查 OpenCode、Deep Agents、Aider 的相关源码。
+2. 中文 JSON 出站无损规范化；网页结果保留来源/相关摘录，完整正文可按需恢复。**快速与深度探索共用**出站有界视图（深度摘录预算更大），缩小证据体积而非增加压缩模型调用。MCP 适用性遵循用户问题，不将概览扩大成工商尽调。
+3. 连续数据用现有 ChartSpec/ChartBlock；完整序列走工具结果，模型只需短引用。补齐现货及通用 chart_spec 的直播/历史/HTML 同源引用，保留 OHLC 旧协议兼容。
+4. 离线测消息语义/体积、数字来源与恢复、连续数据和单点、前端解析及真实组件、权限/快速恢复；更新记录并小提交。真实模型调用、服务重启和安装包不在本轮范围。
+
+状态：**本轮第 1–4 项源码与离线验收已完成**；真实 tokens/时延降幅仍待重启后实测，离线体积估算不等于账单 tokens。规格：[诊断与设计](../specs/2026-09-29-chemclaw-answer-modes-artifacts-design.md)。
+
+### 本轮源码实施与离线验收（2026-09-29）
+
+- 新增 `coworker/answer_context.py`：`unicode_json`、`bounded_evidence_view`（fast/deep 不同摘录上限）、`chart_result`；历史消息仍保存完整工具结果，仅 `_outbound_messages` 缩减。
+- `TurnEngine`：任意研究深度在出站侧应用有界证据；成功工具结果可附 `chart_id`/`chart_spec`；GUI/HTML 短引用按 `chart_id` 回查完整序列。
+- 快速合同区分「禁止图片文件/绘图脚本」与「附原生前端 chart」；深度 guidance 提示按 `full_result_path`/`chart_ref` 按需取用，禁止手抄数组。
+- 企微 Channel guidance 补回 D-204「查价要快 / 禁止声称无法调用 MCP」。
+- 离线：`test_answer_context` **9 passed**；`fast_answer_path`+企微 guidance+`market_series` **16 passed**；`research_depth`+`runtime_resume`+权限 **44 passed**；GUI chartSpec/ChartBlock/Transcript **136 passed**。未调用真实模型、未重启服务、未构建安装包。
+- 计划大项 3（任务内查询/URL 复用停止）、4（稳定 HTML 默认交付）、5（真实对照）仍待独立任务。
 
 本次完成：阅读当前状态/批准设计/决策/领域及稳定性和速度计划；检查执行、搜索、重复提醒、图表和报告交付源码；读取四个公开 GitHub 项目的相关资料；记录证据与未确认项。保留既有 `.gitignore` 和未跟踪文件。
 

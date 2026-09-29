@@ -54,6 +54,13 @@ const TURN: Item[] = [
 ];
 
 describe("yahooChartToolsFromItems (D-159)", () => {
+  it("keeps generic spot chart data from live sidecars and restored tool content", () => {
+    const preview = JSON.stringify({ chart_id: "spot", chart_spec: { type: "line" } });
+    const live = yahooChartToolsFromItems([{ kind: "tool", id: "s", name: "mcp__prices", args: {}, status: "ok", chartPreview: preview }]);
+    const restored = yahooChartToolsFromItems([{ kind: "tool", id: "s", name: "mcp__prices", args: {}, status: "ok", preview }]);
+    expect(live).toEqual(restored);
+    expect(live[0]?.preview).toBe(preview);
+  });
   it("prefers chartPreview over a truncated live preview", () => {
     const sidecar = JSON.stringify({
       status: "ok",

@@ -312,7 +312,7 @@ def collect_chart_tool_results_from_messages(
             continue
         tc_id = str(msg.get("tool_call_id") or "")
         name, args = pending.get(tc_id, ("", {}))
-        if name not in OHLC_CHART_TOOLS:
+        if not name:
             continue
         content = msg.get("content")
         if isinstance(content, str):
@@ -330,6 +330,10 @@ def collect_chart_tool_results_from_messages(
         if not isinstance(spec, dict):
             continue
         row: dict[str, Any] = {"name": name, "args": args, "chart_spec": spec}
+        if payload.get("error") or payload.get("status", "ok") not in ("ok", "partial", "stale_cache"):
+            continue
+        if isinstance(payload.get("chart_id"), str):
+            row["chart_id"] = payload["chart_id"]
         symbol = payload.get("symbol")
         if isinstance(symbol, str) and symbol.strip():
             row["symbol"] = symbol.strip()
@@ -358,7 +362,8 @@ def merge_chart_tool_results(
             spec = row.get("chart_spec") if isinstance(row.get("chart_spec"), dict) else {}
             args = row.get("args") if isinstance(row.get("args"), dict) else {}
             sym = str(
-                row.get("symbol")
+                row.get("chart_id")
+                or row.get("symbol")
                 or args.get("symbol")
                 or spec.get("symbol")
                 or spec.get("title")
@@ -384,6 +389,11 @@ def bake_short_ref(
     name_hint = str(raw.get("name") or "").strip()
     results = list(chart_tool_results or [])
     tool_rows = _rows_for_tool(results, tool_name)
+    if isinstance(raw.get("chart_id"), str):
+        for row in reversed(tool_rows):
+            if row.get("chart_id") == raw["chart_id"]:
+                return _merge_baked_spec(raw, row["chart_spec"])
+        return raw
     for row in reversed(tool_rows):
         if symbol and not _row_matches_symbol(row, symbol):
             continue

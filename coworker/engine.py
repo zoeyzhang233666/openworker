@@ -2025,6 +2025,9 @@ class TurnEngine:
         if isinstance(result, dict) and "_display" in result:
             display = result.get("_display") or None
             result = {k: v for k, v in result.items() if k != "_display"}
+        if status == "ok":
+            from .answer_context import chart_result
+            result = chart_result(tool_call.name, tool_call.id, tool_call.arguments or {}, result)
         message = _tool_result_message(tool_call, result)
         if display:
             message["_display"] = display
@@ -2468,6 +2471,8 @@ class TurnEngine:
                     id_to_name[str(tid)] = str(fn["name"])
 
         cap_chars = 40_000
+        from .answer_context import bounded_evidence_view, unicode_json
+        depth = self._effective_research_depth()
         for i in range(len(out)):
             msg = out[i]
             if msg.get("role") != "tool":
@@ -2475,8 +2480,17 @@ class TurnEngine:
             content = msg.get("content")
             if not isinstance(content, str):
                 continue
+            # Both fast and deep: strip ASCII JSON bloat, bound web replay, and
+            # keep full chart series out of the model context (short-ref only).
+            normalized = bounded_evidence_view(
+                unicode_json(content),
+                tool_name=id_to_name.get(str(msg.get("tool_call_id") or ""), ""),
+                query=str(self._resume_plan_input()),
+                workspace=self.permissions.workspace_root,
+                depth=depth,
+            )
             clipped, _ = clip_tool_result(
-                content,
+                normalized,
                 workspace_root=self.permissions.workspace_root,
                 cap_chars=cap_chars,
                 tool_name=id_to_name.get(str(msg.get("tool_call_id") or "")),
@@ -2590,7 +2604,7 @@ def _assistant_message(turn: AssistantTurn, model: Optional[str] = None) -> dict
 
 
 def _tool_result_message(tool_call: ToolCall, result: Any) -> dict[str, Any]:
-    content = result if isinstance(result, str) else json.dumps(result, default=str)
+    content = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
     return {
         "role": "tool",
         "tool_call_id": tool_call.id,
@@ -2620,6 +2634,8 @@ def chart_finished_sidecar(result: Any) -> dict[str, Any]:
     spec = result.get("chart_spec")
     if isinstance(spec, dict) and spec:
         extra["chart_spec"] = spec
+        if isinstance(result.get("chart_id"), str):
+            extra["chart_id"] = result["chart_id"]
     symbol = result.get("symbol")
     if isinstance(symbol, str) and symbol.strip():
         extra["symbol"] = symbol.strip()

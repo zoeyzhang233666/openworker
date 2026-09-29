@@ -27,3 +27,23 @@ def test_market_series_aggregator_does_not_leak_unparseable_large_payload() -> N
     assert summary.observations == 0
     assert summary.chart_spec is None
     assert summary.data_gaps
+
+
+def test_multiple_regions_align_without_filling_missing_quotes():
+    summary = MarketSeriesAggregator.summarize({"data": [
+        {"date": "2026-09-28", "price": 2000, "region": "山东", "unit": "元/吨"},
+        {"date": "2026-09-29", "price": 2100, "region": "山东", "unit": "元/吨"},
+        {"date": "2026-09-29", "price": 2050, "region": "华南", "unit": "元/吨"},
+    ]})
+    assert summary.chart_spec["labels"] == ["2026-09-28", "2026-09-29"]
+    assert {s["name"]: s["values"] for s in summary.chart_spec["series"]} == {
+        "华南｜现货": [None, 2050], "山东｜现货": [2000, 2100]}
+
+
+def test_different_units_are_never_joined_into_a_single_curve():
+    summary = MarketSeriesAggregator.summarize({"data": [
+        {"date": "2026-09-28", "price": 2, "unit": "元/公斤"},
+        {"date": "2026-09-29", "price": 2100, "unit": "元/吨"},
+    ]})
+    assert len(summary.latest) == 2 and summary.data_gaps
+    assert len(summary.chart_spec["series"]) == 1

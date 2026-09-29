@@ -22,7 +22,6 @@ import zoomPlugin from "chartjs-plugin-zoom";
 import {
   findLabelIndex,
   resolveChartSource,
-  isOhlcChartTool,
   type ChartOhlcBar,
   type ChartSpec,
   type ChartStage,
@@ -1192,7 +1191,7 @@ export function ChartBlock({
 
   // Stable signature so parent re-renders with a new array identity do not rebuild Chart.js.
   const toolsSig = (chartToolResults || [])
-    .filter((tr) => isOhlcChartTool(tr.name) && tr.preview)
+    .filter((tr) => tr.preview)
     .map((tr) => tr.preview!)
     .join("\0");
 

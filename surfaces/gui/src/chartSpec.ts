@@ -411,6 +411,22 @@ export function resolveChartSource(
     return { ok: false, error: "Chart spec must be a JSON object" };
   }
 
+  // Exact tool-call identity supports spot and other series without model-copied arrays.
+  if (typeof parsed.chart_id === "string" && typeof parsed.from_tool === "string") {
+    for (const tool of toolResults || []) {
+      if (tool.name !== parsed.from_tool || !tool.preview) continue;
+      try {
+        const payload = JSON.parse(tool.preview);
+        if (!isPlainObject(payload) || payload.chart_id !== parsed.chart_id) continue;
+        if (payload.error || (payload.status && !PLOT_OK_STATUS.has(String(payload.status)))) {
+          return { ok: false, error: "图表来源未成功返回数据" };
+        }
+        return parseChartSpec(JSON.stringify(payload.chart_spec));
+      } catch { /* A truncated ordinary preview is not a matching chart. */ }
+    }
+    return { ok: false, error: "本会话没有找到对应的完整图表数据" };
+  }
+
   if (isOhlcChartRef(parsed)) {
     const symbol = String(parsed.symbol).trim();
     const fromTool = String(parsed.from_tool).trim();

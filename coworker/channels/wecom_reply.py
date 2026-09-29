@@ -80,7 +80,9 @@ def _channel_guidance_body(platform: str) -> str:
         "你只需给短总结，勿用 send_file 发送 .md/.markdown。\n"
         "3. 纯文字问答（无图表、无报告）：只发文字，不要 send_file。\n"
         "4. 用户明确「气泡全文/不要链接」时，才把完整正文写进气泡；"
-        "明确索要 md 文件时才可 send_file 发送 .md。"
+        "明确索要 md 文件时才可 send_file 发送 .md。\n"
+        "5. 查价要快：已连接 MCP/结构化行情工具时立即查询，禁止让用户粘贴生意社等数据，"
+        "禁止声称「无法调用 MCP」。今天/现价用小 limit 短答；要走势图再拉序列。"
     )
 
 

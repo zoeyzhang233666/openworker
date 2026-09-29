@@ -184,7 +184,8 @@ export function latestTurnReasoning(items: TurnItem[]): string {
 /** OHLC previews from a turn — for ```chart short-ref resolve (D-136/D-152/D-159). */
 export function yahooChartToolsFromItems(items: Item[]): ChartToolResult[] {
   return items
-    .filter((it): it is ToolItem => it.kind === "tool" && isOhlcChartTool(it.name))
+    .filter((it): it is ToolItem => it.kind === "tool" && (
+      isOhlcChartTool(it.name) || !!it.chartPreview || !!it.preview?.includes('"chart_spec"')))
     .map((t) => ({
       name: t.name,
       preview: t.chartPreview || t.preview,

@@ -2134,6 +2134,7 @@ function WaitingForAgent({ label }: { label?: string }) {
 
 function ohlcChartPreviewFromEvent(d: {
   chart_spec?: unknown;
+  chart_id?: unknown;
   symbol?: unknown;
   name?: unknown;
   series_name?: unknown;
@@ -2154,6 +2155,7 @@ function ohlcChartPreviewFromEvent(d: {
     name: seriesName,
     aliases: d.aliases,
     chart_spec: d.chart_spec,
+    chart_id: d.chart_id,
     error: d.plot_error,
   });
 }

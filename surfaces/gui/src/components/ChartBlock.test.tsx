@@ -198,6 +198,18 @@ describe("ChartBlock", () => {
     expect(screen.queryByTestId("chart-error")).toBeNull();
   });
 
+  it("renders a spot reference when its live data arrives after the answer", async () => {
+    const source = JSON.stringify({ from_tool: "mcp__prices", chart_id: "spot-live" });
+    const { rerender } = render(<ChartBlock source={source} chartToolResults={[]} />);
+    const preview = JSON.stringify({ chart_id: "spot-live", chart_spec: {
+      version: 1, type: "line", title: "甲醇现货", unit: "元/吨", labels: ["2026-09-28", "2026-09-29"],
+      series: [{ name: "山东", values: [2000, 2020] }],
+    } });
+    rerender(<ChartBlock source={source} chartToolResults={[{ name: "mcp__prices", preview }]} />);
+    await waitFor(() => expect(ChartMock).toHaveBeenCalled());
+    expect(screen.queryByTestId("chart-error")).toBeNull();
+  });
+
   it("shows error when series length mismatches labels", async () => {
     const bad = JSON.stringify({
       version: 1,
