@@ -122,7 +122,7 @@
           ]
         },
         "grep": {
-          "fingerprint": "995a7661cd34c14e",
+          "fingerprint": "3ce756b8e968a74d",
           "param_keys": [
             "glob",
             "max_results",
@@ -131,7 +131,7 @@
           ]
         },
         "run_shell": {
-          "fingerprint": "d1bcfc7988bfcaa0",
+          "fingerprint": "f81c8e21a2b7b373",
           "param_keys": [
             "command",
             "description",
@@ -140,19 +140,19 @@
           ]
         },
         "shell_task_output": {
-          "fingerprint": "c57c6556c49fca9b",
+          "fingerprint": "30a30e2f1c0910f8",
           "param_keys": [
             "task_id"
           ]
         },
         "shell_task_kill": {
-          "fingerprint": "e2cdc5f9ec689a13",
+          "fingerprint": "2721d99e7d3997d2",
           "param_keys": [
             "task_id"
           ]
         },
         "todo_write": {
-          "fingerprint": "7b550976a81a3517",
+          "fingerprint": "e6669145a4fb8148",
           "param_keys": [
             "todos"
           ]
@@ -237,14 +237,14 @@
           ]
         },
         "web_search": {
-          "fingerprint": "7ab60801bb3abc0a",
+          "fingerprint": "c327eed89e4ba152",
           "param_keys": [
             "max_results",
             "query"
           ]
         },
         "web_fetch": {
-          "fingerprint": "da700ffe22fd751a",
+          "fingerprint": "4701a62491d7d8ca",
           "param_keys": [
             "max_chars",
             "url"
@@ -484,7 +484,7 @@
           ]
         },
         "ask_user": {
-          "fingerprint": "f50bcb3c40a2e16c",
+          "fingerprint": "421abd9cc35b3e92",
           "param_keys": [
             "allow_text",
             "header",
@@ -495,13 +495,13 @@
           ]
         },
         "load_skill": {
-          "fingerprint": "8ab1f90307697660",
+          "fingerprint": "ecfcb59ab6e40b13",
           "param_keys": [
             "name"
           ]
         },
         "search_skills": {
-          "fingerprint": "fb22c024290ef3c6",
+          "fingerprint": "133bbd300fc296db",
           "param_keys": [
             "limit",
             "query"
@@ -566,14 +566,14 @@
       ],
       "schemas": {
         "web_search": {
-          "fingerprint": "7ab60801bb3abc0a",
+          "fingerprint": "c327eed89e4ba152",
           "param_keys": [
             "max_results",
             "query"
           ]
         },
         "web_fetch": {
-          "fingerprint": "da700ffe22fd751a",
+          "fingerprint": "4701a62491d7d8ca",
           "param_keys": [
             "max_chars",
             "url"
@@ -813,13 +813,13 @@
           ]
         },
         "load_skill": {
-          "fingerprint": "8ab1f90307697660",
+          "fingerprint": "ecfcb59ab6e40b13",
           "param_keys": [
             "name"
           ]
         },
         "search_skills": {
-          "fingerprint": "fb22c024290ef3c6",
+          "fingerprint": "133bbd300fc296db",
           "param_keys": [
             "limit",
             "query"
@@ -961,7 +961,7 @@
           ]
         },
         "grep": {
-          "fingerprint": "995a7661cd34c14e",
+          "fingerprint": "3ce756b8e968a74d",
           "param_keys": [
             "glob",
             "max_results",
@@ -970,7 +970,7 @@
           ]
         },
         "run_shell": {
-          "fingerprint": "d1bcfc7988bfcaa0",
+          "fingerprint": "f81c8e21a2b7b373",
           "param_keys": [
             "command",
             "description",
@@ -979,19 +979,19 @@
           ]
         },
         "shell_task_output": {
-          "fingerprint": "c57c6556c49fca9b",
+          "fingerprint": "30a30e2f1c0910f8",
           "param_keys": [
             "task_id"
           ]
         },
         "shell_task_kill": {
-          "fingerprint": "e2cdc5f9ec689a13",
+          "fingerprint": "2721d99e7d3997d2",
           "param_keys": [
             "task_id"
           ]
         },
         "todo_write": {
-          "fingerprint": "7b550976a81a3517",
+          "fingerprint": "e6669145a4fb8148",
           "param_keys": [
             "todos"
           ]
@@ -1076,14 +1076,14 @@
           ]
         },
         "web_search": {
-          "fingerprint": "7ab60801bb3abc0a",
+          "fingerprint": "c327eed89e4ba152",
           "param_keys": [
             "max_results",
             "query"
           ]
         },
         "web_fetch": {
-          "fingerprint": "da700ffe22fd751a",
+          "fingerprint": "4701a62491d7d8ca",
           "param_keys": [
             "max_chars",
             "url"
@@ -1323,7 +1323,7 @@
           ]
         },
         "ask_user": {
-          "fingerprint": "f50bcb3c40a2e16c",
+          "fingerprint": "421abd9cc35b3e92",
           "param_keys": [
             "allow_text",
             "header",
@@ -1334,13 +1334,13 @@
           ]
         },
         "load_skill": {
-          "fingerprint": "8ab1f90307697660",
+          "fingerprint": "ecfcb59ab6e40b13",
           "param_keys": [
             "name"
           ]
         },
         "search_skills": {
-          "fingerprint": "fb22c024290ef3c6",
+          "fingerprint": "133bbd300fc296db",
           "param_keys": [
             "limit",
             "query"
