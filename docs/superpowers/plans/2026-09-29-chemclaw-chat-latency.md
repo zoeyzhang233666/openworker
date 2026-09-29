@@ -7,7 +7,7 @@
 - [x] 有界技能发现与图表协议按需读取；离线前后请求对照。
 - [x] 兼容流正文逐步展示，工具片段完整性及恢复回归。
 - [x] 中文短答 GUI 立即展示，定向回归。
-- [ ] 文档、独立提交与开发后端生效检查。
+- [x] 文档、独立提交与开发后端生效检查。
 
 原有两个 tracked 修改及未跟踪产物保留。现有全仓失败继续按加固台账处理，不宣称全仓通过。
 
@@ -26,3 +26,7 @@
 - GUI streamGate / BackgroundTasksSection / ChartBlock **65 passed**，`npx tsc --noEmit` 通过。
 - 扩展两个组分别 **53 passed / 1 failed** 与 **87 passed / 1 failed**：`test_d182_subagent_profile_instructions_are_chinese` 固定旧措辞断言；`test_provider_extras_persist_on_message_and_survive_outbound` 误把尾部 checkpoint notice 当 assistant。两项在 `.tmp-stability-offline/results.json` 的已保存 9 月 27 日基线中同名同类失败，未算通过，也未顺手修改无关模块。
 - 未构建、安装、合并 main；不宣称全仓通过或所有性能问题解决。发布门禁继续遵守主加固计划。
+
+## 开发生效检查
+
+源码提交 **74fcb05**。2026-09-29 09:32 重载前，208 个会话全部 idle；核对旧进程树属于本工作区后才停止。沿用原 state/token，在原 8765 端口隐藏启动后端；健康接口 source_commit=74fcb056ab43d383a13c7434f2a1ccc98d687347、source_dirty=false，208 个会话保留。开发前端原未运行，已在回环地址 1420 启动；首次冷启动请求超时，随后根页面 200、streamGate 源码 200 且确认即时显示分支。未自动提交问候、未修改模型选择、MCP 设置或账号，未替换正式安装版。文档记录后另作纯文档提交，不必为文档变动重启服务。
