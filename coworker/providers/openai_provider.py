@@ -25,6 +25,7 @@ from .base import (
     ToolCall,
 )
 from .capabilities import capabilities_for
+from ..provider_timing import mark_provider_time
 
 _log = logging.getLogger(__name__)
 
@@ -315,7 +316,8 @@ class OpenAIProvider(ProviderClient):
 
     def _make_sdk_client(self, *, streaming_retry_owned: bool = False) -> Any:
         """Build a new OpenAI SDK client from current key/base_url settings."""
-        from openai import OpenAI
+        from openai import OpenAI, DefaultHttpxClient
+        from ..provider_timing import on_http_request, on_http_response
 
         key = self._api_key or resolve_api_key(self._secrets)
         if not key:
@@ -323,13 +325,15 @@ class OpenAIProvider(ProviderClient):
                 "No model API key configured. Set OPENAI_API_KEY in the environment, "
                 "or add your key in Manage → Settings."
             )
-        return OpenAI(
-            **_sdk_client_kwargs(
-                api_key=key,
-                base_url=self._base_url,
-                streaming_retry_owned=streaming_retry_owned,
-            )
+        kwargs = _sdk_client_kwargs(
+            api_key=key,
+            base_url=self._base_url,
+            streaming_retry_owned=streaming_retry_owned,
         )
+        return OpenAI(**kwargs, http_client=DefaultHttpxClient(
+            timeout=kwargs["timeout"],
+            event_hooks={"request": [on_http_request], "response": [on_http_response]},
+        ))
 
     def _ensure_client(self) -> Any:
         if self._client is None:
@@ -646,11 +650,13 @@ def _iter_true_stream_chunks(
         if delta is not None:
             reasoning = _delta_reasoning(delta)
             if reasoning:
+                mark_provider_time("upstream_first_reasoning_ms")
                 _mark_provider_progress(progress)
                 reasoning_parts.append(reasoning)
                 yield StreamChunk(reasoning_delta=reasoning)
             content = getattr(delta, "content", None)
             if content:
+                mark_provider_time("upstream_first_content_ms")
                 _mark_provider_progress(progress)
                 text_parts.append(content)
                 yield StreamChunk(text_delta=content)
@@ -793,11 +799,13 @@ def _iter_compat_stream_chunks(
         if delta is not None:
             reasoning = _delta_reasoning(delta)
             if reasoning:
+                mark_provider_time("upstream_first_reasoning_ms")
                 _mark_provider_progress(progress)
                 reasoning_parts.append(reasoning)
                 yield StreamChunk(reasoning_delta=reasoning)
             content = getattr(delta, "content", None)
             if content:
+                mark_provider_time("upstream_first_content_ms")
                 # Text while tools were offered counts as semantic progress even before
                 # salvage — may be prose or a textual tool-call candidate.
                 _mark_provider_progress(progress)

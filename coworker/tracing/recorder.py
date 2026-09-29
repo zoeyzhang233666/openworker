@@ -8,8 +8,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ..events import Event, EventType
+from ..provider_timing import CallTiming
 from ..turn_planner import TurnPlan
-from .models import TurnTrace
+from .models import ModelCallTiming, TurnTrace
 
 
 def _now() -> str:
@@ -25,6 +26,7 @@ class TurnTraceRecorder:
         plan: TurnPlan | None,
         source_kind: str = "user",
         parent_trace_id: str | None = None,
+        clock=None,
     ) -> None:
         self.trace_id = uuid.uuid4().hex
         self.parent_trace_id = parent_trace_id
@@ -33,7 +35,11 @@ class TurnTraceRecorder:
         self.plan = plan
         self.source_kind = source_kind
         self.started_at = _now()
-        self._started = time.perf_counter()
+        self._clock = clock or time.perf_counter
+        self._started = self._clock()
+        self.model_call_timings: list[ModelCallTiming] = []
+        self.stage_elapsed_ms: dict[str, float] = {}
+        self._phase_starts: dict[str, float] = {}
         self.model_calls = 0
         self._has_request_events = False
         self.recovery_retries = 0
@@ -44,12 +50,40 @@ class TurnTraceRecorder:
         self.input_tokens = 0
         self.output_tokens = 0
         self.total_tokens = 0
+        self.cache_read_tokens = 0
+        self.cache_write_tokens = 0
+        self.usage_reported_calls = 0
         self.invoked_tools: list[str] = []
         self.outcomes: dict[str, int] = {}
         self.status = "running"
 
+    def start_model_call(self) -> CallTiming:
+        return CallTiming(offset_ms=self._elapsed(), clock=self._clock)
+
+    def finish_model_call(self, timing: CallTiming, status: str) -> None:
+        self.model_call_timings.append(ModelCallTiming.model_validate(timing.finish(status)))
+
+    def _elapsed(self) -> float:
+        return round(max(0, (self._clock() - self._started) * 1000), 3)
+
+    def _close_phase(self, name: str) -> None:
+        start = self._phase_starts.pop(name, None)
+        if start is not None:
+            self.stage_elapsed_ms[name] = self.stage_elapsed_ms.get(name, 0) + self._elapsed() - start
+
     def observe(self, event: Event) -> None:
         data = event.data or {}
+        if event.type in {EventType.ASSISTANT_DELTA, EventType.ASSISTANT_MESSAGE} and data.get("text"):
+            # An engine text event may be narration; it is NOT screen paint or a useful answer.
+            self.stage_elapsed_ms.setdefault("first_engine_text", self._elapsed())
+        if event.type is EventType.COMPACTING:
+            self._phase_starts.setdefault("compaction", self._elapsed())
+        elif event.type is EventType.COMPACTED:
+            self._close_phase("compaction")
+        elif event.type is EventType.TOOL_PROPOSED:
+            self._phase_starts.setdefault("tools_and_approval", self._elapsed())
+        elif event.type is EventType.ITERATION_END:
+            self._close_phase("tools_and_approval")
         if event.type is EventType.MODEL_REQUEST:
             self._has_request_events = True
             self.model_calls += 1
@@ -59,6 +93,10 @@ class TurnTraceRecorder:
             if not self._has_request_events:
                 self.model_calls += 1
             usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+            if usage:
+                self.usage_reported_calls += 1
+            self.cache_read_tokens += _usage_int(usage, "cache_read")
+            self.cache_write_tokens += _usage_int(usage, "cache_write")
             prompt = (_usage_int(usage, "input") + _usage_int(usage, "cache_read")
                       + _usage_int(usage, "cache_write")) if "input" in usage else _usage_int(
                           usage, "input_tokens", "prompt_tokens", "context_tokens")
@@ -105,7 +143,9 @@ class TurnTraceRecorder:
             status = "denied"
         if not self.total_tokens:
             self.total_tokens = self.input_tokens + self.output_tokens
-        elapsed = (time.perf_counter() - self._started) * 1000.0
+        elapsed = self._elapsed()
+        for phase in list(self._phase_starts):
+            self._close_phase(phase)
         router_elapsed = plan.router_elapsed_ms if plan is not None else None
         return TurnTrace(
             trace_id=self.trace_id,
@@ -133,7 +173,13 @@ class TurnTraceRecorder:
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             total_tokens=self.total_tokens,
+            cache_read_tokens=self.cache_read_tokens,
+            cache_write_tokens=self.cache_write_tokens,
+            usage_reported_calls=self.usage_reported_calls,
+            model_call_timings=tuple(self.model_call_timings),
             stage_elapsed_ms={
+                **{k: round(v, 3) for k, v in self.stage_elapsed_ms.items()},
+                "model_calls": round(sum(t.elapsed_ms for t in self.model_call_timings), 3),
                 "router": round(float(router_elapsed or 0.0), 3),
                 "total": round(elapsed, 3),
             },

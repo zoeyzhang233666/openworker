@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "status": "evaluation_cases_not_measured_results",
+  "quality_scale": {"0": "缺失或错误", "1": "部分满足", "2": "满足"},
+  "quality_dimensions": ["coverage", "factuality", "citation_support", "analysis", "uncertainty", "readability"],
+  "cases": [
+    {"id": "greeting", "prompt": "你好", "mode": "fast", "checks": ["自然中文回应", "无不必要搜索或文件生成"]},
+    {"id": "knowledge", "prompt": "用三句话解释现货价格和期货价格的区别", "mode": "fast", "checks": ["三句话覆盖区别", "无不必要搜索", "不捏造当前价格"]},
+    {"id": "sci99_overview", "prompt": "帮我梳理卓创资讯的业务布局", "mode": "fast", "checks": ["主营与产品服务", "客户与收费方式", "业务关系与增长方向", "关键事实有来源", "未披露占比不编造"]},
+    {"id": "sci99_latest", "prompt": "卓创资讯最新披露的收入结构有什么变化？注明报告期", "mode": "fast", "checks": ["实际核对最新可用披露", "期间可比", "数字与原文对应", "缺失数据明确说明"]},
+    {"id": "provided_notes", "prompt": "不要联网。根据以下虚构资料总结业务：甲业务服务工厂，按年订阅；乙业务服务贸易商，按次收费。不要补充财务数字。", "mode": "fast", "checks": ["无联网", "客户与收费模式准确", "不扩写成真实企业事实"]},
+    {"id": "annual_report_pdf", "prompt": "根据附件年报解释主营业务和收入构成，引用页码", "mode": "fast", "setup": "对所有变体附上同一份公开年报，记录文件 SHA-256；未附文件不得运行此题", "checks": ["页码真实", "表格数值正确", "无需重新搜索已给材料"]},
+    {"id": "price_trend", "prompt": "查询最近三个月柠檬酸现货价格走势并解释主要变化", "mode": "fast", "setup": "相同授权数据源与日期窗口；离线时注入同一行情夹具", "checks": ["现货口径准确", "时间/单位/来源明确", "交互图与数据一致"]},
+    {"id": "sci99_deep", "prompt": "深度分析卓创资讯的业务布局、竞争位置与增长风险，区分事实和推断", "mode": "deep", "checks": ["问题覆盖", "直接来源", "矛盾处理", "分析超出摘抄", "有限研究并收尾"]},
+    {"id": "html_report", "prompt": "把上述业务布局整理成精致的 HTML 报告，包含业务关系图和来源", "mode": "fast", "setup": "给所有变体相同已核验内容，单测交付成本", "checks": ["可打开", "图与正文同源", "中文排版", "无伪造占比或无效按钮"]},
+    {"id": "png_export", "prompt": "请将该图导出为 PNG 文件，文件名为业务布局.png", "mode": "fast", "setup": "同一合法 ChartSpec，工作目录含中文及空格", "checks": ["文件真实存在", "导出图与原图一致", "中文可读", "不反复查找改名"]},
+    {"id": "source_failure", "prompt": "核对卓创资讯最新年报中的分业务收入", "mode": "fast", "setup": "离线注入来源超时/不可访问，禁止偷偷访问其他真实服务", "checks": ["有限重试", "不编造数值", "如实交付已知与缺口"]},
+    {"id": "resume_artifact", "prompt": "继续刚才中断的报告，保留已经生成的图", "mode": "deep", "setup": "固定阶段状态和已存在的中文图文件，再恢复；另测文件缺失变体", "checks": ["已有证据复用", "不重复未知写操作", "产物链接可打开", "失败可解释"]}
+  ]
+}

@@ -37,6 +37,7 @@ from .market_intent import (
 from .permissions import Mode, PermissionEngine
 from .providers import AssistantTurn, ProviderClient, ToolCall
 from .providers.errors import friendly_model_error
+from .provider_timing import CallTiming, timing_scope
 from .tool_policy import TurnToolPolicy
 from .tools import ToolRegistry
 from .tools.outcome import normalize_tool_outcome
@@ -201,6 +202,7 @@ class TurnEngine:
         self.trace_sink = trace_sink
         self._last_trace_id: str | None = None
         self._active_trace_id: str | None = None
+        self._active_trace_recorder: TurnTraceRecorder | None = None
         self.messages: list[dict[str, Any]] = list(messages or [])
         self.audit_sink = audit_sink
         # 1-based iteration counter for soft-budget phase guidance (outbound only).
@@ -765,6 +767,7 @@ class TurnEngine:
             parent_trace_id=parent_trace_id,
         )
         self._active_trace_id = recorder.trace_id
+        self._active_trace_recorder = recorder
         return recorder
 
     def _decorate_trace_event(
@@ -785,6 +788,7 @@ class TurnEngine:
         self._last_trace_id = trace.trace_id
         if self._active_trace_id == recorder.trace_id:
             self._active_trace_id = None
+            self._active_trace_recorder = None
         if self.trace_sink is None:
             return
         try:
@@ -1463,6 +1467,25 @@ class TurnEngine:
 
     # -- helpers ----------------------------------------------------------------
     async def _astream(self):
+        recorder = self._active_trace_recorder
+        timing = recorder.start_model_call() if recorder is not None else CallTiming()
+        status = "interrupted"
+        try:
+            async for chunk in self._astream_timed(timing):
+                if chunk.text_delta:
+                    timing.mark("engine_first_text_ms")
+                yield chunk
+            status = "interrupted" if self._cancel.is_set() else "completed"
+        except Exception:
+            status = "failed"
+            raise
+        finally:
+            if recorder is not None:
+                recorder.finish_model_call(timing, status)
+            else:
+                timing.finish(status)
+
+    async def _astream_timed(self, timing: CallTiming):
         """Bridge the provider's blocking stream generator to the async loop via a
         thread + queue, so text deltas surface live without blocking the event loop."""
         loop = asyncio.get_running_loop()
@@ -1547,8 +1570,13 @@ class TurnEngine:
         structured_tools_streaming = self.structured_tools_true_streaming_enabled
         cancel = self._cancel  # keep a stopped producer bound to its own run
 
+        def produce_scoped():
+            with timing_scope(timing):
+                produce()
+
         def produce():
             try:
+                timing.mark("provider_start_ms")
                 for chunk in provider.stream(
                     model=model,
                     messages=messages,
@@ -1563,13 +1591,15 @@ class TurnEngine:
                     # asyncio.Event's flag from a thread is safe; we only read).
                     if cancel.is_set():
                         break
+                    if chunk.text_delta:
+                        timing.mark("provider_first_text_ms")
                     loop.call_soon_threadsafe(queue.put_nowait, ("chunk", chunk))
             except Exception as exc:  # surfaced to the awaiting consumer
                 loop.call_soon_threadsafe(queue.put_nowait, ("error", exc))
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, ("done", None))
 
-        loop.run_in_executor(None, produce)
+        loop.run_in_executor(None, produce_scoped)
         while True:
             # Race the queue against Stop so a stalled stream (no chunks arriving —
             # the pre-first-token wait, a wedged connection) can't hold the turn.
