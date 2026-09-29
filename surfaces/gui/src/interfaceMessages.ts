@@ -6,6 +6,10 @@
  * user/server-provided content are deliberately absent.
  */
 export const interfaceMessagesZh = {
+  "Research depth": "研究深度",
+  "Fast": "快速",
+  "Deep exploration": "深度探索",
+  "Fast prioritizes key conclusions; deep exploration allows more investigation. Applies when sending or continuing.": "快速优先给出核心结论；深度探索允许更充分地研究。发送或继续时生效。",
   "Team budget: {used}/{limit} rounds": "全队预算：已用 {used}/{limit} 轮",
   "Read next part": "继续阅读下一段",
   "Waiting for your response": "等待你处理",

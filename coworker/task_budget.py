@@ -24,12 +24,17 @@ class TaskBudgetStore:
                     data["leases"] = {}
                     self._save(group, data)
 
-    def create(self, owner: str, *, size=300, reserve=15):
+    def create(self, owner: str, *, size=300, reserve=15, research_depth=None):
+        if research_depth is not None:
+            from .research_depth import POLICIES, validate_depth
+            policy = POLICIES[validate_depth(research_depth)]
+            size, reserve = policy.size, policy.reserve
         if size < 1 or not 0 <= reserve < size:
             raise ValueError("invalid task budget")
         group = uuid.uuid4().hex
         data = dict(owner=owner, size=size, reserve=reserve, segment=1, used=0,
-                    uncertain=0, leases={}, stopped=False, model_calls=0, usage={})
+                    uncertain=0, leases={}, stopped=False, model_calls=0, usage={},
+                    research_depth=research_depth, limit=size)
         with self._lock:
             self._db.execute("INSERT INTO task_budgets VALUES (?,?,?)", (group, owner, json.dumps(data)))
             self._db.commit()
@@ -56,14 +61,14 @@ class TaskBudgetStore:
             d = self._read(group)
             return {k: v for k, v in d.items() if k != "leases"} | {
                 "id": group, "reserved": len(d["leases"]),
-                "limit": d["segment"] * d["size"],
-                "remaining": max(0, d["segment"] * d["size"] - d["used"] - d["uncertain"] - len(d["leases"])),
+                "limit": d.get("limit", d["segment"] * d["size"]),
+                "remaining": max(0, d.get("limit", d["segment"] * d["size"]) - d["used"] - d["uncertain"] - len(d["leases"])),
             }
 
     def acquire(self, handle):
         with self._lock:
             d = self._read(handle.group)
-            limit = d["segment"] * d["size"] - (0 if handle.parent else d["reserve"])
+            limit = d.get("limit", d["segment"] * d["size"]) - (0 if handle.parent else d["reserve"])
             if d["stopped"] or d["used"] + d["uncertain"] + len(d["leases"]) >= limit:
                 return None
             if handle.actor in d["leases"]:
@@ -86,15 +91,23 @@ class TaskBudgetStore:
                     d["usage"][key] = d["usage"].get(key, 0) + value
             self._save(handle.group, d)
 
-    def continue_segment(self, handle, expected_segment):
+    def continue_segment(self, handle, expected_segment, *, research_depth=None):
         if not handle.parent:
             raise ValueError("only the owning user turn can extend the task budget")
         with self._lock:
             d = self._read(handle.group)
             if d["segment"] != expected_segment or d["leases"]:
                 return False
-            if d["used"] + d["uncertain"] < d["segment"] * d["size"] - d["reserve"]:
+            limit = d.get("limit", d["segment"] * d["size"])
+            if d["used"] + d["uncertain"] < limit - d["reserve"]:
                 return False
+            if research_depth is not None:
+                from .research_depth import POLICIES, validate_depth
+                policy = POLICIES[validate_depth(research_depth)]
+                d.update(size=policy.size, reserve=policy.reserve, research_depth=research_depth)
+            # A selected mode allocates exactly one new segment; unused summary
+            # slots from a larger deep segment must not inflate a fast segment.
+            d["limit"] = (d["used"] + d["uncertain"] if research_depth else limit) + d["size"]
             d["segment"] += 1
             d["stopped"] = False
             self._save(handle.group, d)

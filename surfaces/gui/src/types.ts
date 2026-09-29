@@ -21,6 +21,8 @@ export type EventType =
   | "interrupted"
   | "model_changed"
   | "model_selected"
+  | "research_depth_selected"
+  | "research_depth_rejected"
   | "compacting"
   | "compacted"
   | "continuation"

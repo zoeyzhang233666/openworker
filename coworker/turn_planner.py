@@ -77,6 +77,7 @@ class TurnPlan:
     scenario_projection_applied: bool = False
     subagent_eligible: bool = False
     subagent_tool_names: tuple[str, ...] = ()
+    research_depth: str = "deep"
 
     @classmethod
     def legacy(cls) -> "TurnPlan":
@@ -118,6 +119,7 @@ class TurnPlan:
         return TurnPlanPreview(
             scenario=scenario,
             route=route,
+            research_depth=self.research_depth,
             capability_readiness=tuple(
                 item.model_dump(exclude={"version"}) for item in capability.resolutions
             ),
@@ -173,6 +175,7 @@ class TurnPlanner:
         display: str | None = None,
         durable_resume: bool = False,
         scenario_id: str | None = None,
+        research_depth: str = "deep",
     ) -> TurnPlan:
         """Use one general execution contract; workflows live in Skills.
 
@@ -180,20 +183,23 @@ class TurnPlanner:
         The registry and PermissionEngine remain authoritative.
         """
         from .request_router import _detect_tool_policy
+        from .research_depth import POLICIES, validate_depth
+        research = POLICIES[validate_depth(research_depth)]
         text, _ = _text_and_attachment(user_input)
         policy = _detect_tool_policy(text)
         names = tuple(filter_tool_names(self._available_tool_names(), policy))
         return TurnPlan(
             decision=RouteDecision(RequestRoute.AGENT, "general", "通用执行引擎", tool_policy=policy),
             execution_profile=ExecutionProfile(
-                route=RequestRoute.AGENT, max_iterations=self.config.max_iterations,
+                route=RequestRoute.AGENT, max_iterations=min(self.config.max_iterations, research.size),
                 target_iterations=None, tools_enabled=not policy.no_tools,
                 allowed_tool_names=None, budget_guidance_enabled=False,
-                emergency_finalization_enabled=False, reasoning_mode="default",
+                emergency_finalization_enabled=False, reasoning_mode=research.reasoning,
             ),
             tool_policy=policy, prompt_profile=PromptProfile.AGENT,
             skill_names=None, market_selection=None, show_reasoning=True,
             capability_plan=CapabilityPlan(selected_tool_names=names),
+            research_depth=research_depth,
         )
 
     def _tool_descriptors(self) -> tuple[ToolDescriptor, ...]:

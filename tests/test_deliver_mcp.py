@@ -120,7 +120,7 @@ def test_channel_continue_survives_delivery_guidance_suffix(tmp_path):
     e = manager.get_engine("resume")
     # SessionManager now uses the shared task budget, not a per-engine cap.
     create_budget = manager.task_budgets.create
-    manager.task_budgets.create = lambda owner: create_budget(owner, size=1, reserve=0)
+    manager.task_budgets.create = lambda owner, **_kwargs: create_budget(owner, size=1, reserve=0)
     async def run():
         await manager.deliver_to_session("resume", "read data")
         assert e.messages[-1]["kind"] == "budget_paused"

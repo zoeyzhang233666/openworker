@@ -2099,6 +2099,22 @@ def create_app(manager: SessionManager) -> FastAPI:
                  "data": {"model": model, "text": notice}},
             )
 
+        async def _apply_research_depth(message: dict, *, broadcast: bool = True) -> bool:
+            if "research_depth" not in message:
+                return True
+            try:
+                depth = manager.set_research_depth(session_id, message["research_depth"])
+            except ValueError as exc:
+                await ws.send_json({"type": "research_depth_rejected",
+                                    "data": {"research_depth": engine.research_depth}})
+                await reject_input(str(exc))
+                return False
+            if broadcast:
+                await manager.broadcast_session(session_id, {
+                    "type": "research_depth_selected", "data": {"research_depth": depth},
+                })
+            return True
+
         def _resolve_pending(resolution: str) -> None:
             # Live WS responses resolve THE session's single pending prompt (one at a time, since the
             # agent blocks). Reconnect / Inbox resolve by id via REST instead.
@@ -2142,6 +2158,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     "agent": getattr(engine, "agent_name", "code"),
                     "model": engine.model,
                     "mode": engine.permissions.mode.value,
+                    "research_depth": engine.research_depth,
                     "workspace": (
                         str(getattr(engine, "executor").cwd)
                         if getattr(engine, "executor", None)
@@ -2216,8 +2233,12 @@ def create_app(manager: SessionManager) -> FastAPI:
             await ws.send_json({"type": "input_rejected", "data": {"error": reason}})
 
         async def claim_turn(
-            *, retry: bool = False, content=None, display=None, scenario_id=None
+            *, retry: bool = False, content=None, display=None, scenario_id=None, depth_message=None
         ) -> None:
+            # Apply the submitted choice and claim the turn without an intervening
+            # await to broadcast; a second socket cannot change the claimed depth.
+            if not await _apply_research_depth(depth_message or {}, broadcast=False):
+                return
             if not manager.try_mark_running(session_id):
                 await reject_input(
                     "This session is already running a turn. Wait for it to finish or stop it."
@@ -2231,6 +2252,10 @@ def create_app(manager: SessionManager) -> FastAPI:
                     scenario_id=scenario_id,
                 )
             )
+            if depth_message and "research_depth" in depth_message:
+                await manager.broadcast_session(session_id, {
+                    "type": "research_depth_selected", "data": {"research_depth": engine.research_depth},
+                })
 
         try:
             while True:
@@ -2289,7 +2314,12 @@ def create_app(manager: SessionManager) -> FastAPI:
                 elif kind == "retry":
                     # Re-run after a provider error (engine guards on the error-notice
                     # tail, so a stray frame is a no-op that still ends with turn_done).
-                    await claim_turn(retry=True)
+                    await claim_turn(retry=True, depth_message=message)
+                elif kind == "set_research_depth":
+                    if "research_depth" not in message:
+                        await reject_input("请选择快速或深度探索")
+                    else:
+                        await _apply_research_depth(message)
                 elif kind == "set_mode":
                     try:
                         new_mode = Mode(message.get("mode"))
@@ -2397,6 +2427,13 @@ def create_app(manager: SessionManager) -> FastAPI:
                     if model is not None and not isinstance(model, str):
                         await reject_input("Invalid model: expected a string.")
                         continue
+                    if "research_depth" in message:
+                        from ..research_depth import validate_depth
+                        try:
+                            validate_depth(message["research_depth"])
+                        except ValueError:
+                            await _apply_research_depth(message)
+                            continue
                     # Force-run (SKILLS-SPEC §4.1 #3): the composer's `/skill` pick rides as a
                     # separate field. Validated against the session's effective menu — a muted
                     # or unknown skill is a visible error, never a silent no-op (§4.6 #15).
@@ -2428,6 +2465,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                             content=content,
                             display=display,
                             scenario_id=scenario_id,
+                            depth_message=message,
                         )
                 else:
                     await reject_input(f"Unknown WebSocket message type: {kind}.")

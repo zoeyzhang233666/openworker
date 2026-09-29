@@ -96,6 +96,7 @@ class ConversationStore:
             "ALTER TABLE sessions ADD COLUMN renamed INTEGER DEFAULT 0",
             "ALTER TABLE sessions ADD COLUMN grants TEXT",
             "ALTER TABLE sessions ADD COLUMN compaction TEXT",
+            "ALTER TABLE sessions ADD COLUMN research_depth TEXT DEFAULT 'deep'",
         ):
             try:
                 self._conn.execute(ddl)
@@ -192,13 +193,14 @@ class ConversationStore:
             title = record.title or title_from(record.messages)
             self._conn.execute(
                 """
-                INSERT INTO sessions (session_id, workspace, model, mode, title, agent, n_msgs, messages, extra_roots, grants, compaction, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, CURRENT_TIMESTAMP)
+                INSERT INTO sessions (session_id, workspace, model, mode, title, agent, n_msgs, messages, extra_roots, grants, compaction, research_depth, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(session_id) DO UPDATE SET
                     workspace = excluded.workspace, model = excluded.model, mode = excluded.mode,
                     title = COALESCE(sessions.title, excluded.title), agent = excluded.agent,
                     n_msgs = excluded.n_msgs, messages = NULL, extra_roots = excluded.extra_roots,
                     grants = excluded.grants, compaction = excluded.compaction,
+                    research_depth = excluded.research_depth,
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (
@@ -212,6 +214,7 @@ class ConversationStore:
                     json.dumps(record.extra_roots or []),
                     json.dumps(record.grants or {}),
                     json.dumps(record.compaction or {}),
+                    record.research_depth,
                 ),
             )
             self._conn.commit()
@@ -258,6 +261,7 @@ class ConversationStore:
             workspace=row["workspace"],
             model=row["model"],
             mode=row["mode"],
+            research_depth=row["research_depth"] if row["research_depth"] in {"fast", "deep"} else "deep",
             messages=messages,
             title=_display_title(row),
             agent=row["agent"] or "code",
@@ -314,6 +318,7 @@ class ConversationStore:
                 workspace=r["workspace"],
                 model=r["model"],
                 mode=r["mode"],
+                research_depth=r["research_depth"] if r["research_depth"] in {"fast", "deep"} else "deep",
                 messages=[],
                 title=_display_title(r),
                 agent=r["agent"] or "code",

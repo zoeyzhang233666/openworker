@@ -244,6 +244,8 @@ class TurnEngine:
         self.checkpoint_sink = None
         self.segment_iterations = 50
         self.task_budget = None
+        self.research_depth = "deep"
+        self._research_finalizing = False
         self.prepare_task_run = None
         self._runtime = self._restored_runtime()
 
@@ -342,6 +344,7 @@ class TurnEngine:
                 display=display,
                 durable_resume=durable_resume,
                 scenario_id=scenario_id,
+                research_depth=self._effective_research_depth(),
             )
         except InvalidScenarioError:
             raise
@@ -400,12 +403,18 @@ class TurnEngine:
         if self.turn_planner is None:
             return TurnPlan.legacy().preview()
         return self.turn_planner.plan(
-            user_input, scenario_id=scenario_id
+            user_input, scenario_id=scenario_id, research_depth=self.research_depth
         ).preview()
 
     def _clear_active_plan(self) -> None:
         self._active_turn_plan = None
         self._resolved_market_scope = None
+        self._research_finalizing = False
+
+    def _effective_research_depth(self) -> str:
+        if self.task_budget is not None:
+            return self.task_budget.snapshot().get("research_depth") or "deep"
+        return self.research_depth
 
     def _note_tool_signatures(self, tool_calls: list[ToolCall]) -> None:
         """Record exact name+args signatures for consecutive-duplicate detection."""
@@ -677,7 +686,13 @@ class TurnEngine:
         if terminal.get("kind") in {"budget_paused", "truncated", "blocked"}:
             if renew_budget and self.task_budget is not None and self.task_budget.parent:
                 expected = self._runtime.get("team_budget", {}).get("segment", self.task_budget.snapshot()["segment"])
-                self.task_budget.store.continue_segment(self.task_budget, expected)
+                managed_depth = self.task_budget.snapshot().get("research_depth")
+                extended = self.task_budget.store.continue_segment(
+                    self.task_budget, expected,
+                    research_depth=self.research_depth if managed_depth or self.prepare_task_run is not None else None,
+                )
+                if extended:
+                    self._activate_plan(self._resume_plan_input(), origin=TurnOrigin.RESUME)
                 resume_children = getattr(self, "resume_task_children", None)
                 if resume_children is not None:
                     resume_children()
@@ -973,6 +988,8 @@ class TurnEngine:
         hard_limit = self.max_iterations
         if profile is not None:
             hard_limit = min(hard_limit, profile.max_iterations)
+        if self._effective_research_depth() == "fast":
+            hard_limit = min(hard_limit, 6)
         while True:
             if self.task_budget is not None and self.task_budget.snapshot()["stopped"]:
                 self._append_notice("interrupted")
@@ -982,6 +999,10 @@ class TurnEngine:
                 yield await self._pause("budget_paused", "任务已达到本段总预算，进展已保存；点击继续可原地续跑。")
                 return
             self._budget_iteration = iterations + 1
+            self._research_finalizing = self._effective_research_depth() == "fast" and (
+                (self.task_budget is not None and self.task_budget.parent and self.task_budget.summarizing)
+                or (self.task_budget is None and iterations >= hard_limit - 1)
+            )
             if iterations == 0:
                 self._emit_turn_instrumentation()
             iter_started = time.perf_counter()
@@ -1028,6 +1049,11 @@ class TurnEngine:
                 if self.task_budget is not None and budget_token is None:
                     yield await self._pause("budget_paused", "本任务共享预算已暂停，进展已保存；请在主任务中明确继续。")
                     return
+                if self.task_budget is not None and self.task_budget.parent and self._effective_research_depth() == "fast":
+                    budget = self.task_budget.snapshot()
+                    # Include our own reservation: other actors may have acquired
+                    # the last exploration slots since the loop's initial snapshot.
+                    self._research_finalizing = budget["remaining"] + 1 <= budget["reserve"]
                 self._runtime["model_calls"] += 1
                 yield Event(EventType.MODEL_REQUEST, {"attempt": self._runtime["model_calls"]})
                 async for chunk in self._astream():
@@ -1172,12 +1198,23 @@ class TurnEngine:
                 ),
             )
 
+            if self._research_finalizing and turn.tool_calls:
+                # Preserve valid message pairs even if a provider ignores tools=None.
+                for tc in turn.tool_calls:
+                    self.messages.append({"role": "tool", "tool_call_id": tc.id,
+                                          "content": "快速模式收尾轮不执行工具；已有结果保留，可继续。"})
+                yield await self._pause("budget_paused", "快速模式本段已收尾，已有结果已保留；如需补齐未完成项，可切换深度探索后点击继续。")
+                return
+
             if not turn.tool_calls:
+                if self._research_finalizing and not (turn.text or "").strip():
+                    yield await self._pause("budget_paused", "本段未生成有效答案，已有证据已保存；可继续完成交付。")
+                    return
                 if self._steering:
                     self._inject_steering()
                     continue
                 if turn.finish_reason == "length":
-                    if continuations < 2:
+                    if continuations < 2 and not self._research_finalizing:
                         continuations += 1
                         self._continue_message("上次回复达到输出长度上限。不要重复长段思考或已完成内容；从断点继续完成下一步或简洁回答。")
                         yield Event(EventType.CONTINUATION, {"reason": "length", "text": "回复达到长度上限，正在继续。", "attempt": continuations})
@@ -1245,7 +1282,7 @@ class TurnEngine:
         return cfg
 
     def _provider_tools(self):
-        if self._emergency_finalizing:
+        if self._emergency_finalizing or self._research_finalizing:
             return None
         refresh = getattr(self, "refresh_tool_registry", None)
         if refresh is not None:
@@ -1505,17 +1542,20 @@ class TurnEngine:
             # Route reasoning defaults only when an explicit profile is attached.
             # Legacy path keeps caller-provided model_settings untouched.
             supports_disable = False
+            supports_effort = False
             try:
                 caps = self.provider.capabilities(model)
                 supports_disable = bool(
                     getattr(caps, "supports_disable_reasoning", False)
                 )
+                supports_effort = bool(getattr(caps, "supports_reasoning_effort", False))
             except Exception:
                 supports_disable = False
             settings = apply_reasoning_mode_settings(
                 settings,
                 profile.reasoning_mode,
                 supports_disable_reasoning=supports_disable,
+                supports_reasoning_effort=supports_effort,
             )
         plan = self._active_turn_plan
         skill_count: Optional[int] = None
@@ -1738,7 +1778,8 @@ class TurnEngine:
     def _turn_plan_tool_guard(self, tool_name: str) -> tuple[bool, str] | None:
         """Explicit user policy supplements, never replaces, permission checks."""
         from .tool_policy import tool_allowed_under_policy
-        if self.task_budget is not None and self.task_budget.parent and self.task_budget.summarizing:
+        if (self.task_budget is not None and self.task_budget.parent
+                and self.task_budget.summarizing and self._effective_research_depth() != "fast"):
             summary_tools = {"read_file", "list_files", "grep", "write_file", "edit_file", "replace_in_file",
                              "send_file", "send_message", "ask_user", "background_task_output",
                              "background_task_status", "background_task_gather", "load_tools", "search_tools"}
@@ -2406,15 +2447,24 @@ class TurnEngine:
         return prompt if isinstance(prompt, str) and prompt else None
 
     def _budget_guidance_for_outbound(self) -> str:
-        """Soft-target Explore→Converge→Deliver notice. Outbound-only; never mutates
-        canonical history. Completely inert when no ExecutionProfile is attached or
-        budget_guidance_enabled is false.
-        """
+        """Mode strategy and budget notice, outbound-only; never changes history."""
         if self.task_budget is not None:
             budget = self.task_budget.snapshot()
+            if budget.get("research_depth") == "fast":
+                from .research_depth import depth_guidance
+                return depth_guidance(budget["research_depth"],
+                                      used=max(0, budget["size"] - budget["remaining"] - 1),
+                                      remaining=budget["remaining"] + 1, finalizing=self._research_finalizing)
             if self.task_budget.summarizing:
                 return f"本任务只剩 {budget['remaining']} 轮汇总额度。不要启动新研究；回读已有结果、说明缺口并完成交付。"
-            return f"主助手和小助手共用本段预算，累计已用 {budget['used']} 轮，总额度 {budget['limit']} 轮。最终 {budget['reserve']} 轮留给主助手汇总。"
+            from .research_depth import depth_guidance
+            guidance = depth_guidance("deep", used=budget["used"], remaining=budget["remaining"], finalizing=False)
+            return f"{guidance}主助手和小助手共用本段预算，累计已用 {budget['used']} 轮，总额度 {budget['limit']} 轮。最终 {budget['reserve']} 轮留给主助手汇总。"
+        if self.research_depth == "fast":
+            from .research_depth import depth_guidance
+            used = max(0, (self._budget_iteration or 1) - 1)
+            return depth_guidance("fast", used=used, remaining=max(0, 6-used),
+                                  finalizing=self._research_finalizing)
         profile = self._current_execution_profile()
         if profile is None or not profile.budget_guidance_enabled:
             return ""

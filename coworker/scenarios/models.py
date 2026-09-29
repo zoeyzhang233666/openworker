@@ -58,6 +58,7 @@ class TurnPlanPreview(_FrozenModel):
     version: Literal[1] = 1
     scenario: ScenarioResolution
     route: str
+    research_depth: Literal["fast", "deep"] = "deep"
     capability_readiness: tuple[dict[str, object], ...] = ()
     selected_tool_names: tuple[str, ...] = ()
     blocked_tool_names: tuple[str, ...] = ()

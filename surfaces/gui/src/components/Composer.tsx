@@ -42,6 +42,8 @@ const mergeAttachments = (cur: Attachment[], add: Attachment[]): Attachment[] =>
 };
 
 interface Props {
+  researchDepth?: "fast" | "deep";
+  onResearchDepthChange?: (depth: "fast" | "deep") => void;
   mode: string;
   model: string;
   models?: string[];
@@ -606,6 +608,20 @@ export function Composer(props: Props) {
               onUnattendedChange={props.onUnattendedChange}
             />
           ) : null}
+
+          {props.researchDepth && props.onResearchDepthChange && !dictation?.recording && (
+            <select
+              aria-label={t("Research depth")}
+              title={t("Fast prioritizes key conclusions; deep exploration allows more investigation. Applies when sending or continuing.")}
+              value={props.researchDepth}
+              disabled={props.running || !props.connected}
+              onChange={e => props.onResearchDepthChange?.(e.target.value as "fast" | "deep")}
+              className="max-w-[140px] rounded-lg border border-border bg-transparent px-2 py-1 text-[12px] text-muted disabled:opacity-50"
+            >
+              <option value="fast">{t("Fast")}</option>
+              <option value="deep">{t("Deep exploration")}</option>
+            </select>
+          )}
 
           {dictationBusy === "Transcribing…" && (
             <span className="text-[11.5px] text-accent">{t("Transcribing…")}</span>

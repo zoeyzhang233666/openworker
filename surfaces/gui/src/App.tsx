@@ -52,6 +52,7 @@ import {
 } from "./folderGatePolicy";
 import { baseName } from "./paths";
 import { useSessionModel } from "./useSessionModel";
+import { useResearchDepth, type ResearchDepth } from "./useResearchDepth";
 import { itemsFromMessages } from "./itemsFromMessages";
 import {
   eventImpliesRunning,
@@ -258,6 +259,7 @@ export function App() {
   const [projects, setProjects] = useState<RecentWorkspace[]>([]);
   const [sessionId, setSessionId] = useState<string>(newId());
   const { model, setDefaultModel, selectModel, acceptSessionModel } = useSessionModel(sessionId);
+  const { researchDepth, selectResearchDepth, acceptResearchDepth } = useResearchDepth(sessionId);
   // Bumps on every real session switch so a slow getSessionMessages can't overwrite a newer select.
   const selectGenerationRef = useRef(0);
   const sessionIdRef = useRef(sessionId);
@@ -696,6 +698,10 @@ export function App() {
       switch (ev.type) {
         case "ready":
           setConnected(true);
+          {
+            const pending = acceptResearchDepth(boundSessionId, d.research_depth, !!d.running);
+            if (pending && !d.running) sessionRef.current?.setResearchDepth(pending);
+          }
           if (d.model) {
             const pending = acceptSessionModel(boundSessionId, d.model);
             if (pending && !d.running) sessionRef.current?.setModel(pending);
@@ -863,6 +869,12 @@ export function App() {
               ...p,
               { kind: "notice", tone: "warn", text: t("Stopped: max iterations reached.") },
             ]);
+          break;
+        case "research_depth_selected":
+          acceptResearchDepth(boundSessionId, d.research_depth);
+          break;
+        case "research_depth_rejected":
+          acceptResearchDepth(boundSessionId, d.research_depth, true);
           break;
         case "model_selected":
         case "model_changed":
@@ -1059,7 +1071,7 @@ export function App() {
     setRunning(true); // D-079: optimistic so wait UI appears before turn_start
     setItems((p) => [...p, { kind: "user", text: shown, attachments, ts: Date.now() / 1000 }]);
     // The visible model rides along with the message (single source of truth per turn).
-    sessionRef.current?.userMessage(text, attachments, model, skill);
+    sessionRef.current?.userMessage(text, attachments, model, skill, undefined, researchDepth);
     followLatest(); // sending always re-engages stream-following, wherever the user had scrolled
   };
   // MD chip «做网页版»: inject align-then-generate intent (D-077 revised; no auto-cook).
@@ -1177,7 +1189,7 @@ export function App() {
   const retry = () => {
     // Optimistic running: turn_start confirms; a rejected retry still ends in turn_done.
     setRunning(true);
-    sessionRef.current?.retry();
+    sessionRef.current?.retry(researchDepth);
   };
   const undoMemorySave = async (id: number, previous?: string) => {
     if (previous) await updateMemory(id, previous).catch(() => {});
@@ -1194,6 +1206,12 @@ export function App() {
     setMode(resolved);
     sessionRef.current?.setMode(resolved);
   };
+  const changeResearchDepth = (depth: ResearchDepth) => {
+    if (running || !connected) return;
+    selectResearchDepth(sessionId, depth);
+    sessionRef.current?.setResearchDepth(depth);
+  };
+
   const changeModel = (m: string) => {
     if (running) return; // the server refuses mid-turn rebinds — don't let the header lie
     selectModel(sessionId, m);
@@ -1392,7 +1410,7 @@ export function App() {
     const shown = skill ? `/${skill}${text ? ` ${text}` : ""}` : text;
     setRunning(true);
     setItems((p) => [...p, { kind: "user", text: shown, attachments, ts: Date.now() / 1000 }]);
-    sessionRef.current?.userMessage(text, attachments, model, skill);
+    sessionRef.current?.userMessage(text, attachments, model, skill, undefined, researchDepth);
     followLatest();
   }, [workspace, showGate, connected, sessionId, model]);
   // "New project" lives under a project-scoped persona's accordion. Switch to that persona, start a
@@ -1971,6 +1989,8 @@ export function App() {
 
             <Composer
               mode={mode}
+              researchDepth={researchDepth}
+              onResearchDepthChange={changeResearchDepth}
               model={model}
               models={models}
               modelLabels={modelLabels}

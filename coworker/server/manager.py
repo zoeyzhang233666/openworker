@@ -506,6 +506,7 @@ class SessionManager:
         directory_requester: Optional[Any] = None,
         plan_approver: Optional[Any] = None,
         question_asker: Optional[Any] = None,
+        default_research_depth: str = "fast",
     ) -> Optional[TurnEngine]:
         engine = self._engines.get(session_id)
         if engine is not None:
@@ -621,11 +622,24 @@ class SessionManager:
         if record is not None and record.grants:
             self._apply_grants(engine, record.grants)
         self._configure_engine_persistence(session_id, engine, record)
+        engine.research_depth = record.research_depth if record else ("deep" if session_id.startswith("__run__") else default_research_depth)
         self._configure_task_execution(session_id, engine)
         self._engines[session_id] = engine
         if is_new_session:
             self._emit_session_created(session_id, agent_name)
         return engine
+
+    def set_research_depth(self, session_id, depth):
+        from ..research_depth import validate_depth
+        depth = validate_depth(depth)
+        if self.is_running(session_id):
+            raise ValueError("当前任务正在运行，请等待结束或停止后再切换研究深度")
+        engine = self._engines.get(session_id)
+        if engine is None:
+            raise ValueError("会话尚未就绪")
+        engine.research_depth = depth
+        self.save(session_id, engine)
+        return depth
 
     def _configure_task_execution(self, session_id, engine):
         group = engine._runtime.get("task_group")
@@ -669,12 +683,12 @@ class SessionManager:
             # Steering, a regular message or a notification must not replenish a
             # paused task's allowance. Only the explicit retry/continue path can.
             return
-        engine.task_budget = self.task_budgets.create(session_id)
+        engine.task_budget = self.task_budgets.create(session_id, research_depth=engine.research_depth)
 
     def _child_task_context(self, session_id):
         engine = self._engines.get(session_id) or self.get_engine(session_id)
         if engine.task_budget is None:
-            engine.task_budget = self.task_budgets.create(session_id)
+            engine.task_budget = self.task_budgets.create(session_id, research_depth=engine.research_depth)
             engine._runtime["task_group"] = engine.task_budget.group
             engine._append_notice("checkpoint")
             engine.messages[-1]["runtime"] = dict(engine._runtime)
@@ -4510,7 +4524,7 @@ class SessionManager:
         """
         persona = self._persona_of(session_id, agent)
         mcp_tools = await self.prepare_mcp_tools(session_id, agent=persona)
-        return self.get_engine(session_id, extra_tools=mcp_tools, agent=persona)
+        return self.get_engine(session_id, extra_tools=mcp_tools, agent=persona, default_research_depth="deep")
 
     async def _channel_timeout_grace(self, session_id: str, payload: Any) -> None:
         """Ask for a bounded final answer before the FIFO performs a hard cancellation."""
@@ -5221,7 +5235,7 @@ class SessionManager:
         src = event.source
         old_sid = self.mention_sessions.get(target)
         new_sid = uuid.uuid4().hex
-        engine = self.get_engine(new_sid, agent=self.personas.default_id())
+        engine = self.get_engine(new_sid, agent=self.personas.default_id(), default_research_depth="deep")
         if engine is None:
             if self.gateway is not None:
                 await self.gateway.deliver(
@@ -5296,7 +5310,7 @@ class SessionManager:
             return
 
         sid = uuid.uuid4().hex
-        engine = self.get_engine(sid, agent=self.personas.default_id())
+        engine = self.get_engine(sid, agent=self.personas.default_id(), default_research_depth="deep")
         if engine is None:
             self.unrouted.record(
                 target, who, event.text, reason="could not spawn channel session"
@@ -5454,7 +5468,7 @@ class SessionManager:
             else src.chat_name or src.chat_id
         )
         sid = uuid.uuid4().hex
-        engine = self.get_engine(sid, agent=self.personas.default_id())
+        engine = self.get_engine(sid, agent=self.personas.default_id(), default_research_depth="deep")
         if engine is None:
             self.unrouted.record(
                 src.target, who, event.text, reason="could not spawn mention session"
@@ -5837,6 +5851,7 @@ class SessionManager:
                 workspace=workspace,
                 model=engine.model,
                 mode=engine.permissions.mode.value,
+                research_depth=engine.research_depth,
                 messages=engine.messages,
                 title=title_from(engine.messages),
                 agent=getattr(engine, "agent_name", "code"),
@@ -6111,6 +6126,7 @@ class SessionManager:
                         workspace=self._provision_scratch(session_id),
                         model=self.model,
                         mode=self.mode.value,
+                        research_depth="fast",
                         messages=[],
                         agent="cowork",  # folder access is a Cowork affordance
                     )

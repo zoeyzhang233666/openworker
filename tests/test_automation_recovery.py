@@ -19,7 +19,10 @@ async def test_scheduled_pause_uses_shared_budget_and_notification_is_deduplicat
         {"path": "data.txt", "start_line": i, "max_lines": 1})], finish_reason="tool_calls") for i in range(1, 4)])
     manager = SessionManager(data_dir=tmp_path / "state", provider=provider)
     original_create = manager.task_budgets.create
-    manager.task_budgets.create = lambda owner: original_create(owner, size=3, reserve=1)
+    def small_budget(owner, *, research_depth):
+        assert research_depth == "deep"
+        return original_create(owner, size=3, reserve=1)
+    manager.task_budgets.create = small_budget
     task = _task(workspace=str(tmp_path), agent="cowork", notify_on_completion=True)
     manager.task_store.save(task)
     sent = []

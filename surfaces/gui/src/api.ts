@@ -2562,7 +2562,7 @@ export class Session {
    * exactly what the user sees — immune to set_model races across reconnects (a new cowork
    * session always reconnects once to adopt its scratch dir, which could drop a queued
    * set_model and leave the engine on a stale/resumed model; found 2026-07-04). */
-  userMessage(text: string, attachments?: unknown[], model?: string, skill?: string, scenarioId?: string) {
+  userMessage(text: string, attachments?: unknown[], model?: string, skill?: string, scenarioId?: string, researchDepth?: "fast" | "deep") {
     this.send({
       type: "user_message",
       text,
@@ -2572,6 +2572,7 @@ export class Session {
       // the server validates it against the session's effective menu and frames the turn.
       ...(skill ? { skill } : {}),
       ...(scenarioId ? { scenario_id: scenarioId } : {}),
+      ...(researchDepth ? { research_depth: researchDepth } : {}),
     });
   }
 
@@ -2605,8 +2606,12 @@ export class Session {
 
   // Re-run a turn that ended in a provider error — no new user message; the server
   // guards on the history tail so a stray frame is a no-op.
-  retry() {
-    this.send({ type: "retry" });
+  retry(researchDepth?: "fast" | "deep") {
+    this.send({ type: "retry", ...(researchDepth ? { research_depth: researchDepth } : {}) });
+  }
+
+  setResearchDepth(researchDepth: "fast" | "deep") {
+    this.send({ type: "set_research_depth", research_depth: researchDepth });
   }
 
   setMode(mode: string) {

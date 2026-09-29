@@ -152,14 +152,17 @@ def apply_reasoning_mode_settings(
     reasoning_mode: str,
     *,
     supports_disable_reasoning: bool = False,
+    supports_reasoning_effort: bool = False,
 ) -> dict[str, Any]:
-    """Return a copy of settings with optional reasoning_effort for FAST_CHAT-style off.
+    """Apply capability-gated reasoning defaults without overriding explicit settings.
 
-    Never invent unsupported parameters when the provider/model cannot disable reasoning.
+    Unknown models receive no new effort parameter, including low/high modes.
     """
     out = dict(settings)
     if reasoning_mode == "off" and supports_disable_reasoning:
         out.setdefault("reasoning_effort", "none")
+    elif reasoning_mode in {"low", "high"} and supports_reasoning_effort:
+        out.setdefault("reasoning_effort", reasoning_mode)
     return out
 
 

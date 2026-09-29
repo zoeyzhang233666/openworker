@@ -29,6 +29,7 @@ def test_main_and_child_share_real_model_turns_beyond_old_limit(tmp_path):
     provider = ResearchProvider()
     manager = SessionManager(workspace=tmp_path, data_dir=tmp_path / "state", provider=provider)
     parent = manager.get_engine("parent", agent="code", workspace=str(tmp_path))
+    manager.set_research_depth("parent", "deep")
     try:
         events = asyncio.run(consume(parent.run("parent work")))
         assert events[-1].data["status"] == "completed"
