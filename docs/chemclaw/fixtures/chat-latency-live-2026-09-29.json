@@ -1,0 +1,55 @@
+{
+  "date": "2026-09-29",
+  "model": "deepseek-v4.1-flash",
+  "endpoint": "https://opencode.ai/zen/go/v1",
+  "request_cap": 2,
+  "requests_used": 2,
+  "output_cap_per_request": 256,
+  "method": "isolated real SessionManager engine; no gateway/scheduler; blocked tool execution; synthetic pending MCP",
+  "baseline": {
+    "date": "2026-09-28",
+    "input_tokens": 10420,
+    "output_tokens": 211,
+    "first_text_s": 8.672,
+    "elapsed_s": 8.75
+  },
+  "results": [
+    {
+      "http_status": 200,
+      "input_tokens": 4017,
+      "output_tokens": 132,
+      "cache_read": 0,
+      "mcp_prepare_s": 0.281,
+      "first_text_s": 7.031,
+      "elapsed_s": 8.312,
+      "delta_count": 55,
+      "last_delta_s": 8.281,
+      "response_headers_after_http_send_s": 4.25,
+      "status": "completed",
+      "tool_count": 9,
+      "request_body_bytes": 15975,
+      "mcp_still_pending": true
+    },
+    {
+      "http_status": 200,
+      "input_tokens": 4017,
+      "output_tokens": 113,
+      "cache_read": 0,
+      "mcp_prepare_s": 0.265,
+      "first_text_s": 11.906,
+      "elapsed_s": 13.171,
+      "delta_count": 47,
+      "last_delta_s": 13.109,
+      "response_headers_after_http_send_s": 9.297,
+      "status": "completed",
+      "tool_count": 9,
+      "request_body_bytes": 15975,
+      "mcp_still_pending": true
+    }
+  ],
+  "limits": [
+    "Different dates and model output lengths; not a controlled latency benchmark.",
+    "Measures engine deltas, not actual desktop paint time. GUI visibility and WebSocket forwarding verified offline.",
+    "Both request slots exhausted; no further model requests authorized."
+  ]
+}

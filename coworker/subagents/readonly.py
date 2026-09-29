@@ -6,7 +6,7 @@ from ..risk import RiskClass
 # Reviewed first-party queries. Unknown extensions never enter via a naming heuristic.
 READ_TOOLS = frozenset({
     "grep", "read_file", "list_files", "read_file_lines", "git_log", "git_status", "git_diff",
-    "search_tools", "load_tools", "search_skills", "load_skill", "web_search", "web_fetch",
+    "search_tools", "load_tools", "search_skills", "load_skill", "web_search", "web_fetch", "get_chart_guidance",
     "lookup_chemical_identity", "lookup_legal_entity", "validate_eu_vat", "lookup_fx_rate",
     "lookup_wikipedia", "lookup_yahoo_ohlc", "lookup_cn_stock_quote", "lookup_cn_stock_ohlc",
     "lookup_cn_stock_minute", "lookup_cn_stock_financials", "lookup_cn_stock_feature",

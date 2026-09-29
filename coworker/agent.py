@@ -40,7 +40,6 @@ from .skills import (
     SkillLoader,
     save_skill_tool,
     select_skill_names,
-    skill_catalog_text,
     skill_tools,
 )
 from .tools import ToolRegistry
@@ -269,6 +268,12 @@ focusLabel / stages）。多标的 → 多块独立短引用。优先抄工具�
 line/bar 时每个 series.values 长度必须与 labels 完全一致。Yahoo 与 CN 蜡烛图只用短引用。
 - `labels` 放顶层字符串数组（不要嵌在 `x: { labels: [...] }`）。解析器可接受 `x.labels` 回退，\
 但规范形状是扁平。"""
+
+_CHART_POINTER = """\
+对话支持原生 ```chart 图表。价格走势结果有 ≥2 个带日期的时间序列点时附趋势图；
+价格图默认日线，保留品种、现货/期货口径、单位、日期和来源，不编造缺失数据。
+绘图前调用内置只读工具 get_chart_guidance 获取格式、工具短引用与导出说明（无需 Skill）。
+仅问当前价格时先简短回答，不为画图追加不必要的查询。"""
 
 # ChemClaw D-072 G4 / D-078: process-skill pointer + optional webpage align + short bubble.
 _CLARIFY_POINTER = """\
@@ -624,7 +629,7 @@ def build_engine(
         f"{base_system_prompt}\n\n{_NARRATION_GUIDANCE}\n\n"
         f"{_TOOL_BATCHING_GUIDANCE}\n\n"
         f"{_LONG_TASK_GUIDANCE}\n\n"
-        f"{_DIAGRAM_GUIDANCE}\n\n{_INLINE_CHART_GUIDANCE}\n\n{_CLARIFY_POINTER}"
+        f"{_DIAGRAM_GUIDANCE}\n\n{_CHART_POINTER}\n\n{_CLARIFY_POINTER}"
     )
     default_skill_block = ""
     if default_skill_ids:
@@ -777,12 +782,17 @@ def build_engine(
         PromptProfile.DEEP_RESEARCH: instructions,
     }
 
+    def get_chart_guidance() -> dict:
+        """读取 ChemClaw 图表格式、行情短引用和静态导出说明；不访问网络、不写文件。"""
+        return {"instructions": _INLINE_CHART_GUIDANCE}
+
+    registry.register(get_chart_guidance)
     skill_loader = SkillLoader(skill_dirs if skill_dirs is not None else _skill_dirs(ws))
     # Per-session effective menu (SKILLS-SPEC §3). The manager passes a CALLABLE so
     # load_skill consults the LIVE state per call (a Settings disable applies to running
     # sessions; a skill created after this build is still loadable). The catalog itself
-    # is injected per turn via context_provider (below), NOT here — so the menu the model
-    # sees is also live: skill changes apply from the next message, no new session needed.
+    # is searched on demand; context_provider only adds a pointer and disabled-skill
+    # countermands. No full catalog is attached to ordinary user messages.
     # Default None preserves CLI / direct callers.
     registry.register_all(skill_tools(skill_loader, allowed=skill_filter))
     # The worker-authors door (SKILLS-SPEC §5.2): save_skill proposes installing a finished
@@ -932,28 +942,24 @@ def build_engine(
             and "start_subagent" in plan.subagent_tool_names
         ):
             parts.append(_SUBAGENT_DELEGATION_CONTEXT)
-        # Live skill menu (SKILLS-SPEC §4.1): recomputed every turn like the roots list, so
-        # a skill installed/enabled/disabled mid-session applies from the NEXT MESSAGE —
-        # no new session, no lost context.
+        # Live availability for discovery and disabled-skill countermands. Descriptions
+        # are retrieved on demand so the prompt does not grow with installed skills.
         skill_loader.rescan()
         allowed = skill_filter() if callable(skill_filter) else skill_filter
-        plan = eng.active_turn_plan if eng is not None else None
-        selected_names = (
-            plan.skill_names
-            if plan is not None and eng is not None and eng.prompt_projection_active
-            else None
-        )
-        skills_ctx = skill_catalog_text(
-            skill_loader, allowed=allowed, names=selected_names
-        )
-        if skills_ctx:
-            parts.append(skills_ctx)
+        available = set(skill_loader.names())
+        if allowed is not None:
+            available &= set(allowed)
+        if available:
+            parts.append(
+                "专业工作流可用 search_skills 按名称或描述检索；query 为空时分页浏览。"
+                "找到相关技能后用 load_skill 加载最新完整说明。基础联网直接使用 "
+                "web_search/web_fetch，不需要先加载 Skill。"
+            )
         # Disable countermand (§3): instructions already loaded into this conversation keep
         # steering the model even after the skill is turned off/deleted — history can't be
         # un-read. So a loaded-but-no-longer-available skill gets an explicit stop note,
         # recomputed fresh each turn (re-enable → the note disappears; never persisted).
         if eng is not None:
-            available = set(skill_loader.names()) if allowed is None else set(allowed)
             for name in sorted(_loaded_skill_names(eng.messages) - available):
                 parts.append(
                     f'Note: the skill "{name}" has been disabled by the user — stop '

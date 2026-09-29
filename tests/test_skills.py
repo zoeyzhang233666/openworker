@@ -84,7 +84,8 @@ def test_skill_loader_catalog_and_load(tmp_path):
     assert "pdfplumber" in loaded["instructions"]
     assert reg.execute("load_skill", {"name": "missing"})["error"]
     assert reg.execute("search_skills", {"query": "extract PDF"}) == {
-        "skills": [{"name": "pdf", "description": "extract text from PDFs"}]
+        "skills": [{"name": "pdf", "description": "extract text from PDFs"}],
+        "total": 1, "next_offset": None,
     }
 
 
@@ -120,6 +121,9 @@ def test_build_engine_chat(tmp_path):
     assert engine.agent_name == "chat"
     # D-063 / D-180: Mermaid + chart guidance (Simplified Chinese) injected for every agent.
     sys_msg = engine.messages[0]["content"]
+    assert "get_chart_guidance" in sys_msg
+    assert "顶层字符串数组" not in sys_msg
+    sys_msg += engine.registry.execute("get_chart_guidance", {})["instructions"]
     assert "每条边必须有语义标签" in sys_msg
     assert "```chart" in sys_msg and "chart-image" in sys_msg
     assert "时间序列" in sys_msg and "≥2" in sys_msg

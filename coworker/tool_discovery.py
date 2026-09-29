@@ -16,7 +16,7 @@ class ToolDiscovery:
     # Basic web access must not depend on discovering a tool or loading a skill.
     # _allowed still applies explicit user network/search restrictions.
     CORE = ("search_tools", "load_tools", "web_search", "web_fetch",
-            "search_skills", "load_skill", "ask_user", "read_file")
+            "search_skills", "load_skill", "ask_user", "read_file", "get_chart_guidance")
 
     def __init__(self, registry, policy, budget):
         self.registry, self.policy, self.budget = registry, policy, budget

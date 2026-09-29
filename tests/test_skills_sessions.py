@@ -165,8 +165,11 @@ def test_live_load_skill_semantics(manager):
         skill_filter=lambda: manager.effective_skill_names("s1"),
         skill_dirs=[manager.skill_store.global_dir],
     )
-    # The menu lives in the per-turn context block, not the static system prompt.
-    assert "early" in engine.context_provider()
+    # Full metadata is available on demand, not repeated in every user message.
+    def menu():
+        return {s["name"] for s in engine.registry.execute("search_skills", {})["skills"]}
+    assert "search_skills" in engine.context_provider()
+    assert "early" in menu()
     assert "可用技能" not in engine.messages[0]["content"]
     assert "Available skills" not in engine.messages[0]["content"]
 
@@ -174,26 +177,26 @@ def test_live_load_skill_semantics(manager):
     manager.create_skill(
         {"name": "late", "description": "d", "instructions": "late body"}
     )
-    assert "late" in engine.context_provider()
+    assert "late" in menu()
     loaded = engine.registry.execute("load_skill", {"name": "late"})
     assert loaded["instructions"] == "late body"
 
     # disable → gone from the menu next turn, refused on load, listed nowhere
     manager.skill_store.set_enabled("early", False)
-    assert "early" not in engine.context_provider()
+    assert "early" not in menu()
     refused = engine.registry.execute("load_skill", {"name": "early"})
     assert refused["error"].startswith("unknown skill")
     assert "early" not in refused["available"]
 
     # delete ≡ disable, from the model's side
     manager.delete_skill("late")
-    assert "late" not in engine.context_provider()
+    assert "late" not in menu()
     gone = engine.registry.execute("load_skill", {"name": "late"})
     assert gone["error"].startswith("unknown skill")
 
     # re-enable → back next turn, files untouched all along (OFF is parking, not deletion)
     manager.skill_store.set_enabled("early", True)
-    assert "early" in engine.context_provider()
+    assert "early" in menu()
     assert (
         engine.registry.execute("load_skill", {"name": "early"})["instructions"]
         == "early body"
@@ -248,7 +251,8 @@ def test_disable_countermand_for_loaded_skills(manager):
     ctx = engine.context_provider()
     assert 'skill "used-one" has been disabled' in ctx
     assert "- used-one:" not in ctx  # gone from the menu itself
-    assert "- unused-one:" in ctx  # untouched skill still offered, no note for it
+    assert "unused-one" not in ctx  # no countermand for untouched skills
+    assert any(s["name"] == "unused-one" for s in engine.registry.execute("search_skills", {})["skills"])
 
     manager.skill_store.set_enabled("used-one", True)
     assert "disabled by the user" not in engine.context_provider()  # self-healing

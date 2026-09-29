@@ -3,8 +3,8 @@
 A skill is a folder containing `SKILL.md` (YAML frontmatter: name, description,
 optional allowed-tools) + a markdown body of instructions + optional resources/scripts.
 
-Progressive disclosure: at session start only the catalog (name + description) is injected
-into the agent's context; the full body is loaded on demand via the `load_skill` tool.
+Progressive disclosure: search_skills retrieves metadata and load_skill retrieves the
+latest body. The full catalog is not attached to every conversation request.
 """
 
 from __future__ import annotations
@@ -33,9 +33,7 @@ class SkillLoader:
         self.rescan()
 
     def rescan(self) -> None:
-        """Re-read the skill dirs. load_skill rescans on a miss so a skill created AFTER
-        the session's engine was built is still loadable (the catalog line stays static
-        until the next session, but an explicitly requested skill must not 404)."""
+        """Refresh installed metadata and bodies for live discovery/load calls."""
         self._skills = {}
         for directory in self._dirs:
             self._discover(directory)
@@ -185,18 +183,15 @@ def _skill_terms(query: str) -> tuple[str, ...]:
 def skill_tools(loader: SkillLoader, allowed: AllowedSkills = None) -> list:
     """`allowed` gates load_skill: a set is a build-time snapshot; a CALLABLE is consulted
     on every call — the manager passes one so Settings disables apply to live sessions
-    immediately, and skills created after the engine was built are still loadable
-    (loader rescans on a miss)."""
+    immediately. Every search/load refreshes installed contents."""
 
     def _allowed_now() -> Optional[set]:
         return allowed() if callable(allowed) else allowed
 
     def load_skill(name: str) -> dict:
         """按名称加载技能的完整说明与资源路径。当目录中某技能与当前任务相关时调用。"""
+        loader.rescan()  # Updates/deletions must apply even within the same model turn.
         skill = loader.get(name)
-        if skill is None:
-            loader.rescan()  # created after this session started? pick it up now
-            skill = loader.get(name)
         gate = _allowed_now()
         if skill is None or (gate is not None and name not in gate):
             available = sorted(
@@ -209,15 +204,26 @@ def skill_tools(loader: SkillLoader, allowed: AllowedSkills = None) -> list:
             "resources_path": skill.path,
         }
 
-    def search_skills(query: str, limit: int = 8) -> dict:
-        """按名称/描述搜索已启用技能。只返回元数据；另调 load_skill(name) 加载最新完整说明。"""
+    def search_skills(query: str = "", limit: int = 8, offset: int = 0) -> dict:
+        """按名称/描述搜索已启用技能；空查询分页浏览。返回元数据，再用 load_skill 加载最新说明。"""
         loader.rescan()
         gate = _allowed_now()
-        names = select_skill_names(
-            loader, query, allowed=gate, limit=max(1, min(int(limit), 8))
-        )
-        by_name = {c["name"]: c for c in loader.catalog()}
-        return {"skills": [by_name[name] for name in names if name in by_name]}
+        rows = [c for c in loader.catalog() if gate is None or c["name"] in gate]
+        terms = _skill_terms(query)
+        if query.strip():
+            def score(row):
+                name = row["name"].lower()
+                haystack = f"{name} {row['description']}".lower()
+                return (8 if query.lower().strip() == name else 0) + sum(
+                    3 if term in name else 1 for term in terms if term in haystack
+                )
+            rows = sorted((r for r in rows if score(r)), key=lambda r: (-score(r), r["name"]))
+        else:
+            rows.sort(key=lambda r: r["name"])
+        offset, limit = max(0, int(offset)), max(1, min(int(limit), 20))
+        end = offset + limit
+        return {"skills": rows[offset:end], "total": len(rows),
+                "next_offset": end if end < len(rows) else None}
 
     return [
         ai.tool(

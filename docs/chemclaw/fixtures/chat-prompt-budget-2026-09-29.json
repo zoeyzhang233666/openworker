@@ -1,0 +1,63 @@
+{
+  "baseline": "0129c2c",
+  "measurement": "offline conservative estimate; not provider usage or latency",
+  "bundled_skill_count": 111,
+  "query": "你好",
+  "results": [
+    {
+      "variant": "baseline",
+      "parts": {
+        "system": {
+          "characters": 6620,
+          "estimated_tokens": 5884
+        },
+        "user_and_context": {
+          "characters": 15592,
+          "estimated_tokens": 8421
+        },
+        "tool_schemas": {
+          "characters": 2138,
+          "estimated_tokens": 911
+        }
+      },
+      "total_estimated_tokens": 15216,
+      "tool_names": [
+        "search_tools",
+        "load_tools",
+        "web_search",
+        "web_fetch",
+        "search_skills",
+        "load_skill",
+        "read_file"
+      ]
+    },
+    {
+      "variant": "candidate",
+      "parts": {
+        "system": {
+          "characters": 3932,
+          "estimated_tokens": 3740
+        },
+        "user_and_context": {
+          "characters": 803,
+          "estimated_tokens": 277
+        },
+        "tool_schemas": {
+          "characters": 2371,
+          "estimated_tokens": 1014
+        }
+      },
+      "total_estimated_tokens": 5031,
+      "tool_names": [
+        "search_tools",
+        "load_tools",
+        "web_search",
+        "web_fetch",
+        "search_skills",
+        "load_skill",
+        "read_file",
+        "get_chart_guidance"
+      ]
+    }
+  ]
+}

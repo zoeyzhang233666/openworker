@@ -433,14 +433,13 @@ class OpenAIProvider(ProviderClient):
         _pin_reasoning_effort(kwargs)
         client, close_after = self._stream_client()
 
-        # Transport retry is ChemClaw-owned and progress-gated:
-        # - no semantic provider progress → at most one retry, then optional complete()
-        # - any text / reasoning / structured tool / textual-tool candidate → never regenerate
+        # Retry only before visible output or a committed turn. Buffered tool fragments
+        # alone have no side effects; reasoning/text already shown must never be replayed.
         #
         # Streaming path selection (HARD STOP B + F):
         # - tools=None → always true streaming
         # - tools enabled + kill switch ON + known-safe → true streaming (structured only)
-        # - otherwise → compat-buffered + textual salvage
+        # - otherwise → incremental prose with buffered textual-tool salvage
         true_stream_tools = tools is not None and _should_true_stream_with_tools(
             model=model,
             base_url=self._base_url,
@@ -457,7 +456,7 @@ class OpenAIProvider(ProviderClient):
                 elif true_stream_tools:
                     stream_mode = "structured"
                 else:
-                    stream_mode = "compat_buffered"
+                    stream_mode = "compat_incremental"
                 try:
                     from ..turn_instrumentation import (
                         build_provider_stream_snapshot,
@@ -480,10 +479,11 @@ class OpenAIProvider(ProviderClient):
                                 progress["visible"] = True
                             yield chunk
                     else:
-                        buffered = _collect_stream_chunks(
+                        for chunk in _iter_compat_stream_chunks(
                             client, kwargs, tools=tools, progress=progress
-                        )
-                        for chunk in buffered:
+                        ):
+                            if chunk.text_delta or chunk.reasoning_delta or chunk.turn is not None:
+                                progress["visible"] = True
                             yield chunk
                     return
                 except Exception as exc:
@@ -502,6 +502,7 @@ class OpenAIProvider(ProviderClient):
                                 stream_attempt=attempt + 1,
                                 stream_mode=stream_mode,
                                 provider_progress_seen=bool(progress.get("seen")),
+                                visible_output_seen=bool(progress.get("visible")),
                                 transport_failure_type=type(exc).__name__,
                                 retried=attempt + 1 < MAX_STREAM_ATTEMPTS
                                 and not progress.get("visible"),
@@ -675,19 +676,101 @@ def _iter_true_stream_chunks(
     )
 
 
-def _collect_stream_chunks(
+class _CompatTextBuffer:
+    """Release prose immediately; hold a potential textual call and split markers.
+
+    Compatibility backends may embed JSON/XML/tool-name calls anywhere in prose.
+    Once a candidate begins, keep that suffix until the terminal chunk so it can be
+    salvaged without leaking arguments. Ordinary prose before it remains visible.
+    Fenced blocks are held too, preserving the existing fenced-call compatibility.
+    """
+
+    def __init__(self, tools):
+        names, _ = _tool_index(tools)
+        self.tools = tools
+        self.names = sorted(names or (), key=lambda name: (-len(name), name))
+        self.pending = ""
+        self.held = False
+        self.previous = ""
+
+    def feed(self, content: str) -> str:
+        self.pending += content
+        out = []
+        while self.pending:
+            if self.held:
+                cut = self._plain_candidate_length()
+            else:
+                cut = self._prose_length()
+                if not cut and self.held:
+                    cut = self._plain_candidate_length()
+            if not cut:
+                break
+            released, self.pending = self.pending[:cut], self.pending[cut:]
+            self.held = False
+            self.previous = released[-1]
+            out.append(released)
+        return "".join(out)
+
+    def _prose_length(self) -> int:
+        text = self.pending
+        for i, char in enumerate(text):
+            if char in "{[":
+                self.held = True
+                return i
+            suffix = text[i:]
+            markers = ("<tool_call>", "<function", "```")
+            low = suffix.lower()
+            if any(low.startswith(marker) for marker in markers):
+                self.held = True
+                return i
+            if any(marker.startswith(low) for marker in markers):
+                return i
+            previous = text[i - 1] if i else self.previous
+            if previous and (previous.isalnum() or previous == "_"):
+                continue
+            if any(suffix.startswith(name) for name in self.names):
+                self.held = True
+                return i
+            if any(name.startswith(suffix) for name in self.names):
+                return i
+        return len(text)
+
+    def _plain_candidate_length(self) -> int:
+        """Release completed Markdown/JSON that turns out not to be a tool call."""
+        text = self.pending
+        candidate = None
+        if text.startswith(("{", "[")):
+            candidate = _extract_balanced(text, 0)
+        elif text.startswith("```"):
+            end = text.find("```", 3)
+            if end >= 0:
+                candidate = text[:end + 3]
+        else:
+            if any(name.startswith(text) for name in self.names):
+                return 0
+            for name in self.names:
+                if text.startswith(name):
+                    following = text[len(name):].lstrip()
+                    if following and following[0] not in "{[":
+                        return len(name)
+                    return 0
+        if candidate and not _salvage_tool_calls_from_text(candidate, self.tools):
+            return len(candidate)
+        return 0
+
+
+def _iter_compat_stream_chunks(
     client: Any,
     kwargs: dict[str, Any],
     *,
     tools: Optional[list[dict[str, Any]]],
     progress: Optional[dict[str, bool]] = None,
-) -> list[StreamChunk]:
-    """Tools-enabled compatibility path: buffer one attempt, then salvage-safe yield.
+):
+    """Tools-enabled compatibility path: stream prose, hold only call candidates.
 
     Param-form retries (effort / max_tokens / stream_options) still apply on create().
     Transport errors during iteration propagate to the caller for retry/fallback.
-    Intermediate text deltas that are salvaged into tool_calls are dropped so potential
-    tool-call text never reaches the UI as assistant deltas.
+    Potential tool-call suffixes never reach the UI before terminal validation.
     """
     chunks = _open_chat_completion_stream(client, kwargs)
 
@@ -696,7 +779,7 @@ def _collect_stream_chunks(
     tool_accum: dict[int, dict[str, str]] = {}
     finish_reason = None
     usage: Optional[TokenUsage] = None
-    out: list[StreamChunk] = []
+    text_buffer = _CompatTextBuffer(tools)
 
     for chunk in chunks:
         chunk_usage = _usage_from(getattr(chunk, "usage", None))
@@ -712,14 +795,16 @@ def _collect_stream_chunks(
             if reasoning:
                 _mark_provider_progress(progress)
                 reasoning_parts.append(reasoning)
-                out.append(StreamChunk(reasoning_delta=reasoning))
+                yield StreamChunk(reasoning_delta=reasoning)
             content = getattr(delta, "content", None)
             if content:
                 # Text while tools were offered counts as semantic progress even before
                 # salvage — may be prose or a textual tool-call candidate.
                 _mark_provider_progress(progress)
-                text_parts.append(content)
-                out.append(StreamChunk(text_delta=content))
+                released = text_buffer.feed(content)
+                if released:
+                    text_parts.append(released)
+                    yield StreamChunk(text_delta=released)
             for tc in getattr(delta, "tool_calls", None) or []:
                 _mark_provider_progress(progress)
                 _accumulate_structured_tool_delta(tool_accum, tc)
@@ -729,26 +814,25 @@ def _collect_stream_chunks(
     if finish_reason is None:
         raise ConnectionError("stream ended without a terminal finish_reason")
     tool_calls = _finalize_tool_calls(tool_accum) if finish_reason != "length" else []
-    text, tool_calls = _maybe_salvage_tool_calls(
-        "".join(text_parts) or None, tool_calls, tools=tools if finish_reason != "length" else None
+    tail, tool_calls = _maybe_salvage_tool_calls(
+        text_buffer.pending or None, tool_calls,
+        tools=tools if finish_reason in {"stop", "tool_calls"} else None,
     )
-    if text is None and tool_calls:
-        # Salvaged textual tool calls must not have leaked as ASSISTANT_DELTA fodder.
-        out = [c for c in out if not c.text_delta]
+    if tail:
+        text_parts.append(tail)
+        yield StreamChunk(text_delta=tail)
+    text = "".join(text_parts) or None
     reasoning = "".join(reasoning_parts) or None
-    out.append(
-        StreamChunk(
-            turn=AssistantTurn(
-                text=text,
-                tool_calls=tool_calls,
-                finish_reason=finish_reason,
-                reasoning=reasoning,
-                extras=_reasoning_extras(reasoning),
-                usage=usage,
-            )
+    yield StreamChunk(
+        turn=AssistantTurn(
+            text=text,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            reasoning=reasoning,
+            extras=_reasoning_extras(reasoning),
+            usage=usage,
         )
     )
-    return out
 
 
 
@@ -827,7 +911,7 @@ def _maybe_salvage_tool_calls(
                 "provider_stream",
                 build_provider_stream_snapshot(
                     stream_attempt=0,
-                    stream_mode="compat_buffered",
+                    stream_mode="compat_incremental",
                     tool_progress_seen=True,
                     textual_tool_salvage_used=True,
                 ),
