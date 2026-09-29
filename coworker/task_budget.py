@@ -42,8 +42,15 @@ class TaskBudgetStore:
 
     def bind(self, group, owner, actor, *, parent=False):
         with self._lock:
-            if self._read(group)["owner"] != owner:
+            data = self._read(group)
+            if data["owner"] != owner:
                 raise ValueError("task budget belongs to another session")
+            # Upgrade the first fast contract once: retain consumption and add
+            # one reserved response-repair slot, never another exploration slot.
+            if data.get("research_depth") == "fast" and data["size"] == 6 and data["reserve"] == 1:
+                data["limit"] = data.get("limit", data["segment"] * data["size"]) + 1
+                data.update(size=7, reserve=2)
+                self._save(group, data)
         return BudgetHandle(self, group, owner, actor, parent)
 
     def _read(self, group):

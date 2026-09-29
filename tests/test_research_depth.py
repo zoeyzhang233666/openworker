@@ -58,7 +58,7 @@ def test_ws_choice_send_reconnect_and_running_rejection(tmp_path):
         assert mgr.session_store.load("s").research_depth == "deep"
         ws.send_json({"type": "user_message", "text": "你好", "research_depth": "fast"})
         assert drain(ws)[-1]["type"] == "turn_done"
-        assert mgr.get_engine("s").task_budget.snapshot()["limit"] == 6
+        assert mgr.get_engine("s").task_budget.snapshot()["limit"] == 7
     with client.websocket_connect("/ws/session/s?agent=chat") as ws:
         assert ws.receive_json()["data"]["research_depth"] == "fast"
         assert mgr.try_mark_running("s")
@@ -71,7 +71,7 @@ def test_ws_choice_send_reconnect_and_running_rejection(tmp_path):
 @pytest.mark.parametrize("ignores_tools", [False, True])
 def test_fast_six_calls_deliver_answer_or_preserve_unfinished_tools(tmp_path, ignores_tools):
     final = call(5) if ignores_tools else AssistantTurn(text="核心业务、客户与收入结构如下，依据已核验资料。", finish_reason="stop")
-    e, writes = engine(tmp_path, [call(i) for i in range(5)] + [final])
+    e, writes = engine(tmp_path, [call(i) for i in range(5)] + [final] + ([AssistantTurn(text="已根据现有资料直接回答。", finish_reason="stop")] if ignores_tools else []))
     seen = []
     original = e.provider.complete
     def record(**kwargs):
@@ -80,10 +80,10 @@ def test_fast_six_calls_deliver_answer_or_preserve_unfinished_tools(tmp_path, ig
     e.provider.complete = record
     e.task_budget = TaskBudgetStore(tmp_path / "budget.db").create("s", research_depth="fast")
     events = _collect(e, "梳理业务")
-    assert len(seen) == 6 and seen[-1]["tools"] is None
+    assert len(seen) == (7 if ignores_tools else 6) and seen[-1]["tools"] is None
     assert writes == list(range(5))
-    assert events[-1].data["status"] == ("budget_paused" if ignores_tools else "completed")
-    assert e.task_budget.snapshot()["used"] == 6
+    assert events[-1].data["status"] == "completed"
+    assert e.task_budget.snapshot()["used"] == len(seen)
     assert "最终交付轮" in str(seen[-1]["messages"])
     assert "从第一轮就设计快速完成路径" in str(seen[0]["messages"])
     assert "最小完整交付" in str(seen[0]["messages"])
@@ -97,9 +97,9 @@ def test_early_answer_completes_and_local_engine_also_converges(tmp_path):
     e, _ = engine(tmp_path, [AssistantTurn(text="你好", finish_reason="stop")])
     e.research_depth = "fast"
     assert _collect(e, "你好")[-1].data["status"] == "completed"
-    e, writes = engine(tmp_path, [call(i) for i in range(6)])
+    e, writes = engine(tmp_path, [call(i) for i in range(6)] + [AssistantTurn(text="结论", finish_reason="stop")])
     e.research_depth = "fast"
-    assert _collect(e, "work")[-1].data["status"] == "budget_paused"
+    assert _collect(e, "work")[-1].data["status"] == "completed"
     assert writes == list(range(5))
 
 
@@ -110,22 +110,24 @@ def test_fast_reserve_is_shared_and_explicit_continue_changes_next_segment(tmp_p
     for _ in range(5):
         child.settle(child.acquire(), success=True)
     assert child.acquire() is None
-    e, _ = engine(tmp_path, [call(5)])
+    e, _ = engine(tmp_path, [])
     e.task_budget = parent
-    assert _collect(e, "work")[-1].data["status"] == "budget_paused"
+    for _ in range(2):
+        parent.settle(parent.acquire(), success=True)
+    asyncio.run(e._pause("budget_paused", "共享任务待继续"))
     restored, _ = engine(tmp_path, [AssistantTurn(text="补齐", finish_reason="stop")], messages=deepcopy(e.messages))
     restored.task_budget = store.bind(parent.group, "s", "s", parent=True)
     restored.research_depth = "deep"
     assert asyncio.run(consume(restored.resume()))[-1].data["status"] == "budget_paused"
-    assert parent.snapshot()["limit"] == 6
+    assert parent.snapshot()["limit"] == 7
     assert asyncio.run(consume(restored.retry()))[-1].data["status"] == "completed"
     snapshot = parent.snapshot()
-    assert (snapshot["used"], snapshot["limit"], snapshot["reserve"], snapshot["research_depth"]) == (7, 306, 15, "deep")
+    assert (snapshot["used"], snapshot["limit"], snapshot["reserve"], snapshot["research_depth"]) == (8, 307, 15, "deep")
     # Shrinking the next segment must not recompute or erase previous allowance.
     while (token := parent.acquire()) is not None:
         parent.settle(token, success=True)
     assert store.continue_segment(parent, 2, research_depth="fast")
-    assert parent.snapshot()["limit"] == 312 and parent.snapshot()["used"] == 306
+    assert parent.snapshot()["limit"] == 314 and parent.snapshot()["used"] == 307
 
 
 def test_choice_or_ordinary_message_cannot_renew_paused_budget(tmp_path):
@@ -133,16 +135,16 @@ def test_choice_or_ordinary_message_cannot_renew_paused_budget(tmp_path):
     e = mgr.get_engine("s", agent="chat")
     mgr._prepare_task_budget("s", e, None)
     budget = e.task_budget
-    for _ in range(6):
+    for _ in range(7):
         budget.settle(budget.acquire(), success=True)
     e._append_notice("budget_paused", "暂停")
     mgr.set_research_depth("s", "deep")
     mgr._prepare_task_budget("s", e, None)
-    assert e.task_budget.group == budget.group and budget.snapshot()["limit"] == 6
+    assert e.task_budget.group == budget.group and budget.snapshot()["limit"] == 7
     assert e._effective_research_depth() == "fast"
 
 
-@pytest.mark.parametrize("depth,effort,limit", [("fast", "low", 6), ("deep", "high", 150)])
+@pytest.mark.parametrize("depth,effort,limit", [("fast", "low", 7), ("deep", "high", 150)])
 def test_planner_keeps_tool_surface_and_gates_reasoning(depth, effort, limit):
     planner = TurnPlanner(config=Config(), available_tool_names=lambda: ("web_search", "read_file", "shell"))
     plan = planner.plan("梳理卓创资讯业务", research_depth=depth)
@@ -181,15 +183,15 @@ def test_real_old_database_migrates_without_switching_depth(tmp_path):
     assert restored.load("legacy").research_depth == "deep"
 
 
-@pytest.mark.parametrize("finish,text,status", [("length", "半句", "truncated"), ("stop", "", "budget_paused"), ("error", "失败", "blocked")])
+@pytest.mark.parametrize("finish,text,status", [("length", "半句", "completed"), ("stop", "", "completed"), ("error", "失败", "blocked")])
 def test_final_round_never_marks_empty_or_truncated_response_complete(tmp_path, finish, text, status):
-    e, _ = engine(tmp_path, [AssistantTurn(text=text, finish_reason=finish)])
+    e, _ = engine(tmp_path, [AssistantTurn(text=text, finish_reason=finish), AssistantTurn(text="自动整理后的可靠短答", finish_reason="stop")])
     budget = TaskBudgetStore(tmp_path / "budget.db").create("s", research_depth="fast")
     for _ in range(5):
         budget.settle(budget.acquire(), success=True)
     e.task_budget = budget
     assert _collect(e, "work")[-1].data["status"] == status
-    assert e.provider.calls == 1
+    assert e.provider.calls == (1 if finish == "error" else 2)
 
 
 def test_background_new_session_preserves_deep_default(tmp_path):
@@ -207,7 +209,7 @@ def test_switch_to_fast_does_not_inherit_unused_deep_summary_allowance(tmp_path)
         parent.settle(parent.acquire(), success=True)
     assert store.continue_segment(parent, 1, research_depth="fast")
     assert parent.snapshot()["used"] == 285
-    assert parent.snapshot()["remaining"] == 6
+    assert parent.snapshot()["remaining"] == 7
 
 
 def test_legacy_managed_task_adopts_choice_only_on_explicit_continue(tmp_path):
@@ -221,4 +223,4 @@ def test_legacy_managed_task_adopts_choice_only_on_explicit_continue(tmp_path):
     mgr.set_research_depth("s", "fast")
     assert asyncio.run(consume(e.retry()))[-1].data["status"] == "completed"
     assert e.task_budget.snapshot()["research_depth"] == "fast"
-    assert e.task_budget.snapshot()["limit"] == 8
+    assert e.task_budget.snapshot()["limit"] == 9

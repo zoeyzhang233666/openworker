@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from threading import RLock
+import math
+import re
 
 from .context_budget import estimate
 from .tool_policy import TurnToolPolicy, tool_allowed_under_policy
@@ -51,13 +53,51 @@ class ToolDiscovery:
             if not self._allowed(name):
                 continue
             desc = str(self.registry.get(name).schema["function"].get("description", ""))
-            if not query or query in name.casefold() or query in desc.casefold():
-                rows.append({"name": name, "description": desc[:320]})
-        rows.sort(key=lambda row: row["name"].casefold() != query)
+            rows.append({"name": name, "description": desc[:320]})
+        if query:
+            rows = self._rank(query, rows)
         offset, limit = max(0, offset), max(1, min(50, limit))
         end = offset + limit
         return {"tools": rows[offset:end], "total": len(rows),
                 "next_offset": end if end < len(rows) else None}
+
+    @staticmethod
+    def _rank(query, rows):
+        """Lexical relevance, not a business router or permission filter.
+
+        Split multiword names and Chinese fragments instead of requiring the
+        entire user's sentence to appear verbatim in one description.
+        """
+        def terms(text):
+            words = set(re.findall(r"[a-z0-9]+", text.casefold()))
+            for run in re.findall(r"[\u4e00-\u9fff]+", text):
+                words.update(run[i:i+2] for i in range(len(run)-1))
+                words.update(run)
+            return words
+        wanted = terms(query)
+        docs = [terms(row["name"] + " " + row["description"]) for row in rows]
+        frequency = {word: sum(word in doc for doc in docs) for word in wanted}
+        ranked = []
+        for row, doc in zip(rows, docs):
+            score = sum((.15 if len(word) == 1 else 1) * math.log(1 + len(rows)/(1+frequency[word]))
+                        for word in wanted & doc)
+            if query in (row["name"] + " " + row["description"]).casefold():
+                score += 10
+            if row["name"].casefold() == query:
+                score += 100
+            if score > 0:
+                ranked.append((score, row))
+        return [row for _, row in sorted(ranked, key=lambda x: (-x[0], x[1]["name"]))]
+
+    def prime_mcp(self, query, limit=3):
+        """Expose a few relevant live MCP definitions without a model discovery round."""
+        candidates = [{"name": name, "description": str(self.registry.get(name).schema["function"].get("description", ""))[:320]}
+                      for name in self.registry.names() if name.startswith("mcp__") and self._allowed(name)]
+        ranked = self._rank(str(query)[:2000].casefold(), candidates)
+        names = [row["name"] for row in ranked[:limit]]
+        if names:
+            self.load(names)
+        return names
 
     def load(self, names):
         with self.lock:

@@ -246,6 +246,10 @@ class TurnEngine:
         self.task_budget = None
         self.research_depth = "deep"
         self._research_finalizing = False
+        self.fast_prompt_transform = None
+        self._fast_mcp_context = ""
+        from .fast_answer import FastWebBudget
+        self._fast_web_budget = FastWebBudget()
         self.prepare_task_run = None
         self._runtime = self._restored_runtime()
 
@@ -989,7 +993,8 @@ class TurnEngine:
         if profile is not None:
             hard_limit = min(hard_limit, profile.max_iterations)
         if self._effective_research_depth() == "fast":
-            hard_limit = min(hard_limit, 6)
+            from .research_depth import POLICIES
+            hard_limit = min(hard_limit, POLICIES["fast"].size)
         while True:
             if self.task_budget is not None and self.task_budget.snapshot()["stopped"]:
                 self._append_notice("interrupted")
@@ -1001,7 +1006,8 @@ class TurnEngine:
             self._budget_iteration = iterations + 1
             self._research_finalizing = self._effective_research_depth() == "fast" and (
                 (self.task_budget is not None and self.task_budget.parent and self.task_budget.summarizing)
-                or (self.task_budget is None and iterations >= hard_limit - 1)
+                or (self.task_budget is None and iterations >= hard_limit - 2)
+                or bool(self._runtime.get("fast_synthesize"))
             )
             if iterations == 0:
                 self._emit_turn_instrumentation()
@@ -1044,6 +1050,8 @@ class TurnEngine:
                 )
 
             budget_token = None
+            from .fast_answer import AnswerTextFilter
+            answer_filter = AnswerTextFilter()
             try:
                 budget_token = self.task_budget.acquire() if self.task_budget is not None else None
                 if self.task_budget is not None and budget_token is None:
@@ -1053,7 +1061,7 @@ class TurnEngine:
                     budget = self.task_budget.snapshot()
                     # Include our own reservation: other actors may have acquired
                     # the last exploration slots since the loop's initial snapshot.
-                    self._research_finalizing = budget["remaining"] + 1 <= budget["reserve"]
+                    self._research_finalizing = budget["remaining"] + 1 <= budget["reserve"] or bool(self._runtime.get("fast_synthesize"))
                 self._runtime["model_calls"] += 1
                 yield Event(EventType.MODEL_REQUEST, {"attempt": self._runtime["model_calls"]})
                 async for chunk in self._astream():
@@ -1077,16 +1085,26 @@ class TurnEngine:
                                 {"text": chunk.reasoning_delta},
                             )
                     if chunk.text_delta:
-                        streamed.append(chunk.text_delta)
+                        delta = answer_filter.feed(chunk.text_delta) if self._research_finalizing else chunk.text_delta
+                        streamed.append(delta)
                         if first_visible_delta_ms is None:
                             first_visible_delta_ms = (
                                 time.perf_counter() - iter_started
                             ) * 1000.0
-                        yield Event(
-                            EventType.ASSISTANT_DELTA, {"text": chunk.text_delta}
-                        )
+                        if delta:
+                            yield Event(EventType.ASSISTANT_DELTA, {"text": delta})
                     if chunk.turn is not None:
                         turn = chunk.turn
+                if self._research_finalizing:
+                    tail = answer_filter.finish()
+                    if tail:
+                        streamed.append(tail)
+                        yield Event(EventType.ASSISTANT_DELTA, {"text": tail})
+                    if turn is not None:
+                        complete_filter = AnswerTextFilter()
+                        turn.text = complete_filter.feed(turn.text or "") + complete_filter.finish()
+                        if complete_filter.blocked or answer_filter.blocked:
+                            self._runtime["fast_protocol_output"] = True
             except Exception as exc:  # provider failure
                 # A raw context-overflow 400 (compaction mispredicted, e.g. the estimate
                 # path) routes into the compaction policy instead of surfacing. The retry
@@ -1198,22 +1216,35 @@ class TurnEngine:
                 ),
             )
 
-            if self._research_finalizing and turn.tool_calls:
+            protocol_output = self._runtime.pop("fast_protocol_output", False)
+            if self._research_finalizing and (turn.tool_calls or protocol_output):
                 # Preserve valid message pairs even if a provider ignores tools=None.
                 for tc in turn.tool_calls:
                     self.messages.append({"role": "tool", "tool_call_id": tc.id,
                                           "content": "快速模式收尾轮不执行工具；已有结果保留，可继续。"})
-                yield await self._pause("budget_paused", "快速模式本段已收尾，已有结果已保留；如需补齐未完成项，可切换深度探索后点击继续。")
+                if self._request_fast_answer_repair():
+                    yield Event(EventType.CONTINUATION, {"reason": "fast_answer", "text": "正在直接整理已有结果。"})
+                    continue
+                yield self._fast_answer_error()
                 return
 
             if not turn.tool_calls:
                 if self._research_finalizing and not (turn.text or "").strip():
-                    yield await self._pause("budget_paused", "本段未生成有效答案，已有证据已保存；可继续完成交付。")
+                    if self._request_fast_answer_repair():
+                        yield Event(EventType.CONTINUATION, {"reason": "fast_answer", "text": "正在直接整理已有结果。"})
+                        continue
+                    yield self._fast_answer_error()
                     return
                 if self._steering:
                     self._inject_steering()
                     continue
                 if turn.finish_reason == "length":
+                    if self._effective_research_depth() == "fast":
+                        if self._request_fast_answer_repair():
+                            yield Event(EventType.CONTINUATION, {"reason": "fast_answer", "text": "回复过长，正在自动整理为简短答案。"})
+                            continue
+                        yield self._fast_answer_error()
+                        return
                     if continuations < 2 and not self._research_finalizing:
                         continuations += 1
                         self._continue_message("上次回复达到输出长度上限。不要重复长段思考或已完成内容；从断点继续完成下一步或简洁回答。")
@@ -1281,6 +1312,19 @@ class TurnEngine:
         cfg.setdefault("cap_tokens", _compaction.DEFAULT_CAP_TOKENS)
         return cfg
 
+    def _request_fast_answer_repair(self):
+        if self._runtime.get("fast_answer_repair"):
+            return False
+        self._runtime["fast_answer_repair"] = True
+        self._runtime["fast_synthesize"] = True
+        self._continue_message("直接回答原问题，控制在约 300 字。复用已有工具事实和来源，不重复搜索，不写文件、不输出工具代码。不能核验的当前数据如实说明；不要复述计划或续写未完成的文档。")
+        return True
+
+    def _fast_answer_error(self):
+        text = "模型在自动整理答案后仍未正常完成输出，已有查询记录已保留。本次未能可靠完成回答。"
+        self._append_notice("error", text)
+        return Event(EventType.ERROR, {"error": text, "error_type": "FastAnswerIncomplete"})
+
     def _provider_tools(self):
         if self._emergency_finalizing or self._research_finalizing:
             return None
@@ -1296,7 +1340,22 @@ class TurnEngine:
             )
             if self._runtime.get("loaded_tools"):
                 self._tool_discovery.load(self._runtime["loaded_tools"])
+        if self._effective_research_depth() == "fast":
+            # Re-evaluate live names so MCP tools attached after startup are visible.
+            query = self._resume_plan_input()
+            if isinstance(query, list):
+                query = " ".join(str(p.get("text", "")) for p in query if isinstance(p, dict))
+            self._tool_discovery.prime_mcp(query)
         schemas = self._tool_discovery.schemas()
+        if self._effective_research_depth() == "fast":
+            visible_mcp = [s["function"]["name"] for s in schemas if s["function"]["name"].startswith("mcp__")]
+            registered_mcp = [n for n in self.registry.names() if n.startswith("mcp__") and self._tool_discovery._allowed(n)]
+            if visible_mcp:
+                self._fast_mcp_context = "本轮已提供可直接调用的 MCP 参数定义：" + "、".join(visible_mcp[:6]) + "。适用时先用这些工具，不要先网页搜索或重复加载定义。"
+            elif not registered_mcp:
+                self._fast_mcp_context = "当前没有已注册且符合本轮策略的 MCP 工具，无需为确认不存在而反复发现工具；需要外部事实且允许联网时可直接查询网页。"
+            else:
+                self._fast_mcp_context = "当前有 MCP 工具但尚未预载匹配参数；先用简短能力词（可用英文名称词）search_tools 一次，未找到适用工具再网页补查。"
         return [schema for schema in schemas if tool_allowed_under_policy(
             schema["function"]["name"], self._current_tool_policy() or TurnToolPolicy())] or None
 
@@ -1945,6 +2004,8 @@ class TurnEngine:
     def _execute_sync(self, tool_call: ToolCall) -> tuple[Any, str]:
         """Execute one authorized call (runs in a worker thread)."""
         tool_call = self._prepare_tool_execution(tool_call)
+        if self._effective_research_depth() == "fast" and not self._fast_web_budget.acquire(self._runtime, tool_call.name):
+            return {"error": "快速查询已完成本轮有界取证，请直接根据已有结果回答，说明无法核验的事实；不要换词重复搜索。"}, "error"
         try:
             result = self.registry.execute(tool_call.name, tool_call.arguments)
             if isinstance(result, dict) and result.get("timed_out") is True:
@@ -2282,6 +2343,12 @@ class TurnEngine:
         for msg in source_messages:
             if msg.get("role") == "notice":
                 continue
+            if (self._runtime.get("fast_answer_repair") and msg.get("role") == "assistant"
+                    and msg.get("finish_reason") == "length" and not msg.get("tool_calls")):
+                # Keep source facts, but do not ask the model to continue an
+                # unfinished report or replay its long private reasoning.
+                out.append({"role": "assistant", "content": "此前输出未正常完成，请直接依据已有证据简短回答。"})
+                continue
             prepared = msg
             if msg.get("role") == "assistant":
                 reasoning = msg.get("reasoning")
@@ -2313,6 +2380,17 @@ class TurnEngine:
                     continue
                 out[index] = {**message, "content": projected_prompt}
                 break
+        if self._effective_research_depth() == "fast":
+            from .research_depth import FAST_SYSTEM_GUIDANCE
+            for index, message in enumerate(out):
+                if message.get("role") == "system":
+                    text = str(message.get("content") or "")
+                    if self.fast_prompt_transform:
+                        text = self.fast_prompt_transform(text)
+                    out[index] = {**message, "content": text + "\n\n" + FAST_SYSTEM_GUIDANCE + "\n" + self._fast_mcp_context}
+                    break
+            else:
+                out.insert(0, {"role": "system", "content": FAST_SYSTEM_GUIDANCE + "\n" + self._fast_mcp_context})
         # PDF attachments (stored as `file` parts) are adapted to the ACTIVE model right
         # here — never in the persisted history — so a mid-session model switch always
         # re-decides: native PDF models get the real document, the rest get the local
@@ -2463,7 +2541,7 @@ class TurnEngine:
         if self.research_depth == "fast":
             from .research_depth import depth_guidance
             used = max(0, (self._budget_iteration or 1) - 1)
-            return depth_guidance("fast", used=used, remaining=max(0, 6-used),
+            return depth_guidance("fast", used=used, remaining=max(0, 7-used),
                                   finalizing=self._research_finalizing)
         profile = self._current_execution_profile()
         if profile is None or not profile.budget_guidance_enabled:
